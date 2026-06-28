@@ -4,7 +4,7 @@ import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
 import { RSUFields } from '../../../../components/Objects/Income/card/RSUFields';
 import { ESPPFields } from '../../../../components/Objects/Income/card/ESPPFields';
-import { WorkIncome } from '../../../../components/Objects/Income/models';
+import { WorkIncome, hasIncomeEnded } from '../../../../components/Objects/Income/models';
 
 /**
  * #141 — the missing-RSU/ESPP-account warnings on the income CARD deep-link to
@@ -23,6 +23,18 @@ function makeIncome(): WorkIncome {
         'inc-1', 'My Job', 100_000, 'Annually', 'Yes',
         0, 0, 0, 0, '', null, 'FIXED', undefined, undefined, 0
     );
+}
+
+// A fixed end date a full year in the PAST → hasIncomeEnded() reads true.
+function pastEndDate(): Date {
+    const today = new Date();
+    return new Date(today.getFullYear() - 1, today.getMonth(), 15);
+}
+
+// A fixed end date well in the FUTURE → hasIncomeEnded() reads false (still active).
+function futureEndDate(): Date {
+    const today = new Date();
+    return new Date(today.getFullYear() + 2, today.getMonth(), 15);
 }
 
 describe('#141 RSU card warning — Add Account deep link', () => {
@@ -99,5 +111,107 @@ describe('#141 ESPP card warning — Add Account deep link', () => {
 
         // The old hand-rolled box used `rounded-lg`; the AlertBanner uses `rounded-xl`.
         expect(container.querySelector('div.rounded-lg')).toBeNull();
+    });
+});
+
+/**
+ * finding 4 — an ENDED job (fixed end date in a PAST month) whose RSU/ESPP grant
+ * has no linked account should NOT show the in-section missing-account banner: a
+ * finished grant can no longer vest/purchase, so the warning is pure noise. The
+ * `incomeEnded` prop (driven by hasIncomeEnded) folds into the existing
+ * showMissingAccountWarning gate. An ACTIVE (or future-ending) job still warns.
+ *
+ * The Add-Income modal never passes incomeEnded, so the prop defaults false and
+ * the modal warns exactly as before (the default-true cases above still pass).
+ */
+describe('finding 4 — suppress in-section missing-account banner for an ENDED job', () => {
+    it('hides the "No RSU Account" banner for an ended job, keeps it for an active one', () => {
+        const ended = makeIncome();
+        ended.end_date = pastEndDate();
+        ended.rsuVestingSchedule = 'cliff-1yr';
+        ended.rsuGrantShares = 100;
+        expect(hasIncomeEnded(ended)).toBe(true);
+
+        const { unmount } = render(
+            <RSUFields
+                values={ended}
+                onUpdate={() => {}}
+                rsuAccounts={[]}
+                idPrefix={ended.id}
+                showAccountLink
+                incomeEnded={hasIncomeEnded(ended)}
+            />
+        );
+        // Ended job → banner suppressed even though the grant has no account.
+        expect(screen.queryByText('No RSU Account')).not.toBeInTheDocument();
+        // The grant cluster itself still renders (only the warning is gone).
+        expect(screen.getByText('Vesting Schedule')).toBeInTheDocument();
+        unmount();
+
+        const active = makeIncome();
+        active.end_date = futureEndDate();
+        active.rsuVestingSchedule = 'cliff-1yr';
+        active.rsuGrantShares = 100;
+        expect(hasIncomeEnded(active)).toBe(false);
+
+        render(
+            <MemoryRouter>
+                <RSUFields
+                    values={active}
+                    onUpdate={() => {}}
+                    rsuAccounts={[]}
+                    idPrefix={active.id}
+                    showAccountLink
+                    incomeEnded={hasIncomeEnded(active)}
+                />
+            </MemoryRouter>
+        );
+        // Active job → banner still rendered.
+        expect(screen.getByText('No RSU Account')).toBeInTheDocument();
+    });
+
+    it('hides the "No ESPP Account" banner for an ended job, keeps it for an active one', () => {
+        const ended = makeIncome();
+        ended.end_date = pastEndDate();
+        ended.esppContributionType = 'PERCENTAGE';
+        ended.esppContributionAmount = 10;
+        expect(hasIncomeEnded(ended)).toBe(true);
+
+        const { unmount } = render(
+            <ESPPFields
+                values={ended}
+                onUpdate={() => {}}
+                esppAccounts={[]}
+                idPrefix={ended.id}
+                showAccountLink
+                incomeEnded={hasIncomeEnded(ended)}
+            />
+        );
+        // Ended job → banner suppressed.
+        expect(screen.queryByText('No ESPP Account')).not.toBeInTheDocument();
+        // The contribution cluster itself still renders.
+        expect(screen.getByText('ESPP Contribution')).toBeInTheDocument();
+        unmount();
+
+        const active = makeIncome();
+        active.end_date = futureEndDate();
+        active.esppContributionType = 'PERCENTAGE';
+        active.esppContributionAmount = 10;
+        expect(hasIncomeEnded(active)).toBe(false);
+
+        render(
+            <MemoryRouter>
+                <ESPPFields
+                    values={active}
+                    onUpdate={() => {}}
+                    esppAccounts={[]}
+                    idPrefix={active.id}
+                    showAccountLink
+                    incomeEnded={hasIncomeEnded(active)}
+                />
+            </MemoryRouter>
+        );
+        // Active job → banner still rendered.
+        expect(screen.getByText('No ESPP Account')).toBeInTheDocument();
     });
 });

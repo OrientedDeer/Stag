@@ -36,6 +36,12 @@ interface WorkIncomeFieldsProps {
      *  matching pension income — drives the "add a pension income" hint. Optional;
      *  defaults to true (no hint) for the Add-Income modal, which doesn't pass it. */
     hasMatchingPensionIncome?: boolean;
+    /** True when this job has definitively ENDED (fixed past end date). Its grant/ESPP
+     *  can no longer vest, so the missing-account warnings are pure noise — suppress
+     *  the card-level banners here AND the in-section copies (threaded into the
+     *  RSU/ESPP clusters). Defaults false: the Add-Income modal doesn't pass it, so a
+     *  brand-new income keeps warning exactly as today (finding 4). */
+    incomeEnded?: boolean;
 }
 
 export function WorkIncomeFields({
@@ -47,6 +53,7 @@ export function WorkIncomeFields({
     contributionWarnings,
     onMatchAccountChange,
     hasMatchingPensionIncome = true,
+    incomeEnded = false,
 }: WorkIncomeFieldsProps): ReactElement {
     // A configured deferral (auto-max or a positive custom amount) needs a
     // destination account, independent of any employer match. Shared with the modal
@@ -64,8 +71,10 @@ export function WorkIncomeFields({
                 having to expand the section. The in-section copies are suppressed in
                 the card (showMissingAccountWarning={false}); the modal keeps them (no
                 collapse). `*GrantNeedsAccount` gates on an ACTIVE grant AND no EXISTING
-                account, so it skips a 0-share grant and catches a dangling id (#141 review). */}
-            {rsuGrantNeedsAccount(income, rsuAccounts) && (
+                account, so it skips a 0-share grant and catches a dangling id (#141 review).
+                Suppressed entirely for an ENDED job — a finished grant can no longer vest,
+                so the warning is pure noise (finding 4). */}
+            {!incomeEnded && rsuGrantNeedsAccount(income, rsuAccounts) && (
                 <AlertBanner
                     severity="warning"
                     size="sm"
@@ -78,7 +87,7 @@ export function WorkIncomeFields({
                         : <> <AddStockAccountLink kind="RSU" /></>}
                 </AlertBanner>
             )}
-            {esppGrantNeedsAccount(income, esppAccounts) && (
+            {!incomeEnded && esppGrantNeedsAccount(income, esppAccounts) && (
                 <AlertBanner
                     severity="warning"
                     size="sm"
@@ -145,6 +154,7 @@ export function WorkIncomeFields({
                     idPrefix={income.id}
                     showAccountLink
                     showMissingAccountWarning={false}
+                    incomeEnded={incomeEnded}
                 />
             </CardSection>
 
@@ -160,6 +170,7 @@ export function WorkIncomeFields({
                     idPrefix={income.id}
                     showAccountLink
                     showMissingAccountWarning={false}
+                    incomeEnded={incomeEnded}
                 />
             </CardSection>
 

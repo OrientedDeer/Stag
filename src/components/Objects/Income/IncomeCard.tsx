@@ -279,6 +279,7 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
                         contributionWarnings={contributionWarnings}
                         onMatchAccountChange={handleMatchAccountChange}
                         hasMatchingPensionIncome={hasMatchingPensionIncome}
+                        incomeEnded={incomeEnded}
                     />
                 )}
 
