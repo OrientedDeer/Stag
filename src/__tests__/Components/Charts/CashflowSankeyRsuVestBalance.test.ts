@@ -135,6 +135,22 @@ describe('#153 Cashflow Sankey — Net Pay balances on the first RSU vest year',
         expect(vestSource!.reinvestedNet!).toBeLessThan(vestSource!.amount - 1);
     });
 
+    it('labels the reinvested destination with the RSU ACCOUNT name, not the vest income name', () => {
+        const sim = runSimulation(8, makeAccounts(), makeIncomes(), makeExpenses(), assumptions, taxState);
+
+        const vest = sim.find(y => y.year === VEST_YEAR);
+        const vestSource = vest!.cashflowDetail!.incomeBySource.find(
+            s => s.kind === 'reinvested' && /RSU Vest/i.test(s.name),
+        );
+        expect(vestSource, 'a reinvested RSU vest income source in the vest year').toBeDefined();
+
+        // The vest id is `rsu-vest-{accountId}-{incomeId}-{year}`; the Sankey destination
+        // must resolve to the linked RSU account ('Equity Grants'), not the synthetic
+        // vest-income name ('… RSU Vest').
+        expect(vestSource!.accountName).toBe('Equity Grants');
+        expect(vestSource!.accountName).not.toMatch(/RSU Vest/i);
+    });
+
     it('reports NO Net Pay imbalance in any engine year, including the vest year (regression)', () => {
         const sim = runSimulation(8, makeAccounts(), makeIncomes(), makeExpenses(), assumptions, taxState);
 

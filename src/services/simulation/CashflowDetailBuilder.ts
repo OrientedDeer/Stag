@@ -191,14 +191,20 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
             const source: CashflowIncomeSource = { name: inc.name, amount, kind };
 
             if (inc.isReinvested) {
-                // Interest incomes have ids of the form `interest-{accountId}-{year}`.
-                // Resolve the account so the chart can label the destination correctly.
-                const idParts = inc.id.startsWith('interest-') ? inc.id.split('-') : null;
-                const accountId = idParts && idParts.length >= 3
-                    ? idParts.slice(1, -1).join('-')
-                    : null;
-                const account = accountId ? accounts.find(a => a.id === accountId) : null;
-                source.accountName = account?.name ?? inc.name.replace(' Interest', '');
+                // Resolve the destination account so the chart labels it correctly.
+                //   Interest: `interest-{accountId}-{year}`
+                //   RSU vest: `rsu-vest-{accountId}-{incomeId}-{year}`
+                // Account/income ids can themselves contain hyphens, so for the vest id
+                // match the account whose id follows the prefix rather than splitting.
+                let destAccount: AnyAccount | undefined;
+                if (inc.id.startsWith('interest-')) {
+                    const idParts = inc.id.split('-');
+                    const accountId = idParts.length >= 3 ? idParts.slice(1, -1).join('-') : null;
+                    destAccount = accountId ? accounts.find(a => a.id === accountId) : undefined;
+                } else if (inc.id.startsWith('rsu-vest-')) {
+                    destAccount = accounts.find(a => inc.id.startsWith(`rsu-vest-${a.id}-`));
+                }
+                source.accountName = destAccount?.name ?? inc.name.replace(' Interest', '');
 
                 // RSU vests are recognized at gross but only the net shares land in
                 // the account (sell-to-cover paid the tax). Carry the net so the
