@@ -10,7 +10,7 @@ import type {
 import type { AllIncomeKeys } from '../IncomeContext';
 import type { InvestedAccount, ESPPAccount, RSUAccount } from '../../Accounts/models';
 import type { ContributionWarning } from '../incomeCardUtils';
-import { getDeferralDestinationValidationMessage, hasConfiguredDeferral, rsuGrantNeedsAccount, esppGrantNeedsAccount } from '../incomeCardUtils';
+import { getDeferralDestinationValidationMessage, hasConfiguredDeferral } from '../incomeCardUtils';
 import {
     get401kSummary,
     getBenefitsSummary,
@@ -36,26 +36,15 @@ interface WorkIncomeFieldsProps {
      *  matching pension income — drives the "add a pension income" hint. Optional;
      *  defaults to true (no hint) for the Add-Income modal, which doesn't pass it. */
     hasMatchingPensionIncome?: boolean;
-    /** True when this job has definitively ENDED (fixed past end date). Its grant/ESPP
-     *  can no longer vest, so the missing-account warnings are pure noise — suppress
-     *  the card-level banners here (the in-section copies are already off in the card
-     *  via showMissingAccountWarning={false}). Defaults false: a brand-new income keeps
-     *  warning exactly as today (finding 4).
-     *
-     *  Only consulted as the FALLBACK when `needsRsuAccount`/`needsEsppAccount` are
-     *  omitted (see below). `IncomeCard` derives those two booleans for its header badge
-     *  and passes them down, so the badge and these card-level banners share ONE source
-     *  of the ended-job suppression rule (re-review 8). */
-    incomeEnded?: boolean;
     /** Whether the RSU grant still needs a linked account, AFTER ended-job suppression
-     *  (`!incomeEnded && rsuGrantNeedsAccount(...)`). `IncomeCard` computes this ONCE for
-     *  its header "No account" badge and passes it down so the badge and this card-level
-     *  banner can never disagree (re-review 8). Omitted by callers without the precomputed
-     *  value (e.g. the test harness): falls back to recomputing from `incomeEnded` +
-     *  `rsuGrantNeedsAccount`, identical behavior. */
-    needsRsuAccount?: boolean;
+     *  (`!incomeEnded && rsuGrantNeedsAccount(...)`). `IncomeCard` — the sole caller of
+     *  this card component — computes this ONCE for its header "No account" badge and
+     *  passes it down so the badge and this card-level banner can never disagree, and the
+     *  ended-job suppression rule lives in exactly ONE place (re-review 4/8). Required:
+     *  there is no in-component fallback, so the rule can't silently re-duplicate here. */
+    needsRsuAccount: boolean;
     /** ESPP analogue of {@link WorkIncomeFieldsProps.needsRsuAccount}. */
-    needsEsppAccount?: boolean;
+    needsEsppAccount: boolean;
 }
 
 export function WorkIncomeFields({
@@ -67,7 +56,6 @@ export function WorkIncomeFields({
     contributionWarnings,
     onMatchAccountChange,
     hasMatchingPensionIncome = true,
-    incomeEnded = false,
     needsRsuAccount,
     needsEsppAccount,
 }: WorkIncomeFieldsProps): ReactElement {
@@ -79,13 +67,12 @@ export function WorkIncomeFields({
         income,
         contributionAccounts
     );
-    // SINGLE source of the ended-job suppression rule: prefer the booleans IncomeCard
-    // already derived for its header badge (so badge ↔ banner can't diverge); only
-    // recompute as a fallback when a caller (the test harness) doesn't pass them.
-    const showRsuMissingBanner =
-        needsRsuAccount ?? (!incomeEnded && rsuGrantNeedsAccount(income, rsuAccounts));
-    const showEsppMissingBanner =
-        needsEsppAccount ?? (!incomeEnded && esppGrantNeedsAccount(income, esppAccounts));
+    // SINGLE source of the ended-job suppression rule: use the booleans IncomeCard
+    // already derived for its header badge (so badge ↔ banner can't diverge). The rule
+    // `!incomeEnded && …GrantNeedsAccount(…)` lives ONLY in IncomeCard — there is no
+    // local fallback that could re-duplicate (and silently drift from) it (re-review 4).
+    const showRsuMissingBanner = needsRsuAccount;
+    const showEsppMissingBanner = needsEsppAccount;
     return (
         <>
             {/* #141: surface the missing-account warnings at the CARD level — above
@@ -93,13 +80,14 @@ export function WorkIncomeFields({
                 but never links an account sees it the moment the card opens, without
                 having to expand the section. The in-section copies are suppressed in
                 the card (showMissingAccountWarning={false}); the modal keeps them (no
-                collapse). `*GrantNeedsAccount` gates on an ACTIVE grant AND no EXISTING
-                account, so it skips a 0-share grant and catches a dangling id (#141 review).
-                Suppressed entirely for an ENDED job — a finished grant can no longer vest,
-                so the warning is pure noise (finding 4). Because the in-section copies are
-                already off in the card, this card-level guard is the SINGLE ended-job
-                suppression mechanism — and `needsRsuAccount`/`needsEsppAccount` come from
-                IncomeCard (which also feeds the header badge), so badge and banner agree. */}
+                collapse). The gate — an ACTIVE grant AND no EXISTING account (skips a
+                0-share grant, catches a dangling id; #141 review), AND not an ENDED job
+                (a finished grant can no longer vest, so the warning is pure noise;
+                finding 4) — is computed ONCE in IncomeCard as `needsRsuAccount` /
+                `needsEsppAccount` and passed down. Because the in-section copies are
+                already off in the card, these card-level banners are the SINGLE ended-job
+                suppression mechanism, and since IncomeCard feeds the SAME booleans to its
+                header badge, badge and banner can never disagree (re-review 4/8). */}
             {showRsuMissingBanner && (
                 <AlertBanner
                     severity="warning"

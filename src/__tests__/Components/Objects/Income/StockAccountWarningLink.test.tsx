@@ -124,11 +124,13 @@ describe('#141 ESPP card warning — Add Account deep link', () => {
  *
  * Production suppression is now a SINGLE source: IncomeCard derives
  * `needsRsuAccount`/`needsEsppAccount` (= `!incomeEnded && …GrantNeedsAccount(…)`) for
- * its header badge AND passes them DOWN to WorkIncomeFields, which uses them for the
- * card-level banners — so the header badge and the banner can never disagree (re-review
- * 8). The in-section RSU/ESPP banners are already off in the card via
- * showMissingAccountWarning={false}. So these cases render the real card-level path —
- * WorkIncomeFields with the derived booleans — exactly as IncomeCard wires it.
+ * its header badge AND passes them DOWN as REQUIRED props to WorkIncomeFields, which uses
+ * them directly for the card-level banners — so the header badge and the banner can never
+ * disagree (re-review 8). WorkIncomeFields no longer carries an in-component fallback that
+ * re-derived the same rule, so it can't silently drift (re-review 4). The in-section
+ * RSU/ESPP banners are already off in the card via showMissingAccountWarning={false}. So
+ * these cases render the real card-level path — WorkIncomeFields with the derived booleans
+ * — exactly as IncomeCard wires it.
  *
  * Crucially, suppressing the BANNER must not suppress the editable grant SECTION: an
  * ended job still needs its grant fields accessible (to edit/correct the grant). Two
@@ -143,9 +145,11 @@ describe('#141 ESPP card warning — Add Account deep link', () => {
  * default-true RSUFields/ESPPFields cases above still pass).
  */
 
-// Mirror IncomeCard's wiring: derive the two booleans the way the card does and pass
-// them down (this is the real single-source path the card uses). `incomeEnded` is also
-// passed as the documented fallback.
+// Mirror IncomeCard's wiring EXACTLY: `needsRsuAccount`/`needsEsppAccount` are REQUIRED
+// props, derived ONCE in IncomeCard as `!incomeEnded && …GrantNeedsAccount(…)` and passed
+// down — the SINGLE source of the ended-job suppression rule. WorkIncomeFields has no
+// in-component fallback (re-review 4), so this is the only path; these tests render it just
+// as the card does.
 function renderCard(income: WorkIncome) {
     const incomeEnded = hasIncomeEnded(income);
     return render(
@@ -158,29 +162,8 @@ function renderCard(income: WorkIncome) {
                 rsuAccounts={[]}
                 contributionWarnings={null}
                 onMatchAccountChange={() => {}}
-                incomeEnded={incomeEnded}
                 needsRsuAccount={!incomeEnded && rsuGrantNeedsAccount(income, [])}
                 needsEsppAccount={!incomeEnded && esppGrantNeedsAccount(income, [])}
-            />
-        </MemoryRouter>
-    );
-}
-
-// Fallback path: OMIT the derived booleans so WorkIncomeFields recomputes from
-// `incomeEnded` + the predicates. Pins that the suppression still holds when a caller
-// (e.g. a future surface) doesn't precompute the booleans.
-function renderCardFallback(income: WorkIncome) {
-    return render(
-        <MemoryRouter>
-            <WorkIncomeFields
-                income={income}
-                onFieldUpdate={() => {}}
-                contributionAccounts={[]}
-                esppAccounts={[]}
-                rsuAccounts={[]}
-                contributionWarnings={null}
-                onMatchAccountChange={() => {}}
-                incomeEnded={hasIncomeEnded(income)}
             />
         </MemoryRouter>
     );
@@ -230,33 +213,6 @@ describe('finding 4 / re-review 7 — card-level missing-account suppression for
 
         renderCard(active);
         // Active job → card-level banner still rendered.
-        expect(screen.getByText('ESPP contribution has no linked account')).toBeInTheDocument();
-    });
-
-    // Fallback path (booleans omitted → WorkIncomeFields recomputes from incomeEnded).
-    it('suppresses the banners for an ended job even when the derived booleans are omitted', () => {
-        const ended = makeIncome();
-        ended.end_date = pastEndDate();
-        ended.rsuVestingSchedule = 'cliff-1yr';
-        ended.rsuGrantShares = 100;
-        ended.esppContributionType = 'PERCENTAGE';
-        ended.esppContributionAmount = 10;
-        expect(hasIncomeEnded(ended)).toBe(true);
-
-        const { unmount } = renderCardFallback(ended);
-        expect(screen.queryByText('RSU grant has no linked account')).not.toBeInTheDocument();
-        expect(screen.queryByText('ESPP contribution has no linked account')).not.toBeInTheDocument();
-        unmount();
-
-        // …and still warns for an active job through the same fallback path.
-        const active = makeIncome();
-        active.end_date = futureEndDate();
-        active.rsuVestingSchedule = 'cliff-1yr';
-        active.rsuGrantShares = 100;
-        active.esppContributionType = 'PERCENTAGE';
-        active.esppContributionAmount = 10;
-        renderCardFallback(active);
-        expect(screen.getByText('RSU grant has no linked account')).toBeInTheDocument();
         expect(screen.getByText('ESPP contribution has no linked account')).toBeInTheDocument();
     });
 });

@@ -3,8 +3,18 @@ import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
 import { WorkIncomeFields } from '../../../../components/Objects/Income/card/WorkIncomeFields';
-import { WorkIncome } from '../../../../components/Objects/Income/models';
+import { WorkIncome, hasIncomeEnded } from '../../../../components/Objects/Income/models';
+import { rsuGrantNeedsAccount, esppGrantNeedsAccount } from '../../../../components/Objects/Income/incomeCardUtils';
 import type { InvestedAccount, RSUAccount, ESPPAccount } from '../../../../components/Objects/Accounts/models';
+
+// Mirror IncomeCard's wiring: `needsRsuAccount`/`needsEsppAccount` are REQUIRED props,
+// derived ONCE in IncomeCard as `!hasIncomeEnded(income) && …GrantNeedsAccount(…)` and
+// passed down (the single source of the ended-job suppression rule). These helpers
+// reproduce that derivation so each render exercises the real card path.
+const needsRsu = (income: WorkIncome, rsuAccounts: RSUAccount[]) =>
+    !hasIncomeEnded(income) && rsuGrantNeedsAccount(income, rsuAccounts);
+const needsEspp = (income: WorkIncome, esppAccounts: ESPPAccount[]) =>
+    !hasIncomeEnded(income) && esppGrantNeedsAccount(income, esppAccounts);
 
 /**
  * Regression coverage for the #123 deferral-destination warning on the CARD
@@ -38,6 +48,8 @@ function renderCard(income: WorkIncome, accounts: InvestedAccount[]) {
             rsuAccounts={[]}
             contributionWarnings={null}
             onMatchAccountChange={() => {}}
+            needsRsuAccount={needsRsu(income, [])}
+            needsEsppAccount={needsEspp(income, [])}
         />
     );
 }
@@ -91,6 +103,8 @@ function renderRsuCard(income: WorkIncome, rsuAccounts: RSUAccount[]) {
             rsuAccounts={rsuAccounts}
             contributionWarnings={null}
             onMatchAccountChange={() => {}}
+            needsRsuAccount={needsRsu(income, rsuAccounts)}
+            needsEsppAccount={needsEspp(income, [])}
         />
     );
 }
@@ -142,6 +156,8 @@ describe('Card WorkIncomeFields — card-level missing-RSU-account warning (#141
                     rsuAccounts={[]}
                     contributionWarnings={null}
                     onMatchAccountChange={() => {}}
+                    needsRsuAccount={needsRsu(makeRsuIncome(null), [])}
+                    needsEsppAccount={false}
                 />
             </MemoryRouter>
         );
@@ -180,6 +196,8 @@ function renderEsppCard(income: WorkIncome, esppAccounts: ESPPAccount[]) {
             rsuAccounts={[]}
             contributionWarnings={null}
             onMatchAccountChange={() => {}}
+            needsRsuAccount={needsRsu(income, [])}
+            needsEsppAccount={needsEspp(income, esppAccounts)}
         />
     );
 }
@@ -223,6 +241,8 @@ describe('Card WorkIncomeFields — card-level missing-ESPP-account warning (#8)
                     rsuAccounts={[]}
                     contributionWarnings={null}
                     onMatchAccountChange={() => {}}
+                    needsRsuAccount={false}
+                    needsEsppAccount={needsEspp(makeEsppIncome(null), [])}
                 />
             </MemoryRouter>
         );
