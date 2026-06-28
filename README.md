@@ -4,7 +4,7 @@
 
 Plan your financial future with year-by-year projections that account for taxes, Social Security, pensions, investment growth, and withdrawal strategies. No subscriptions, no ads, no paywalls.
 
-**[Try it now](https://orienteddeer.github.io/Stag/)**
+**[Try it now](https://orienteddeer-stag.com/#/dashboard)**
 
 ---
 
@@ -80,7 +80,7 @@ Most retirement calculators oversimplify the math or hide the good stuff behind 
 ## Getting Started
 
 ### Use the Hosted Version
-Visit **[orienteddeer.github.io/Stag](https://orienteddeer.github.io/Stag/)** — no installation required.
+Visit **[https://orienteddeer-stag.com/#/dashboard]** — no installation required.
 
 ### Run Locally
 
