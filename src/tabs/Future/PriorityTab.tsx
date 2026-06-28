@@ -26,6 +26,7 @@ import { ChevronIcon } from '../../components/Layout/Icons/ChevronIcon';
 import { Tooltip } from '../../components/Layout/InputFields/Tooltip';
 import { Panel, Button } from "../../components/Layout/Primitives";
 import { useReceiptToast } from '../../components/Layout/Overlays/ReceiptToast';
+import { AlertBanner } from '../../components/Layout/AlertBanner';
 
 export default function PriorityTab() {
     const { state, dispatch } = useContext(AssumptionsContext);
@@ -522,7 +523,11 @@ export default function PriorityTab() {
                 const provenance = clamped
                     ? `${wantedNote} · ${formatMoney(surplusBefore)} surplus left · funded ${formatMoney(actualDed)}`
                     : wantedNote;
-                return { ...item, actualDed, remainingAfter: currentRemaining, label, provenance };
+                // #137 (interim): flag debt-paydown buckets so the preview can show
+                // an "approximate" disclaimer. The engine pays a debt as a ONE-TIME
+                // annual lump from the same surplus pool (min(remaining, balance)
+                // clamp), which no monthly steady-state line can faithfully replay.
+                return { ...item, actualDed, remainingAfter: currentRemaining, label, provenance, isDebtPaydown: true };
             }
 
             // [0]/[3]: a DEAD bucket persisted as REMAINDER (deleted account) must
@@ -552,6 +557,7 @@ export default function PriorityTab() {
                     remainingAfter: currentRemaining,
                     label: 'Not funded',
                     provenance,
+                    isDebtPaydown: false,
                 };
             }
 
@@ -618,9 +624,19 @@ export default function PriorityTab() {
                 remainingAfter: currentRemaining,
                 label,
                 provenance,
+                isDebtPaydown: false,
             };
         });
     }, [state.priorities, disposableAfterExpenses, totalMonthlyFixedExpenses, accountById, getAccountContributionLimit, formatMoney, paydownDebtFor, isDeadBucket]);
+
+    // #137 (interim): does the preview contain at least one debt-paydown bucket?
+    // If so, surface an "approximate" disclaimer — the monthly waterfall can't
+    // faithfully replay the engine's one-time annual debt payoff (the faithful
+    // replay is the deferred redesign). The exact figures live in the Future
+    // projection.
+    const hasDebtPaydownBucket = useMemo(
+        () => waterfallItems.some(item => item.isDebtPaydown),
+        [waterfallItems]);
 
     const finalRemaining = waterfallItems.length > 0
         ? waterfallItems[waterfallItems.length - 1].remainingAfter
@@ -803,6 +819,16 @@ export default function PriorityTab() {
                     {/* Priorities Section */}
                     <div className="bg-[var(--c-surface-raised)] rounded-xl border border-border-subtle p-4">
                         <h4 className="text-sm font-semibold text-content-muted uppercase tracking-wide mb-3">Your Priorities</h4>
+
+                        {/* #137 (interim): the monthly waterfall can't faithfully
+                            replay the engine's one-time annual debt payoff, so the
+                            debt numbers here are approximate. Point the user to the
+                            Future projection for exact figures. */}
+                        {hasDebtPaydownBucket && (
+                            <AlertBanner severity="info" size="sm" className="mb-3">
+                                Debt paydown is shown approximately here — see the Future projection for exact figures.
+                            </AlertBanner>
+                        )}
 
                         <DragDropContext onDragEnd={onDragEnd}>
                             <Droppable droppableId="priorities-list">

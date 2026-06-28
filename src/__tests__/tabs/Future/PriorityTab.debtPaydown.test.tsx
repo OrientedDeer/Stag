@@ -166,6 +166,34 @@ describe('PriorityTab debt-paydown waterfall preview', () => {
         );
     });
 
+    it('#137 (interim): shows the "approximate" disclaimer when a debt-paydown bucket is present', () => {
+        // A debt bucket is funded as a one-time annual lump by the engine, which
+        // the monthly waterfall can't faithfully replay — so the preview warns the
+        // user the debt figures are approximate and points to the Future projection.
+        const accounts = [
+            new DebtAccount('cc', 'Credit Card', 5000, 'exp-cc', 22),
+            new SavedAccount('sav', 'Savings', 0),
+        ];
+        renderWithState(accounts, [
+            { id: 'p-cc', name: 'Pay down: Credit Card', type: 'DEBT', accountId: 'cc', capType: 'REMAINDER' },
+            { id: 'p-sav', name: 'Monthly savings', type: 'SAVINGS', accountId: 'sav', capType: 'FIXED', capValue: 500 },
+        ]);
+
+        expect(screen.getByText(/shown approximately/i)).toBeInTheDocument();
+        expect(screen.getByText(/Future projection for exact figures/i)).toBeInTheDocument();
+    });
+
+    it('#137 (interim): does NOT show the disclaimer when there is no debt-paydown bucket', () => {
+        // No debt bucket → no approximate disclaimer; only recurring (savings)
+        // buckets, which the monthly waterfall represents faithfully.
+        const accounts = [new SavedAccount('sav', 'Savings', 0)];
+        renderWithState(accounts, [
+            { id: 'p-sav', name: 'Monthly savings', type: 'SAVINGS', accountId: 'sav', capType: 'FIXED', capValue: 500 },
+        ]);
+
+        expect(screen.queryByText(/shown approximately/i)).not.toBeInTheDocument();
+    });
+
     it('[5] the bucket type is DERIVED from the account kind (SavedAccount → SAVINGS, not INVESTMENT)', () => {
         // The add and edit handlers both derive PriorityBucket.type from the
         // resolved account via the same helper, so adding a SavedAccount bucket
