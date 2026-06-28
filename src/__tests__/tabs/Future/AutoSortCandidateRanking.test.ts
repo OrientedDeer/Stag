@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { InvestedAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
 import { taxOptimalWithdrawalOrder } from '../../../services/simulation/WithdrawalPlanner';
+import { WithdrawalBucket } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { reorderWithdrawalStrategyTaxOptimal } from '../../../tabs/Future/withdrawal/reorderWithdrawalStrategy';
 
 /**
  * #154 Auto sort applies `taxOptimalWithdrawalOrder` — penalty-free accounts before
@@ -48,27 +50,27 @@ describe('taxOptimalWithdrawalOrder (#154 Auto sort)', () => {
 
 /**
  * Finding [5]/[6]: `onAutoSort` (WithdrawalTab.tsx) reorders the withdrawal-strategy
- * BUCKETS by tax-optimal rank. Two regressions are pinned here at the unit level so they
- * can't reappear without `taxOptimalWithdrawalOrder` regressing:
+ * BUCKETS by tax-optimal rank. The reorder logic is extracted into the pure, exported
+ * `reorderWithdrawalStrategyTaxOptimal` (withdrawal/reorderWithdrawalStrategy.ts) and
+ * `onAutoSort` CALLS it — so these tests drive the REAL component algorithm (not a
+ * hand-maintained copy). Two regressions are pinned at the unit level:
  *
  *  [5] The ranker's tie-break preserves INPUT order, so the candidate accounts MUST be
  *      seeded in the user's CURRENT strategy order — NOT the accounts-array (creation)
- *      order. The OLD code did `accounts.filter(a => byId.has(a.id))` (creation order),
- *      which re-sorts equal-rank accounts back to creation order, silently undoing the
- *      user's manual drag. Below, the user's order is B-before-A but the creation order
- *      is A-before-B; only the strategy-order seeding keeps B before A.
+ *      order. An older version did `accounts.filter(a => byId.has(a.id))` (creation
+ *      order), which re-sorts equal-rank accounts back to creation order, silently
+ *      undoing the user's manual drag. Below, the user's order is B-before-A but the
+ *      creation order is A-before-B; only the strategy-order seeding keeps B before A.
+ *      (To watch this fail-before: seed the ranker from the accounts-array order inside
+ *      reorderWithdrawalStrategyTaxOptimal — [5] flips to A, B.)
  *
  *  [6] Grouping buckets by accountId means two buckets sharing one accountId both survive
- *      the reorder (the old `byId` Map collapsed them and dropped a row).
+ *      the reorder (an older `byId` Map collapsed them and dropped a row).
  *
- * These mirror `onAutoSort`'s reorder algorithm exactly (same `taxOptimalWithdrawalOrder`
- * call). Reverting the input-order fix in the component (seeding from accounts-array
- * order) makes the [5] assertion fail; reverting the bucket-grouping fix drops a row in
- * the [6] assertion.
+ * Because these import the real exported function, regressing it (creation-order seeding
+ * or a byId-collapse) fails the corresponding assertion here.
  */
-describe('onAutoSort reorder algorithm (findings 5 & 6)', () => {
-    interface Bucket { id: string; name: string; accountId: string; }
-
+describe('reorderWithdrawalStrategyTaxOptimal (onAutoSort reorder — findings 5 & 6)', () => {
     // The two SAME-RANK brokerage accounts, created A-then-B (so the accounts-array /
     // creation order is A, B). The user has dragged them so their withdrawal strategy is
     // B-before-A.
@@ -77,46 +79,16 @@ describe('onAutoSort reorder algorithm (findings 5 & 6)', () => {
         new InvestedAccount('brok-B', 'Brokerage B', 100000, 0, 10, 0.05, 'Brokerage', true, 0.2, 50000),
     ];
 
-    // FIXED reorder: seed the ranker from the user's CURRENT strategy order, then group
-    // buckets by accountId so duplicates survive. This is the algorithm now in onAutoSort.
-    const reorder = (accounts: InvestedAccount[], strategy: Bucket[], currentAge: number): Bucket[] => {
-        const accountById = new Map(accounts.map(a => [a.id, a]));
-        const seenForRank = new Set<string>();
-        const eligible: InvestedAccount[] = [];
-        for (const w of strategy) {
-            const account = accountById.get(w.accountId);
-            if (!account || seenForRank.has(account.id)) continue;
-            seenForRank.add(account.id);
-            eligible.push(account);
-        }
-        const sortedIds = taxOptimalWithdrawalOrder(eligible, currentAge).map(a => a.id);
-        const bucketsByAccount = new Map<string, Bucket[]>();
-        for (const w of strategy) {
-            const group = bucketsByAccount.get(w.accountId);
-            if (group) group.push(w);
-            else bucketsByAccount.set(w.accountId, [w]);
-        }
-        const reordered: Bucket[] = [];
-        const emitted = new Set<string>();
-        for (const id of sortedIds) {
-            const group = bucketsByAccount.get(id);
-            if (group) reordered.push(...group);
-            emitted.add(id);
-        }
-        for (const w of strategy) if (!emitted.has(w.accountId)) reordered.push(w);
-        return reordered;
-    };
-
     it('[5] preserves the user\'s manual order (B before A) among same-rank accounts', () => {
         const accounts = accountsCreationOrder(); // creation order: A, B
-        const strategy: Bucket[] = [
+        const strategy: WithdrawalBucket[] = [
             { id: 'w-B', name: 'Brokerage B', accountId: 'brok-B' },
             { id: 'w-A', name: 'Brokerage A', accountId: 'brok-A' },
         ];
 
-        const result = reorder(accounts, strategy, 50);
-        // The user's B-before-A order survives. With the OLD creation-order seeding this
-        // would come back A-before-B (the regression this test pins).
+        const result = reorderWithdrawalStrategyTaxOptimal(strategy, accounts, 50);
+        // The user's B-before-A order survives. With creation-order seeding this would
+        // come back A-before-B (the regression this test pins).
         expect(result.map(b => b.accountId)).toEqual(['brok-B', 'brok-A']);
     });
 
@@ -124,18 +96,31 @@ describe('onAutoSort reorder algorithm (findings 5 & 6)', () => {
         const accounts = accountsCreationOrder();
         // Two buckets both pointing at brok-A (e.g. a transient duplicate). Neither row
         // should be silently dropped by the reorder.
-        const strategy: Bucket[] = [
+        const strategy: WithdrawalBucket[] = [
             { id: 'w-A1', name: 'Brokerage A', accountId: 'brok-A' },
             { id: 'w-B', name: 'Brokerage B', accountId: 'brok-B' },
             { id: 'w-A2', name: 'Brokerage A (dup)', accountId: 'brok-A' },
         ];
 
-        const result = reorder(accounts, strategy, 50);
-        // All three bucket rows survive (the old byId Map would have lost one of the
-        // brok-A rows). Same rank ⇒ the buckets keep their relative input order.
+        const result = reorderWithdrawalStrategyTaxOptimal(strategy, accounts, 50);
+        // All three bucket rows survive (a byId Map would have lost one of the brok-A
+        // rows). Same rank ⇒ the buckets keep their relative input order.
         expect(result).toHaveLength(3);
         expect(result.map(b => b.id).sort()).toEqual(['w-A1', 'w-A2', 'w-B']);
         // The two brok-A buckets stay in their original relative order within the group.
         expect(result.filter(b => b.accountId === 'brok-A').map(b => b.id)).toEqual(['w-A1', 'w-A2']);
+    });
+
+    it('appends a stale bucket (account not in the candidate set) after the ranked ones', () => {
+        const accounts = accountsCreationOrder();
+        const strategy: WithdrawalBucket[] = [
+            { id: 'w-stale', name: 'Deleted', accountId: 'gone' },
+            { id: 'w-B', name: 'Brokerage B', accountId: 'brok-B' },
+            { id: 'w-A', name: 'Brokerage A', accountId: 'brok-A' },
+        ];
+
+        const result = reorderWithdrawalStrategyTaxOptimal(strategy, accounts, 50);
+        // Same-rank brokerages keep B-before-A; the unrankable stale bucket trails.
+        expect(result.map(b => b.accountId)).toEqual(['brok-B', 'brok-A', 'gone']);
     });
 });
