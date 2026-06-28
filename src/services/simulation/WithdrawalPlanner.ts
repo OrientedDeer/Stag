@@ -404,8 +404,13 @@ const WITHDRAWAL_TAX_RANK: Record<WithdrawalAccountType, number> = {
  *      before 59½, HSA before 65; Roth counts penalty-free since contributions come out
  *      free). Avoiding the 10% penalty dominates.
  *   2. Tax type: within each penalty group, cash → taxable → tax-deferred → tax-free.
- * Ties keep the input order (stable). Evaluated at the CURRENT age — the optimal order
- * shifts as penalties lapse (Traditional at 59½), so it's a "right now" snapshot.
+ * Ties keep the input order (stable) — so callers should pass accounts in the order they
+ * want preserved among equal-rank accounts. Evaluated at the CURRENT age — the optimal
+ * order shifts as penalties lapse (Traditional at 59½), so it's a "right now" snapshot.
+ *
+ * Only `currentAge` (penalty lapse) and each account's tax TYPE drive the order — account
+ * BALANCES are never read, so this is purely a rank-by-category sort, not a balance-aware
+ * optimizer.
  */
 export function taxOptimalWithdrawalOrder(
     accounts: AnyAccount[],

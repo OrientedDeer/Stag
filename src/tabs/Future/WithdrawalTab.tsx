@@ -120,16 +120,49 @@ export default function WithdrawalTab() {
             try {
                 const current = stateRef.current;
                 const currentAge = new Date().getFullYear() - getBirthYear(current.milestones);
-                const byId = new Map(current.withdrawalStrategy.map(w => [w.accountId, w]));
-                const eligible = accounts.filter(a => byId.has(a.id));
-                const reordered = taxOptimalWithdrawalOrder(eligible, currentAge)
-                    .map(a => byId.get(a.id))
-                    .filter((w): w is WithdrawalBucket => w !== undefined);
-                // Defensive: a bucket whose account isn't resolvable (e.g. a stale id the
-                // useEffect auto-sync hasn't dropped yet) was never a sort candidate, so
-                // append it AFTER the sorted accounts rather than silently dropping it.
-                const seen = new Set(reordered.map(w => w.accountId));
-                for (const w of current.withdrawalStrategy) if (!seen.has(w.accountId)) reordered.push(w);
+                const accountById = new Map(accounts.map(a => [a.id, a]));
+
+                // Finding [5]: feed the ranker the accounts in the user's CURRENT
+                // withdrawal-strategy order (NOT the accounts-array / creation order), so
+                // taxOptimalWithdrawalOrder's stable tie-break keeps the user's visible
+                // sequence among EQUAL-rank accounts (e.g. two brokerage accounts) instead
+                // of silently snapping them back to creation order. Resolve each strategy
+                // bucket to its account, preserving sequence; de-dupe so an account shared
+                // by two buckets is ranked once.
+                const seenForRank = new Set<string>();
+                const eligible: AnyAccount[] = [];
+                for (const w of current.withdrawalStrategy) {
+                    const account = accountById.get(w.accountId);
+                    if (!account || seenForRank.has(account.id)) continue;
+                    seenForRank.add(account.id);
+                    eligible.push(account);
+                }
+                const sortedIds = taxOptimalWithdrawalOrder(eligible, currentAge).map(a => a.id);
+
+                // Finding [6]: reorder the BUCKETS by grouping them under their accountId,
+                // so two buckets sharing one accountId BOTH survive (the prior byId Map
+                // collapsed them and dropped a row). Emit every bucket for each account in
+                // the sorted order, preserving the buckets' relative order within a group.
+                const bucketsByAccount = new Map<string, WithdrawalBucket[]>();
+                for (const w of current.withdrawalStrategy) {
+                    const group = bucketsByAccount.get(w.accountId);
+                    if (group) group.push(w);
+                    else bucketsByAccount.set(w.accountId, [w]);
+                }
+                const reordered: WithdrawalBucket[] = [];
+                const emitted = new Set<string>();
+                for (const id of sortedIds) {
+                    const group = bucketsByAccount.get(id);
+                    if (group) reordered.push(...group);
+                    emitted.add(id);
+                }
+                // Defensive: a bucket whose account isn't a sort candidate (e.g. a stale id
+                // the useEffect auto-sync hasn't dropped yet) was never ranked, so append it
+                // AFTER the sorted accounts — in its original sequence — rather than
+                // silently dropping it.
+                for (const w of current.withdrawalStrategy) {
+                    if (!emitted.has(w.accountId)) reordered.push(w);
+                }
 
                 const changed = reordered.some((w, i) => w.accountId !== current.withdrawalStrategy[i]?.accountId);
                 if (!changed) {

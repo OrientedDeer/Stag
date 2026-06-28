@@ -110,7 +110,7 @@ function WithdrawalBucketListInner({
                     <button
                         onClick={onAutoSort}
                         disabled={isBusy}
-                        title="Reorder to the tax-efficient sequence for your CURRENT age & balances — penalty-free accounts first, early-withdrawal-penalized accounts deferred. You can hand-tweak afterward."
+                        title="Reorder to the tax-efficient sequence for your CURRENT age — penalty-free accounts first, early-withdrawal-penalized accounts deferred, then by account tax type. You can hand-tweak afterward."
                         className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-border-strong bg-surface-raised px-3 py-1.5 text-sm font-medium text-white hover:border-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -123,7 +123,7 @@ function WithdrawalBucketListInner({
 
             {buckets.length > 1 && (
                 <p className="text-content-subtle text-xs mb-4 -mt-2">
-                    Auto sort optimizes for your <span className="text-content-muted">current age &amp; balances</span> — the best order shifts over time (e.g. deferring penalized accounts only matters before 59½), so re-run it as your situation changes.
+                    Auto sort optimizes for your <span className="text-content-muted">current age &amp; account tax type</span> — penalty-free accounts first (deferring penalized accounts only matters before 59½), then cash → taxable → tax-deferred → tax-free, so re-run it as your situation changes.
                 </p>
             )}
 
