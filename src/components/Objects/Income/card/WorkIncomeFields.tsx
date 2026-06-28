@@ -39,9 +39,23 @@ interface WorkIncomeFieldsProps {
     /** True when this job has definitively ENDED (fixed past end date). Its grant/ESPP
      *  can no longer vest, so the missing-account warnings are pure noise — suppress
      *  the card-level banners here (the in-section copies are already off in the card
-     *  via showMissingAccountWarning={false}). Defaults false: the Add-Income modal
-     *  doesn't pass it, so a brand-new income keeps warning exactly as today (finding 4). */
+     *  via showMissingAccountWarning={false}). Defaults false: a brand-new income keeps
+     *  warning exactly as today (finding 4).
+     *
+     *  Only consulted as the FALLBACK when `needsRsuAccount`/`needsEsppAccount` are
+     *  omitted (see below). `IncomeCard` derives those two booleans for its header badge
+     *  and passes them down, so the badge and these card-level banners share ONE source
+     *  of the ended-job suppression rule (re-review 8). */
     incomeEnded?: boolean;
+    /** Whether the RSU grant still needs a linked account, AFTER ended-job suppression
+     *  (`!incomeEnded && rsuGrantNeedsAccount(...)`). `IncomeCard` computes this ONCE for
+     *  its header "No account" badge and passes it down so the badge and this card-level
+     *  banner can never disagree (re-review 8). Omitted by callers without the precomputed
+     *  value (e.g. the test harness): falls back to recomputing from `incomeEnded` +
+     *  `rsuGrantNeedsAccount`, identical behavior. */
+    needsRsuAccount?: boolean;
+    /** ESPP analogue of {@link WorkIncomeFieldsProps.needsRsuAccount}. */
+    needsEsppAccount?: boolean;
 }
 
 export function WorkIncomeFields({
@@ -54,6 +68,8 @@ export function WorkIncomeFields({
     onMatchAccountChange,
     hasMatchingPensionIncome = true,
     incomeEnded = false,
+    needsRsuAccount,
+    needsEsppAccount,
 }: WorkIncomeFieldsProps): ReactElement {
     // A configured deferral (auto-max or a positive custom amount) needs a
     // destination account, independent of any employer match. Shared with the modal
@@ -63,6 +79,13 @@ export function WorkIncomeFields({
         income,
         contributionAccounts
     );
+    // SINGLE source of the ended-job suppression rule: prefer the booleans IncomeCard
+    // already derived for its header badge (so badge ↔ banner can't diverge); only
+    // recompute as a fallback when a caller (the test harness) doesn't pass them.
+    const showRsuMissingBanner =
+        needsRsuAccount ?? (!incomeEnded && rsuGrantNeedsAccount(income, rsuAccounts));
+    const showEsppMissingBanner =
+        needsEsppAccount ?? (!incomeEnded && esppGrantNeedsAccount(income, esppAccounts));
     return (
         <>
             {/* #141: surface the missing-account warnings at the CARD level — above
@@ -74,9 +97,10 @@ export function WorkIncomeFields({
                 account, so it skips a 0-share grant and catches a dangling id (#141 review).
                 Suppressed entirely for an ENDED job — a finished grant can no longer vest,
                 so the warning is pure noise (finding 4). Because the in-section copies are
-                already off in the card, this `!incomeEnded` card-level guard is the SINGLE
-                ended-job suppression mechanism. */}
-            {!incomeEnded && rsuGrantNeedsAccount(income, rsuAccounts) && (
+                already off in the card, this card-level guard is the SINGLE ended-job
+                suppression mechanism — and `needsRsuAccount`/`needsEsppAccount` come from
+                IncomeCard (which also feeds the header badge), so badge and banner agree. */}
+            {showRsuMissingBanner && (
                 <AlertBanner
                     severity="warning"
                     size="sm"
@@ -89,7 +113,7 @@ export function WorkIncomeFields({
                         : <> <AddStockAccountLink kind="RSU" /></>}
                 </AlertBanner>
             )}
-            {!incomeEnded && esppGrantNeedsAccount(income, esppAccounts) && (
+            {showEsppMissingBanner && (
                 <AlertBanner
                     severity="warning"
                     size="sm"

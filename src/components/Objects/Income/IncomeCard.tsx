@@ -210,6 +210,9 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
     // while collapsed — so the user doesn't have to expand the card to discover it.
     // …but NOT for a job that has already ENDED: its grant/ESPP can no longer vest, so
     // the warning would be pure noise on a finished income (active + future still warn).
+    // These two booleans are the SINGLE source of the ended-job suppression rule: the
+    // header badge below AND the card-level banners in WorkIncomeFields both read them
+    // (passed down as props), so they can never disagree (re-review 8).
     const incomeEnded = hasIncomeEnded(income);
     const needsRsuAccount = isWorkIncome && !incomeEnded && rsuGrantNeedsAccount(income, rsuAccounts);
     const needsEsppAccount = isWorkIncome && !incomeEnded && esppGrantNeedsAccount(income, esppAccounts);
@@ -280,6 +283,8 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
                         onMatchAccountChange={handleMatchAccountChange}
                         hasMatchingPensionIncome={hasMatchingPensionIncome}
                         incomeEnded={incomeEnded}
+                        needsRsuAccount={needsRsuAccount}
+                        needsEsppAccount={needsEsppAccount}
                     />
                 )}
 
