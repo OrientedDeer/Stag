@@ -3,6 +3,7 @@ import { createContext, useReducer, useContext, ReactNode, useMemo } from 'react
 import { useDebouncedLocalStorage } from '../../../hooks/useDebouncedLocalStorage';
 import { EarningsRecord } from '../../../services/SocialSecurityCalculator';
 import { CustomMilestone } from '../../../services/simulation/types';
+import { normalizeMilestones } from '../../../services/simulation/MilestoneEvaluator';
 import { RothConversionStrategy, DEFAULT_ROTH_CONVERSION_STRATEGY } from './rothConversionStrategy';
 
 // Built-in milestone IDs that cannot be removed
@@ -306,7 +307,13 @@ export function migrateAssumptions(saved: unknown, defaults: AssumptionsState): 
     // lifeExpectancy}. If we copied defaults.milestones here, those built-ins would
     // already exist at default values (1990/65/90) and the legacy values would be
     // silently dropped (Findings #8/#12).
-    milestones: Array.isArray(data.milestones) ? data.milestones as CustomMilestone[] : [],
+    //
+    // Normalize at this single reconstitution boundary (localStorage hydration, file
+    // import, and QR import all funnel through migrateAssumptions) so every milestone
+    // carries a `conditions` ARRAY. A malformed/older backup whose milestone lacks
+    // `conditions` would otherwise violate the type and white-screen the Priority/Income/
+    // Withdrawal tabs at `milestone.conditions.every(...)` / `.find(...)` (re-review 1).
+    milestones: Array.isArray(data.milestones) ? normalizeMilestones(data.milestones as CustomMilestone[]) : [],
   };
 
   // Migration: Get legacy values from old demographics if present

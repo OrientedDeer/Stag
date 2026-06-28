@@ -6,6 +6,7 @@ import {
     calculateAnnualExpenses,
     evaluateMilestone,
     evaluateAllMilestones,
+    normalizeMilestones,
     isActiveByMilestone,
     isActiveByMilestoneToday,
     isIncomeActiveToday,
@@ -241,6 +242,49 @@ describe('MilestoneEvaluator', () => {
             };
 
             expect(evaluateMilestone(milestone, baseContext)).toBe(true);
+        });
+
+        // Defense-in-depth (re-review 1): a milestone loaded from a malformed/older
+        // backup can lack its `conditions` array entirely. The type says it's required,
+        // but the import cast doesn't enforce it. evaluateMilestone is the hot path
+        // (evaluateAllMilestones runs on every Priority/Income/Withdrawal render), so it
+        // must NOT throw a TypeError reading 'every' and white-screen the app.
+        it('does NOT throw when conditions is undefined (un-normalized milestone)', () => {
+            const malformed = {
+                id: 'broken',
+                name: 'Broken Import',
+                // conditions intentionally absent
+            } as unknown as CustomMilestone;
+
+            expect(() => evaluateMilestone(malformed, baseContext)).not.toThrow();
+            // No conditions to satisfy ⇒ vacuously "all met" ⇒ true (matches [].every()).
+            expect(evaluateMilestone(malformed, baseContext)).toBe(true);
+        });
+
+        // evaluateAllMilestones drives the per-render reach scan; it must survive the same
+        // malformed milestone without throwing.
+        it('evaluateAllMilestones does NOT throw on a milestone with undefined conditions', () => {
+            const milestones = [
+                {
+                    id: 'broken',
+                    name: 'Broken Import',
+                    // conditions intentionally absent
+                } as unknown as CustomMilestone,
+                {
+                    id: 'fi',
+                    name: 'FI',
+                    conditions: [{ type: 'NET_WORTH', operator: '>=', value: 500000 }],
+                } as CustomMilestone,
+            ];
+
+            expect(() =>
+                evaluateAllMilestones(milestones, new Set<string>(), baseContext),
+            ).not.toThrow();
+
+            const result = evaluateAllMilestones(milestones, new Set<string>(), baseContext);
+            // The valid net-worth milestone still fires; the malformed one fires vacuously.
+            const reachedIds = result.newlyReached.map(e => e.milestoneId).sort();
+            expect(reachedIds).toEqual(['broken', 'fi']);
         });
     });
 
@@ -882,6 +926,60 @@ describe('MilestoneEvaluator', () => {
                 expect(incomeUnfired).toBe(true);
                 expect(incomeUnfired).toBe(isActiveByMilestoneToday(incUnfiredEnd, EMPTY, unresolvedUnfired, milestonesById));
             });
+        });
+    });
+
+    describe('normalizeMilestones', () => {
+        it('forces conditions to [] for a milestone missing the array', () => {
+            const malformed = {
+                id: 'broken',
+                name: 'Broken Import',
+                // conditions intentionally absent
+            } as unknown as CustomMilestone;
+
+            const [normalized] = normalizeMilestones([malformed]);
+            expect(normalized.conditions).toEqual([]);
+        });
+
+        it('coerces a non-array conditions value to []', () => {
+            const malformed = {
+                id: 'broken2',
+                name: 'Bad Conditions',
+                conditions: 'not-an-array',
+            } as unknown as CustomMilestone;
+
+            const [normalized] = normalizeMilestones([malformed]);
+            expect(normalized.conditions).toEqual([]);
+        });
+
+        it('leaves valid milestones unchanged (same reference, conditions intact)', () => {
+            const valid: CustomMilestone = {
+                id: 'fi',
+                name: 'FI',
+                conditions: [{ type: 'NET_WORTH', operator: '>=', value: 500000 }],
+            };
+
+            const [normalized] = normalizeMilestones([valid]);
+            // Valid milestones are passed through by reference — no needless copy.
+            expect(normalized).toBe(valid);
+            expect(normalized.conditions).toBe(valid.conditions);
+        });
+
+        it('normalizes a mixed list, preserving order', () => {
+            const valid: CustomMilestone = {
+                id: 'fi',
+                name: 'FI',
+                conditions: [{ type: 'AGE', operator: '>=', value: 65 }],
+            };
+            const malformed = { id: 'broken', name: 'Broken' } as unknown as CustomMilestone;
+
+            const result = normalizeMilestones([valid, malformed]);
+            expect(result).toHaveLength(2);
+            expect(result[0]).toBe(valid);
+            expect(result[1].conditions).toEqual([]);
+            // The valid milestone's other fields survive untouched.
+            expect(result[1].id).toBe('broken');
+            expect(result[1].name).toBe('Broken');
         });
     });
 });

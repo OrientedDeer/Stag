@@ -14,7 +14,9 @@ import {
   getBirthYear,
   getAgeFromMilestone,
   BUILTIN_MILESTONE_IDS,
+  migrateAssumptions,
 } from '../../../../components/Objects/Assumptions/AssumptionsContext';
+import { evaluateMilestone } from '../../../../services/simulation/MilestoneEvaluator';
 import { CustomMilestone } from '../../../../services/simulation/types';
 
 // Mock localStorage
@@ -637,6 +639,41 @@ describe('AssumptionsContext', () => {
       const TestComponent = () => { ({ state } = useContext(AssumptionsContext)); return null; };
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
       expect(state.investments.rothConversionUserSituation).toBe('self-liquidate');
+    });
+
+    // Re-review 1: a malformed/older backup can carry a milestone object that lacks its
+    // `conditions` array. CustomMilestone.conditions is a REQUIRED MilestoneCondition[],
+    // but milestones are restored via an unchecked cast, so the violation reaches the
+    // tabs and white-screens them at `milestone.conditions.every(...)`. migrateAssumptions
+    // is the single reconstitution boundary (localStorage / file import / QR import all
+    // funnel through it), so it must normalize every milestone's conditions to an array.
+    it('normalizes an imported milestone with no conditions field to conditions: []', () => {
+      const savedData = {
+        milestones: [
+          // Malformed: a custom milestone with NO conditions key (e.g. older/corrupt backup)
+          { id: 'custom-broken', name: 'Broken FI' },
+          // Valid: should be carried through unchanged
+          { id: 'custom-ok', name: 'Coast', conditions: [{ type: 'NET_WORTH', operator: '>=', value: 500000 }] },
+        ],
+      };
+
+      const migrated = migrateAssumptions(savedData, defaultAssumptions);
+
+      const broken = migrated.milestones.find(m => m.id === 'custom-broken');
+      const ok = migrated.milestones.find(m => m.id === 'custom-ok');
+
+      // The malformed milestone now has a real (empty) array — no longer undefined.
+      expect(broken).toBeDefined();
+      expect(Array.isArray(broken!.conditions)).toBe(true);
+      expect(broken!.conditions).toEqual([]);
+
+      // The valid milestone's conditions are unchanged.
+      expect(ok).toBeDefined();
+      expect(ok!.conditions).toEqual([{ type: 'NET_WORTH', operator: '>=', value: 500000 }]);
+
+      // Downstream dereference (the path that white-screened the tabs) no longer throws.
+      const ctx = { accounts: [], expenses: [], year: 2030, age: 40 };
+      expect(() => evaluateMilestone(broken!, ctx)).not.toThrow();
     });
 
     it('should fill in missing top-level sections with defaults', () => {

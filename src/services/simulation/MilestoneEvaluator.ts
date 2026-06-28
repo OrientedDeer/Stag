@@ -305,11 +305,40 @@ function evaluateCondition(condition: MilestoneCondition, context: MilestoneCont
 }
 
 /**
+ * Normalize a raw milestone array loaded from persisted/imported data so every
+ * milestone is guaranteed to carry a `conditions` ARRAY.
+ *
+ * `CustomMilestone.conditions` is a REQUIRED `MilestoneCondition[]` in the type, but
+ * milestones are restored from localStorage / file imports / QR backups via an
+ * UNCHECKED cast (`data.milestones as CustomMilestone[]`). A malformed or older backup
+ * whose milestone object lacks `conditions` violates the type, and every downstream
+ * dereference (`milestone.conditions.every(...)`, `.find(...)`, `.some(...)`) then throws
+ * `TypeError: ...reading 'every'` — white-screening the Priority/Income/Withdrawal tabs on
+ * the very first render.
+ *
+ * Normalizing ONCE at the load boundary fixes all those call sites structurally: each
+ * milestone is mapped to a copy whose `conditions` is the original array when it is one,
+ * and `[]` otherwise. Valid milestones pass through with the SAME reference (no needless
+ * copy). Use this at every milestone-load boundary (see migrateAssumptions).
+ */
+export function normalizeMilestones(raw: CustomMilestone[]): CustomMilestone[] {
+    return raw.map(m => (
+        Array.isArray(m.conditions) ? m : { ...m, conditions: [] }
+    ));
+}
+
+/**
  * Evaluate if a milestone has been reached (all conditions must be met)
  */
 export function evaluateMilestone(milestone: CustomMilestone, context: MilestoneContext): boolean {
-    // All conditions must be met (AND logic)
-    return milestone.conditions.every(condition => evaluateCondition(condition, context));
+    // All conditions must be met (AND logic).
+    //
+    // Defense-in-depth on the hottest path: milestones are normalized at the load
+    // boundary (normalizeMilestones in migrateAssumptions) so `conditions` is always an
+    // array, but guard the dereference here too — `evaluateAllMilestones` runs on every
+    // render of the Priority/Income/Withdrawal tabs, so a single un-normalized milestone
+    // slipping through must never throw and white-screen the app.
+    return (milestone.conditions ?? []).every(condition => evaluateCondition(condition, context));
 }
 
 /**
