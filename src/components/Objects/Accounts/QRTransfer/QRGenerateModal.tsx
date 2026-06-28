@@ -3,6 +3,7 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { compressData, exceedsQRLimit, createCompactBackup } from './qrUtils';
 import { useModalAccessibility } from '../../../../hooks/useModalAccessibility';
 import { Button } from "../../../Layout/Primitives";
+import { WarningTriangleIcon } from '../../../Layout/Icons/WarningTriangleIcon';
 
 interface FullBackup {
     version: number;
@@ -73,9 +74,7 @@ export default function QRGenerateModal({ isOpen, onClose, backupData }: QRGener
                 {exceedsLimit ? (
                     <div className="bg-warning-tint/30 border border-warning-strong/50 rounded-lg p-4 mb-4">
                         <div className="flex items-start gap-3">
-                            <svg className="w-6 h-6 text-warning-bright shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                            </svg>
+                            <WarningTriangleIcon className="w-6 h-6 text-warning-bright shrink-0 mt-0.5" />
                             <div>
                                 <h4 className="text-warning-bright font-semibold">Data Too Large for QR Code</h4>
                                 <p className="text-warning-bright/80 text-sm mt-1">
