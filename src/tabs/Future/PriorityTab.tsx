@@ -13,7 +13,7 @@ import { formatCompactCurrency } from './tabs/FutureUtils';
 import { get401kLimit, getIRALimit, getHSALimit } from '../../data/ContributionLimits';
 import { getActiveExpenses } from '../../components/Objects/Budget/budgetUtils';
 import { isLongTermGoal, getGoalFundMonthlyCap } from '../../components/Objects/Expense/models';
-import { isActiveByMilestoneToday, incomeHasMilestoneGate } from '../../services/simulation/MilestoneEvaluator';
+import { isActiveByMilestoneToday } from '../../services/simulation/MilestoneEvaluator';
 import { useTodayMilestoneSet } from '../../components/Objects/Assumptions/useTodayMilestoneSet';
 import { WarningTriangleIcon } from '../../components/Layout/Icons/WarningTriangleIcon';
 
@@ -122,16 +122,16 @@ export default function PriorityTab() {
     // would be dropped here, understating take-home / the tax base. isActiveByMilestoneToday
     // threads that fallback: a sim-dependent milestone that can't be resolved yet keeps
     // the income counted, while an absolute-milestone income keeps its normal gate.
-    const hasMilestoneIncome = useMemo(() => incomeHasMilestoneGate(incomes), [incomes]);
-
-    const { todayMilestoneSet, isIncomeMilestoneGateUnresolved } = useTodayMilestoneSet();
+    // finding 9: `hasMilestoneIncome` and `milestonesById` both come straight off the
+    // hook (which already derives them) rather than re-scanning incomes/milestones here.
+    const { todayMilestoneSet, isIncomeMilestoneGateUnresolved, hasMilestoneIncome, milestonesById } = useTodayMilestoneSet();
 
     const activeIncomes = useMemo(
         () => hasMilestoneIncome
             ? incomes.filter(inc =>
-                isActiveByMilestoneToday(inc, todayMilestoneSet, isIncomeMilestoneGateUnresolved(inc)))
+                isActiveByMilestoneToday(inc, todayMilestoneSet, isIncomeMilestoneGateUnresolved(inc), milestonesById))
             : incomes,
-    [hasMilestoneIncome, incomes, todayMilestoneSet, isIncomeMilestoneGateUnresolved]);
+    [hasMilestoneIncome, incomes, todayMilestoneSet, isIncomeMilestoneGateUnresolved, milestonesById]);
 
     const totalMonthlyIncome = useMemo(() =>
         activeIncomes.reduce((sum, inc) => sum + (inc.getMonthlyAmount(year)), 0),

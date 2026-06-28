@@ -700,8 +700,9 @@ describe('MilestoneEvaluator', () => {
 
             // Income tab: falls back to the (passing) fixed-date window → active.
             expect(isIncomeActiveToday(inc, EMPTY, unresolved)).toBe(true);
-            // Priority tab: keeps it counted in the tax base → active.
-            expect(isActiveByMilestoneToday(inc, EMPTY, unresolved)).toBe(true);
+            // Priority tab: the relative START is sim-dependent + unresolved → assumed
+            // started, no end → kept in the tax base → active.
+            expect(isActiveByMilestoneToday(inc, EMPTY, unresolved, milestonesById)).toBe(true);
         });
 
         // Finding 3: a RELATIVE income whose base never fires — a projection HAS run, but
@@ -728,9 +729,76 @@ describe('MilestoneEvaluator', () => {
             const unresolved = isIncomeMilestoneGateUnresolved(inc, milestonesById, /* projectionHasRun */ false);
 
             // isActiveByMilestoneToday is the Priority-tab gate (milestone-only, no fixed-date AND).
-            expect(isActiveByMilestoneToday(inc, EMPTY, unresolved)).toBe(true);
+            // The relative START is sim-dependent + unresolved → assumed started (don't drop).
+            expect(isActiveByMilestoneToday(inc, EMPTY, unresolved, milestonesById)).toBe(true);
             // Sanity: without the fallback the raw milestone gate would drop it.
             expect(isActiveByMilestone(inc.startMilestoneId, inc.endMilestoneId, EMPTY)).toBe(false);
+        });
+
+        // ===========================================================================
+        // RE-REVIEW (finding 1/2): the unresolved gate must HONOR every milestone it can
+        // resolve and default only the genuinely sim-bound ones. The previous code did an
+        // unconditional `return true`, which SKIPPED the end-milestone check and over-counted
+        // an income that had actually ENDED (the Priority tab uses this milestone gate ALONE).
+        // ===========================================================================
+        describe('re-review: unresolved gate honors resolvable end milestones', () => {
+            // An income with a RELATIVE start (fired) and a RESOLVABLE ABSOLUTE end. The
+            // start is sim-dependent so the gate is flagged unresolved for this income, but
+            // the absolute end is knowable from todaySet and must be honored.
+            const makeRelStartAbsEnd = (id: string) => {
+                const inc = makeDateActiveIncome(id, relativeMilestone.id);
+                inc.endMilestoneId = absoluteMilestone.id; // absolute → resolvable
+                return inc;
+            };
+
+            // HEADLINE (case B): relative start (fired) + ABSOLUTE end that has ALREADY past,
+            // NO projection cached → NOT active. The absolute end IS resolvable from the
+            // today-set and must gate the income OFF. Pre-fix (`return true`) wrongly counted it.
+            it('case B: relative start + already-fired absolute end → NOT active', () => {
+                const inc = makeRelStartAbsEnd('rel-start-abs-end-fired');
+                // Gate is unresolved (the relative START needs the sim), but the ABSOLUTE end
+                // is in the today-set (it already fired).
+                const todayWithEnd = new Set<string>([absoluteMilestone.id]);
+                const unresolved = isIncomeMilestoneGateUnresolved(inc, milestonesById, /* projectionHasRun */ false);
+                expect(unresolved).toBe(true);
+
+                expect(isActiveByMilestoneToday(inc, todayWithEnd, unresolved, milestonesById)).toBe(false);
+            });
+
+            // REGRESSION (original intent holds): relative start (fired), NO end milestone,
+            // NO projection cached → still active. We must not drop a genuinely-active
+            // relative-start income while waiting for the projection.
+            it('regression: relative start, no end, no projection → still active', () => {
+                const inc = makeDateActiveIncome('rel-start-no-end', relativeMilestone.id);
+                const unresolved = isIncomeMilestoneGateUnresolved(inc, milestonesById, /* projectionHasRun */ false);
+                expect(unresolved).toBe(true);
+
+                expect(isActiveByMilestoneToday(inc, EMPTY, unresolved, milestonesById)).toBe(true);
+            });
+
+            // A RESOLVABLE absolute end that has NOT fired (+ start satisfied) → active.
+            // The absolute end is honored (knowable from todaySet) and it simply hasn't fired.
+            it('resolvable absolute end that has NOT fired (start satisfied) → active', () => {
+                const inc = makeRelStartAbsEnd('rel-start-abs-end-unfired');
+                // Absolute end NOT in the today-set (hasn't fired).
+                const unresolved = isIncomeMilestoneGateUnresolved(inc, milestonesById, /* projectionHasRun */ false);
+                expect(unresolved).toBe(true);
+
+                expect(isActiveByMilestoneToday(inc, EMPTY, unresolved, milestonesById)).toBe(true);
+            });
+
+            // Symmetric to the headline: relative start (assumed started), no end, but a
+            // resolvable absolute end that HAS fired must still gate OFF even with the start
+            // sim-bound — i.e. case-B is purely about the end side being honored.
+            it('case B variant: a not-yet-fired relative start is assumed started, but a fired absolute end still gates OFF', () => {
+                const inc = makeRelStartAbsEnd('rel-start-unfired-abs-end-fired');
+                // The relative start has no reach year (no sim) → assumed started; the absolute
+                // end already fired → gates OFF. Net: NOT active.
+                const todayWithEnd = new Set<string>([absoluteMilestone.id]);
+                const unresolved = isIncomeMilestoneGateUnresolved(inc, milestonesById, /* projectionHasRun */ false);
+
+                expect(isActiveByMilestoneToday(inc, todayWithEnd, unresolved, milestonesById)).toBe(false);
+            });
         });
     });
 });

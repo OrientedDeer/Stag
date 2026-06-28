@@ -438,16 +438,72 @@ export function isIncomeActiveToday(
  * the Income tab (finding 2/4): an already-fired relative-milestone income with no
  * projection cached must stay counted here too — otherwise its take-home/tax base is
  * understated — while an absolute-milestone income keeps its normal gate.
+ *
+ * When `milestoneGateUnresolved` is true (re-review finding 1/2) we do NOT blindly
+ * return active — that over-counts an income that has actually ENDED. The gate flag is
+ * raised when AT LEAST ONE of this income's milestones is sim-dependent (relative) and
+ * no projection is cached, but the OTHER side may still be perfectly resolvable from
+ * today's set. So we evaluate each side, HONORING every milestone we can resolve and
+ * defaulting only the genuinely-unresolvable (sim-dependent + no projection) ones:
+ *
+ *  - START: no start milestone → started; start NOT sim-dependent (absolute AGE/YEAR or
+ *    value) → todaySet.has(startId); start sim-dependent & unresolved → assume STARTED
+ *    (don't drop a genuinely-active relative-start income while we wait for the sim).
+ *  - END: no end milestone → not ended; end NOT sim-dependent → todaySet.has(endId)
+ *    (this is the fix — a RESOLVABLE absolute end that has already fired now gates the
+ *    income OFF instead of being skipped); end sim-dependent & unresolved → assume NOT
+ *    ENDED (don't prematurely hide it).
+ *  - active = started && !ended.
+ *
+ * `milestonesById` lets us classify each referenced milestone's kind. When it's omitted
+ * (or a referenced milestone isn't in it) the milestone is treated as NOT sim-dependent,
+ * i.e. resolved against `todaySet` — the same conservative behavior as the resolved path.
+ *
+ * IRREDUCIBLE TRADE-OFF: a genuinely-unresolvable RELATIVE end milestone is assumed not
+ * ended (case A — a MILESTONE_PLUS end that already fired stays SHOWN until a projection
+ * runs and resolves its reach year), and symmetrically a not-yet-fired RELATIVE start is
+ * assumed started. Without the cached timeline we cannot know a relative milestone's
+ * reach year, so we err toward "don't drop the income" until the next projection lands —
+ * the same sim-lag every relative-milestone view carries. Only the genuinely sim-bound
+ * cases default; everything resolvable from `todaySet` is honored.
  */
 export function isActiveByMilestoneToday(
     inc: AnyIncome,
     todayMilestoneSet: Set<string>,
     milestoneGateUnresolved = false,
+    milestonesById?: Map<string, CustomMilestone>,
 ): boolean {
-    if (milestoneGateUnresolved) {
-        return true;
+    if (!milestoneGateUnresolved) {
+        return isActiveByMilestone(inc.startMilestoneId, inc.endMilestoneId, todayMilestoneSet);
     }
-    return isActiveByMilestone(inc.startMilestoneId, inc.endMilestoneId, todayMilestoneSet);
+
+    // Gate is unresolved for THIS income, but resolve every side we still can.
+    const isSimDependentId = (id: string): boolean => {
+        const milestone = milestonesById?.get(id);
+        return milestone ? isMilestoneSimDependent(milestone) : false;
+    };
+
+    // START side.
+    let started: boolean;
+    if (!inc.startMilestoneId) {
+        started = true;
+    } else if (isSimDependentId(inc.startMilestoneId)) {
+        started = true; // sim-dependent & unresolved → assume started (don't drop)
+    } else {
+        started = todayMilestoneSet.has(inc.startMilestoneId); // resolvable → honor it
+    }
+
+    // END side.
+    let ended: boolean;
+    if (!inc.endMilestoneId) {
+        ended = false;
+    } else if (isSimDependentId(inc.endMilestoneId)) {
+        ended = false; // sim-dependent & unresolved → assume NOT ended (don't hide)
+    } else {
+        ended = todayMilestoneSet.has(inc.endMilestoneId); // resolvable → honor it (the fix)
+    }
+
+    return started && !ended;
 }
 
 /** True when any income references a start/end milestone — i.e. milestone gating

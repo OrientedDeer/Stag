@@ -10,6 +10,7 @@ import {
     buildMilestoneReachYears,
     incomeHasMilestoneGate,
     isIncomeMilestoneGateUnresolved,
+    isMilestoneSimDependent,
     MilestoneContext,
 } from '../../../services/simulation/MilestoneEvaluator';
 import { AnyIncome } from '../Income/models';
@@ -25,6 +26,10 @@ export type MilestoneGateUnresolvedFn = (inc: AnyIncome) => boolean;
 // IncomeTab's icicle data) don't invalidate on unrelated edits or re-simulations.
 const EMPTY_MILESTONE_SET: Set<string> = new Set<string>();
 const EMPTY_REACH_YEARS: Map<string, number> = new Map<string, number>();
+// Stable empty milestone-id map for the common path (projection cached, or nothing
+// milestone-gated): no income's gate can be unresolved there, so the consumer never
+// reads it — see the lazy build below (finding 10).
+const EMPTY_MILESTONES_BY_ID: Map<string, CustomMilestone> = new Map<string, CustomMilestone>();
 // Stable "nothing is unresolvable" predicate so the common (no-gating / projection-
 // cached) path returns the same function reference every render.
 const NEVER_UNRESOLVED: MilestoneGateUnresolvedFn = () => false;
@@ -54,16 +59,21 @@ const NEVER_UNRESOLVED: MilestoneGateUnresolvedFn = () => false;
  *
  * Short-circuits to a stable empty set when no income references any milestone.
  *
- * Returns BOTH the today set and a PER-INCOME `isIncomeMilestoneGateUnresolved`
- * predicate (findings 1/2/3/10): both surfaces get everything from this ONE hook call
- * (so the derivation runs once — finding 10), and the per-income predicate lets each
- * tab fall back to the date-window gate ONLY for an income whose own sim-dependent
- * (relative) milestone can't be resolved because no projection has run — never via a
- * global flag that opened the gate for every income (finding 1/2).
+ * Returns the today set, a PER-INCOME `isIncomeMilestoneGateUnresolved` predicate
+ * (findings 1/2/3/10), the `hasMilestoneIncome` short-circuit so callers reuse it
+ * instead of re-scanning incomes (finding 9), and `milestonesById` so the gate can
+ * classify each income's referenced milestone kind when it falls back. Both surfaces
+ * get everything from this ONE hook call (so the derivation runs once — finding 10),
+ * and the per-income predicate lets each tab fall back to the date-window gate ONLY for
+ * an income whose own sim-dependent (relative) milestone can't be resolved because no
+ * projection has run — never via a global flag that opened the gate for every income
+ * (finding 1/2).
  */
 export function useTodayMilestoneSet(): {
     todayMilestoneSet: Set<string>;
     isIncomeMilestoneGateUnresolved: MilestoneGateUnresolvedFn;
+    hasMilestoneIncome: boolean;
+    milestonesById: Map<string, CustomMilestone>;
 } {
     const { state } = useContext(AssumptionsContext);
     const { accounts } = useContext(AccountContext);
@@ -75,9 +85,12 @@ export function useTodayMilestoneSet(): {
     const hasMilestoneIncome = useMemo(() => incomeHasMilestoneGate(incomes), [incomes]);
 
     // Only relative (MILESTONE_PLUS) milestones consume reach years; gate the sim
-    // read on one existing so the common case never depends on `simulation`.
+    // read on one existing so the common case never depends on `simulation`. This is
+    // exactly the "is this milestone sim-dependent" question, so reuse the shared
+    // predicate (finding 8) instead of re-implementing the MILESTONE_PLUS scan — it
+    // keeps the nullish-safe `(c.valueType ?? 'FIXED')` semantics in one place.
     const hasRelativeMilestone = useMemo(
-        () => (state.milestones ?? []).some(m => (m.conditions ?? []).some(c => c.valueType === 'MILESTONE_PLUS')),
+        () => (state.milestones ?? []).some(isMilestoneSimDependent),
         [state.milestones],
     );
 
@@ -115,22 +128,35 @@ export function useTodayMilestoneSet(): {
     // exists; absolute-milestone incomes keep their normal gate (finding 1).
     const projectionHasRun = simulation.length > 0;
 
+    // The id→milestone map is ONLY consumed in the no-projection fallback (by the
+    // unresolved predicate here and by the Priority/Income gate that classifies the
+    // referenced milestone kind). On the common path that fallback never fires, so build
+    // it lazily — only when it can actually be needed (finding 10) — and otherwise hand
+    // back the stable empty map so callers' memos don't churn on unrelated milestone
+    // edits while a projection is cached.
+    const needsMilestoneLookup = !projectionHasRun && hasMilestoneIncome && hasRelativeMilestone;
     const milestonesById = useMemo(() => {
+        if (!needsMilestoneLookup) return EMPTY_MILESTONES_BY_ID;
         const map = new Map<string, CustomMilestone>();
         for (const m of state.milestones ?? []) map.set(m.id, m);
         return map;
-    }, [state.milestones]);
+    }, [needsMilestoneLookup, state.milestones]);
 
     const isIncomeGateUnresolved = useMemo<MilestoneGateUnresolvedFn>(() => {
         // Common path: a projection is cached, or nothing is milestone-gated, or no
         // relative milestone is in play at all → nothing can be unresolvable. Return
         // the stable shared predicate so callers' memos don't churn.
-        if (projectionHasRun || !hasMilestoneIncome || !hasRelativeMilestone) {
+        if (!needsMilestoneLookup) {
             return NEVER_UNRESOLVED;
         }
         return (inc: AnyIncome) =>
             isIncomeMilestoneGateUnresolved(inc, milestonesById, projectionHasRun);
-    }, [projectionHasRun, hasMilestoneIncome, hasRelativeMilestone, milestonesById]);
+    }, [needsMilestoneLookup, projectionHasRun, milestonesById]);
 
-    return { todayMilestoneSet, isIncomeMilestoneGateUnresolved: isIncomeGateUnresolved };
+    return {
+        todayMilestoneSet,
+        isIncomeMilestoneGateUnresolved: isIncomeGateUnresolved,
+        hasMilestoneIncome,
+        milestonesById,
+    };
 }
