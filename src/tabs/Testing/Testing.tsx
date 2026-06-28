@@ -19,7 +19,7 @@ import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
 import { computeEOYBudgetContributions } from '../../services/eoyContributionProjection';
 import { toLocalDateString } from '../Budget/transactions/utils';
 import { WorkIncome, PassiveIncome, FERSPensionIncome, CSRSPensionIncome, getIncomeActiveMultiplier, isSocialSecurity } from '../../components/Objects/Income/models';
-import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
+import { buildProjection } from '../Future/buildProjection';
 import { getSimulationInputHash } from '../../services/simulationHash';
 import {
     getTaxParameters,
@@ -777,30 +777,10 @@ function SimulationDebugTab() {
         return storedInputHash !== currentInputHash;
     }, [storedInputHash, currentInputHash, simulation.length]);
 
-    const executeSimulation = useCallback(() => {
-        const today = new Date();
-        const startYear = assumptions.demographics.priorYearMode ? today.getFullYear() - 1 : today.getFullYear();
-        const remainderGoals = (simulation.find(s => s.year === startYear + 1)?.cashflow.bucketDetail
-            ?? simulation.find(s => s.year === startYear)?.cashflow.bucketDetail
-            ?? {});
-        const { additions, debtReductions, mortgageReductions } = computeEOYBudgetContributions(
-            assumptions.priorities, accounts, incomes, expenses, budgetMonths,
-            assumptions, taxState, startYear, today, remainderGoals,
-        );
-        return runSimulationWithOptimization(
-            getLifeExpectancy(assumptions.milestones) - startAge,
-            accounts,
-            incomes,
-            expenses,
-            assumptions,
-            taxState,
-            undefined,
-            undefined,
-            additions,
-            debtReductions,
-            mortgageReductions,
-        );
-    }, [assumptions, accounts, incomes, expenses, taxState, budgetMonths, startAge, simulation]);
+    const executeSimulation = useCallback(
+        () => buildProjection(assumptions, accounts, incomes, expenses, taxState, budgetMonths, simulation),
+        [assumptions, accounts, incomes, expenses, taxState, budgetMonths, simulation],
+    );
 
     const handleRecalculate = useCallback(() => {
         setIsLoading(true);
