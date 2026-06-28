@@ -147,7 +147,8 @@ describe('#153 Cashflow Sankey — Net Pay balances on the first RSU vest year',
 
         // The vest id is `rsu-vest-{accountId}-{incomeId}-{year}`; the Sankey destination
         // must resolve to the linked RSU account ('Equity Grants'), not the synthetic
-        // vest-income name ('… RSU Vest').
+        // vest-income name ('… RSU Vest'). With the explicit account-id map plumbed from
+        // RSUVesting → SimulationEngine → buildCashflowDetail, this is an exact-id lookup.
         expect(vestSource!.accountName).toBe('Equity Grants');
         expect(vestSource!.accountName).not.toMatch(/RSU Vest/i);
     });
@@ -184,85 +185,163 @@ describe('#153 Cashflow Sankey — Net Pay balances on the first RSU vest year',
 });
 
 /**
- * Findings 7/8/13 — robust RSU-vest Sankey destination-account resolution.
+ * Re-review findings 4/5 — RSU-vest Sankey destination resolution by EXPLICIT id.
  *
- * The vest income id is `rsu-vest-${rsuAccount.id}-${incomeId}-${year}` and the
- * destination is ALWAYS an RSUAccount. The old resolver matched the FIRST account
- * whose id was a prefix of the vest id, so if one account id is a textual prefix of
- * another (`rsu` vs `rsu-2`), the shorter (`rsu`) wrongly captured a vest destined
- * for `rsu-2`. These tests drive `buildCashflowDetail` directly with synthetic,
- * fabricated reinvested vest incomes so the prefix collision is exercised exactly.
+ * The vest income id is `rsu-vest-${rsuAccount.id}-${inc.id}-${year}`. Both the
+ * account id and the income id can contain hyphens, so reverse-engineering the
+ * destination account from the vest id by PREFIX matching is genuinely ambiguous:
+ *
+ *   account id  'rsu'  + income id '2-eng'  →  vest id  'rsu-vest-rsu-2-eng-YYYY'
+ *
+ * That same vest id ALSO starts with `rsu-vest-rsu-2-` (the prefix of account
+ * 'rsu-2'). The old longest-prefix resolver therefore picked 'rsu-2' — the WRONG
+ * account — for a vest that genuinely belongs to 'rsu'. The proper fix carries the
+ * source account id explicitly from the mint site (RSUVesting.ts) through the
+ * engine to buildCashflowDetail, so resolution is an EXACT-id lookup with no
+ * parsing and no instanceof gating.
+ *
+ * These tests drive the REAL engine so the vest id, the account-id map, and the
+ * full plumbing are all exercised exactly as production builds them.
  */
-describe('RSU-vest Sankey account resolution — prefix collision (findings 7/8)', () => {
-    const YEAR = 2030;
+describe('RSU-vest Sankey account resolution — explicit id (re-review 4/5)', () => {
+    const BIRTH_YEAR = 1988;
+    const START_YEAR = new Date().getFullYear();
+    const VEST_YEAR = START_YEAR + 1;
+    const WITHHOLDING_PCT = 25;
 
-    // Two RSU accounts whose ids collide on a prefix: 'rsu' is a textual prefix of 'rsu-2'.
-    const makeRsuAccounts = () => [
-        new RSUAccount('rsu', 'Equity Grants A', 0, [], 'job-a', undefined, 'AAA', 40),
-        new RSUAccount('rsu-2', 'Equity Grants B', 0, [], 'job-b', undefined, 'BBB', 40),
+    const taxState: TaxState = {
+        filingStatus: 'Single',
+        stateResidency: 'California',
+        deductionMethod: 'Standard',
+        fedOverride: null,
+        ficaOverride: null,
+        stateOverride: null,
+        year: START_YEAR,
+    };
+
+    const assumptions: AssumptionsState = {
+        ...defaultAssumptions,
+        demographics: {},
+        milestones: createBuiltinMilestones(BIRTH_YEAR, 65, 95),
+        income: { ...defaultAssumptions.income, salaryGrowth: 0 },
+        macro: { ...defaultAssumptions.macro, inflationRate: 0, inflationAdjusted: false },
+        investments: {
+            ...defaultAssumptions.investments,
+            returnRates: { ror: 0 },
+            taxOptimizationEnabled: false,
+            autoRothConversions: false,
+        },
+        withdrawalStrategy: [],
+        priorities: [],
+    };
+
+    /**
+     * A WorkIncome with a 1-year-cliff RSU grant linked to `rsuAccountId`.
+     * `id` is chosen so the minted vest id collides by prefix with another account.
+     */
+    function makeRsuJob(id: string, name: string, rsuAccountId: string) {
+        const inc = new WorkIncome(
+            id, name, 150000, 'Annually', 'Yes',
+            0, 0, 0, 0, '', null, 'FIXED',
+            new Date(START_YEAR, 0, 1),
+        );
+        inc.rsuVestingSchedule = 'cliff-1yr';
+        inc.rsuGrantShares = 300;
+        inc.rsuVestFrequency = 'quarterly';
+        inc.rsuExpectedStockGrowth = 0;
+        inc.rsuAccountId = rsuAccountId;
+        inc.rsuWithholdingRate = WITHHOLDING_PCT;
+        return inc;
+    }
+
+    const cashAccount = () =>
+        new InvestedAccount('acc-cash', 'Cash', 25000, 0, 10, 0, 'Brokerage', true, 1.0, 25000);
+    const livingExpense = () =>
+        new FoodExpense('exp-living', 'Living', 48000, 'Annually', new Date(START_YEAR, 0, 1));
+
+    // Two RSU accounts whose ids collide on a prefix: 'rsu' is a textual prefix of
+    // 'rsu-2'. The grant on 'rsu' has income id '2-eng', so its vest id is
+    // 'rsu-vest-rsu-2-eng-YYYY' — which ALSO prefix-matches account 'rsu-2'.
+    const makeCollisionAccounts = () => [
+        new RSUAccount('rsu', 'Equity Grants A', 0, [], '2-eng', undefined, 'AAA', 40),
+        new RSUAccount('rsu-2', 'Equity Grants B', 0, [], 'engb', undefined, 'BBB', 40),
     ];
 
-    // A synthetic reinvested RSU-vest income destined for `accountId`, mirroring the
-    // id shape RSUVesting.ts mints: `rsu-vest-${accountId}-${incomeId}-${year}`.
-    const makeVestIncome = (accountId: string, incomeId: string, name: string) =>
-        new PassiveIncome(
-            `rsu-vest-${accountId}-${incomeId}-${YEAR}`,
-            name,
-            12000,
-            'Annually',
-            'Yes',
-            'RSU',
-            new Date(YEAR, 0, 1),
-            new Date(YEAR, 11, 31),
-            true, // isReinvested → routed through the reinvested-destination resolver
+    function vestSourceFor(
+        sim: ReturnType<typeof runSimulation>,
+        incomeName: string,
+    ) {
+        const vest = sim.find(y => y.year === VEST_YEAR);
+        expect(vest?.cashflowDetail, 'vest year should be an engine year with cashflowDetail').toBeDefined();
+        return vest!.cashflowDetail!.incomeBySource.find(
+            s => s.kind === 'reinvested' && s.name === `${incomeName} RSU Vest`,
         );
+    }
 
-    const build = (incomes: PassiveIncome[], accounts = makeRsuAccounts()) =>
-        buildCashflowDetail({
-            incomes,
-            expenses: [],
-            accounts,
-            insurance: 0,
-            year: YEAR,
-            brokerageLTCGFromGross: 0,
-        });
+    it("resolves a vest whose id prefix-collides ('rsu' + income '2-eng' → 'rsu-vest-rsu-2-eng-*') to 'rsu', NOT 'rsu-2'", () => {
+        // The grant belongs to account 'rsu' (income id '2-eng'). Account 'rsu-2' has
+        // its OWN grant (income 'engb') so both vest the same year — exactly the
+        // ambiguity the old longest-prefix resolver got wrong.
+        const accounts = [...makeCollisionAccounts(), cashAccount()];
+        const incomes = [
+            makeRsuJob('2-eng', 'Engineer A', 'rsu'),
+            makeRsuJob('engb', 'Engineer B', 'rsu-2'),
+        ];
+        const sim = runSimulation(4, accounts, incomes, [livingExpense()], assumptions, taxState);
 
-    it('resolves a vest destined for `rsu-2` to that account, NOT the `rsu` prefix account', () => {
-        const detail = build([makeVestIncome('rsu-2', 'job-b', 'Engineer B RSU Vest')]);
-        const src = detail.incomeBySource.find(s => s.kind === 'reinvested');
-        expect(src, 'a reinvested RSU vest source').toBeDefined();
-        // The collision bug would label this 'Equity Grants A' (the shorter `rsu` id).
-        expect(src!.accountName).toBe('Equity Grants B');
-        expect(src!.accountName).not.toBe('Equity Grants A');
-    });
-
-    it('resolves a vest destined for `rsu` to that account', () => {
-        const detail = build([makeVestIncome('rsu', 'job-a', 'Engineer A RSU Vest')]);
-        const src = detail.incomeBySource.find(s => s.kind === 'reinvested');
-        expect(src, 'a reinvested RSU vest source').toBeDefined();
-        expect(src!.accountName).toBe('Equity Grants A');
-    });
-
-    it('resolves both vests correctly when both accounts vest in the same year', () => {
-        const detail = build([
-            makeVestIncome('rsu', 'job-a', 'Engineer A RSU Vest'),
-            makeVestIncome('rsu-2', 'job-b', 'Engineer B RSU Vest'),
-        ]);
-        const a = detail.incomeBySource.find(s => s.name === 'Engineer A RSU Vest');
-        const b = detail.incomeBySource.find(s => s.name === 'Engineer B RSU Vest');
+        const a = vestSourceFor(sim, 'Engineer A');
+        expect(a, 'a reinvested RSU vest source for Engineer A').toBeDefined();
+        // The collision bug labelled this 'Equity Grants B' (the longer 'rsu-2' id).
+        // The explicit-id map resolves it to 'rsu' → 'Equity Grants A'.
         expect(a!.accountName).toBe('Equity Grants A');
-        expect(b!.accountName).toBe('Equity Grants B');
+        expect(a!.accountName).not.toBe('Equity Grants B');
     });
 
-    it('falls back to the raw vest income name when the destination account was deleted (finding 8)', () => {
-        // The vest id references 'gone', which is absent from the account list (and is
-        // NOT a prefix of either surviving account id, so it can't accidentally match).
-        const detail = build([makeVestIncome('gone', 'job-c', 'Engineer C RSU Vest')]);
+    it("resolves a vest destined for 'rsu-2' to that account", () => {
+        const accounts = [...makeCollisionAccounts(), cashAccount()];
+        const incomes = [
+            makeRsuJob('2-eng', 'Engineer A', 'rsu'),
+            makeRsuJob('engb', 'Engineer B', 'rsu-2'),
+        ];
+        const sim = runSimulation(4, accounts, incomes, [livingExpense()], assumptions, taxState);
+
+        const b = vestSourceFor(sim, 'Engineer B');
+        expect(b, 'a reinvested RSU vest source for Engineer B').toBeDefined();
+        expect(b!.accountName).toBe('Equity Grants B');
+        expect(b!.accountName).not.toBe('Equity Grants A');
+    });
+
+    it('falls back to the raw vest income name when the destination account id is absent from the map (deleted account)', () => {
+        // Drive buildCashflowDetail directly: a synthetic reinvested RSU-vest income
+        // whose source account is NOT in the (empty) map — mirrors an account that was
+        // deleted after the vest was minted. Resolution must fall back to the raw name.
+        const detail = buildCashflowDetail({
+            incomes: [
+                new PassiveIncome(
+                    `rsu-vest-gone-eng-${VEST_YEAR}`,
+                    'Engineer C RSU Vest',
+                    12000,
+                    'Annually',
+                    'Yes',
+                    'RSU',
+                    new Date(VEST_YEAR, 0, 1),
+                    new Date(VEST_YEAR, 11, 31),
+                    true, // isReinvested → routed through the reinvested-destination resolver
+                ),
+            ],
+            expenses: [],
+            accounts: [
+                new RSUAccount('rsu', 'Equity Grants A', 0, [], '2-eng', undefined, 'AAA', 40),
+            ],
+            insurance: 0,
+            year: VEST_YEAR,
+            brokerageLTCGFromGross: 0,
+            // The deleted account 'gone' is absent from this map → fallback to raw name.
+            rsuVestAccountId: {},
+        });
         const src = detail.incomeBySource.find(s => s.kind === 'reinvested');
         expect(src, 'a reinvested RSU vest source').toBeDefined();
-        // Must be the raw vest name — NOT a stale 'rsu'-prefix account name and NOT the
-        // interest-specific `.replace(' Interest', '')` mangling (no ' Interest' here, so
-        // that path would leave the name unchanged too, but the intent is the raw name).
+        // Must be the raw vest name — NOT a stale prefix-matched account name.
         expect(src!.accountName).toBe('Engineer C RSU Vest');
     });
 });

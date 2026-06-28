@@ -961,6 +961,7 @@ function simulateOneYearWithNewEngine(
         userContributions: inflowResult.userContributions,
         userContributionsByIncome: inflowResult.userContributionsByIncome,
         rsuVestWithholding: rsuVestingResult.vestWithholdingByIncomeId,
+        rsuVestAccountId: rsuVestingResult.vestAccountIdByIncomeId,
     });
 
     // ------------------------------------------------------------------

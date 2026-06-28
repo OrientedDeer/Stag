@@ -14,7 +14,7 @@ import {
     isLongTermGoal,
     getGoalFundAnnualSetAside,
 } from "../../components/Objects/Expense/models";
-import { AnyAccount, InvestedAccount, RSUAccount } from "../../components/Objects/Accounts/models";
+import { AnyAccount, InvestedAccount } from "../../components/Objects/Accounts/models";
 import {
     CashflowDetail,
     CashflowIncomeKind,
@@ -28,32 +28,6 @@ const MIN_AMOUNT = 0.005;
 function isRothAccount(acc: AnyAccount | undefined): boolean {
     return acc instanceof InvestedAccount &&
         (acc.taxType === 'Roth 401k' || acc.taxType === 'Roth IRA');
-}
-
-/**
- * Resolve the destination account for an RSU-vest reinvested income.
- *
- * Vest ids are minted in RSUVesting.ts as `rsu-vest-${rsuAccount.id}-${incomeId}-${year}`
- * and the destination is ALWAYS an RSUAccount. We can't split on '-' positionally
- * because account/income ids may themselves contain hyphens, so we match by prefix:
- * the account whose id `A` makes the vest id start with `rsu-vest-${A}-`.
- *
- * Two robustness points over a naive `accounts.find(a => incId.startsWith(...))`:
- *   - Restrict candidates to RSUAccount instances — the only valid destination — so a
- *     non-RSU account never captures a vest (and we skip the template-string build for
- *     non-RSU accounts entirely, finding [13]).
- *   - Among prefix-matching candidates pick the one with the LONGEST id, so when one
- *     RSU account id is a textual prefix of another (`rsu` vs `rsu-2`), the shorter
- *     (`rsu`) does not wrongly capture a vest destined for `rsu-2` (finding [7]).
- */
-function resolveRSUVestAccount(incId: string, accounts: AnyAccount[]): RSUAccount | undefined {
-    let best: RSUAccount | undefined;
-    for (const acc of accounts) {
-        if (!(acc instanceof RSUAccount)) continue;
-        if (!incId.startsWith(`rsu-vest-${acc.id}-`)) continue;
-        if (!best || acc.id.length > best.id.length) best = acc;
-    }
-    return best;
 }
 
 interface BuildCashflowDetailInput {
@@ -111,6 +85,16 @@ interface BuildCashflowDetailInput {
      * to savings. Omitted when no RSU vested this year.
      */
     rsuVestWithholding?: Record<string, number>;
+    /**
+     * The source RSU account id per synthetic vest income, keyed by the vest
+     * income's id (RSUVestingResult.vestAccountIdByIncomeId). The destination
+     * account is resolved by EXACT id from this map rather than reverse-engineering
+     * it from the vest id string — account/income ids can both contain hyphens, so
+     * prefix-matching the id is genuinely ambiguous (e.g. account `rsu` vs `rsu-2`).
+     * Falls back to the raw vest name when the id isn't present (e.g. account
+     * deleted). Omitted when no RSU vested this year.
+     */
+    rsuVestAccountId?: Record<string, string>;
 }
 
 /**
@@ -121,7 +105,7 @@ interface BuildCashflowDetailInput {
  * to re-derive it (and drift from the sim's actual values).
  */
 export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDetail {
-    const { incomes, expenses, accounts, insurance, year, brokerageLTCGFromGross, employerInflows, userContributions, userContributionsByIncome, rsuVestWithholding } = input;
+    const { incomes, expenses, accounts, insurance, year, brokerageLTCGFromGross, employerInflows, userContributions, userContributionsByIncome, rsuVestWithholding, rsuVestAccountId } = input;
 
     const incomeBySource: CashflowIncomeSource[] = [];
     let userPreTax401k = 0;
@@ -220,8 +204,10 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
                 // Resolve the destination account so the chart labels it correctly.
                 //   Interest: `interest-{accountId}-{year}`
                 //   RSU vest: `rsu-vest-{accountId}-{incomeId}-{year}`
-                // Account/income ids can themselves contain hyphens, so for the vest id
-                // match the account whose id follows the prefix rather than splitting.
+                // Account/income ids can themselves contain hyphens. The interest id is
+                // still parsed positionally, but the vest's source account is carried
+                // explicitly via `rsuVestAccountId` (keyed by the vest income id) so it
+                // resolves by EXACT id — no ambiguous prefix matching.
                 let destAccount: AnyAccount | undefined;
                 if (inc.id.startsWith('interest-')) {
                     const idParts = inc.id.split('-');
@@ -231,9 +217,15 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
                     // source account was deleted — that yields the bare account label.
                     source.accountName = destAccount?.name ?? inc.name.replace(' Interest', '');
                 } else if (inc.id.startsWith('rsu-vest-')) {
-                    destAccount = resolveRSUVestAccount(inc.id, accounts);
+                    // The vest's source account is KNOWN at mint time (RSUVesting.ts) and
+                    // carried in rsuVestAccountId keyed by this vest income's id, so look
+                    // it up by exact id. Unambiguous even when account/income ids share a
+                    // textual prefix (`rsu` vs `rsu-2`).
+                    const vestAccountId = rsuVestAccountId?.[inc.id];
+                    destAccount = vestAccountId ? accounts.find(a => a.id === vestAccountId) : undefined;
                     // No " Interest" suffix on a vest income; fall back to the raw vest
-                    // name (e.g. "Engineer RSU Vest") when the account can't be resolved.
+                    // name (e.g. "Engineer RSU Vest") when the account can't be resolved
+                    // (id absent from the map or the account was deleted).
                     source.accountName = destAccount?.name ?? inc.name;
                 } else {
                     source.accountName = inc.name.replace(' Interest', '');

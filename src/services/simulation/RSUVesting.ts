@@ -28,6 +28,16 @@ export interface RSUVestingResult {
      * balanced on a vest year (gross in = net-reinvested + withheld-as-tax).
      */
     vestWithholdingByIncomeId: Record<string, number>;
+    /**
+     * The source RSU account id per synthetic vest income, keyed by the vest
+     * income's id. The vest income's destination account is KNOWN here at mint
+     * time (`rsuAccount.id`), so the Cashflow Sankey resolves the destination by
+     * EXACT id from this map instead of reverse-engineering it from the vest id
+     * string — which is genuinely ambiguous because account/income ids can both
+     * contain hyphens (e.g. account `rsu` vs `rsu-2` with an income whose id
+     * starts with `2-`).
+     */
+    vestAccountIdByIncomeId: Record<string, string>;
     logs: string[];
 }
 
@@ -113,6 +123,7 @@ export function processRSUVesting(
     const vestIncomes: PassiveIncome[] = [];
     const rsuLots: Record<string, RSULot[]> = {};
     const vestWithholdingByIncomeId: Record<string, number> = {};
+    const vestAccountIdByIncomeId: Record<string, string> = {};
     let totalWithholding = 0;
 
     incomes.forEach(inc => {
@@ -180,6 +191,9 @@ export function processRSUVesting(
         // Local Jan-1..Dec-31 window → clean full-year multiplier in any timezone.
         const vestIncomeId = `rsu-vest-${rsuAccount.id}-${inc.id}-${year}`;
         vestWithholdingByIncomeId[vestIncomeId] = withholding;
+        // Record the KNOWN source account id so the Sankey can resolve the vest's
+        // destination by exact id rather than parsing it back out of vestIncomeId.
+        vestAccountIdByIncomeId[vestIncomeId] = rsuAccount.id;
         vestIncomes.push(new PassiveIncome(
             vestIncomeId,
             `${inc.name} RSU Vest`,
@@ -223,7 +237,7 @@ export function processRSUVesting(
         );
     });
 
-    return { vestIncomes, rsuLots, totalWithholding, vestWithholdingByIncomeId, logs };
+    return { vestIncomes, rsuLots, totalWithholding, vestWithholdingByIncomeId, vestAccountIdByIncomeId, logs };
 }
 
 /** Sum the active-prorated vest income for the year (used for sanity/tests). */
