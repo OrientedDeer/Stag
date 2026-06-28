@@ -399,30 +399,55 @@ export function isActiveByMilestone(
  * NOTE the two surfaces apply the shared set with DIFFERENT predicates, by design:
  * the Income tab uses THIS function (fixed-date window AND milestone) because its
  * breakdown wants a hard active/inactive boolean; the Priority tab applies only the
- * milestone gate (`isActiveByMilestone`) and lets `getMonthlyAmount` zero out-of-
+ * milestone gate (`isActiveByMilestoneToday`) and lets `getMonthlyAmount` zero out-of-
  * window fixed dates, because a $0 income must stay in its tax base.
  *
- * `relativeMilestoneGateUnresolved` (#152/#154): the today-milestone set resolves
- * RELATIVE (MILESTONE_PLUS, "N years after X") conditions out of the cached
- * simulation timeline. On the Current/Income tab no projection may have run yet
- * (`simulation === []`), so that set can't confirm a relative milestone as reached
- * even when it fired years ago — `buildMilestoneReachYears([])` is empty. Treating
- * that as "unreached" would silently drop a genuinely-active relative-milestone
- * income from the breakdown. When the caller flags the relative gate as unresolvable,
- * we fall back to the pre-#152 behavior — the fixed-date window ALONE — rather than
- * gating on a milestone set we know is incomplete. With a real timeline the flag is
- * false and the milestone gate still works (legitimate "not yet reached" still hides).
+ * `milestoneGateUnresolved` (findings 1/2/3, supersedes the global #152/#154 flag):
+ * a PER-INCOME signal that THIS income's own start/end milestone genuinely can't be
+ * resolved right now. The today-milestone set resolves RELATIVE (MILESTONE_PLUS, "N
+ * years after X") conditions out of the cached simulation timeline; on the Current/
+ * Income tab no projection may have run yet (`simulation === []`), so a relative
+ * milestone can't be confirmed reached even when it fired years ago. For ONLY those
+ * incomes we fall back to the fixed-date window alone — gating on a milestone set we
+ * know is incomplete would silently drop a genuinely-active relative-milestone income.
+ *
+ * Crucially the fallback is PER-INCOME and applies only to sim-DEPENDENT milestones:
+ * an income gated on an ABSOLUTE (AGE/YEAR) milestone resolves from current age/year
+ * alone — no projection needed — so it keeps its normal gate and is NOT shown active
+ * before its milestone fires (finding 1). And "can't resolve" means the projection
+ * itself hasn't run, NOT that a relative milestone ran and never fired (finding 3):
+ * see `isIncomeMilestoneGateUnresolved`.
  */
 export function isIncomeActiveToday(
     inc: AnyIncome,
     todayMilestoneSet: Set<string>,
-    relativeMilestoneGateUnresolved = false,
+    milestoneGateUnresolved = false,
 ): boolean {
-    if (relativeMilestoneGateUnresolved) {
+    if (milestoneGateUnresolved) {
         return isIncomeActiveInCurrentMonth(inc);
     }
     return isIncomeActiveInCurrentMonth(inc) &&
         isActiveByMilestone(inc.startMilestoneId, inc.endMilestoneId, todayMilestoneSet);
+}
+
+/**
+ * The Priority/Allocation-tab counterpart of `isIncomeActiveToday`: applies ONLY the
+ * start/end milestone gate (the tab lets `getMonthlyAmount` zero out-of-window fixed
+ * dates and a $0 income must stay in the tax base, so it deliberately omits the
+ * fixed-date AND). Threads the SAME per-income `milestoneGateUnresolved` fallback as
+ * the Income tab (finding 2/4): an already-fired relative-milestone income with no
+ * projection cached must stay counted here too — otherwise its take-home/tax base is
+ * understated — while an absolute-milestone income keeps its normal gate.
+ */
+export function isActiveByMilestoneToday(
+    inc: AnyIncome,
+    todayMilestoneSet: Set<string>,
+    milestoneGateUnresolved = false,
+): boolean {
+    if (milestoneGateUnresolved) {
+        return true;
+    }
+    return isActiveByMilestone(inc.startMilestoneId, inc.endMilestoneId, todayMilestoneSet);
 }
 
 /** True when any income references a start/end milestone — i.e. milestone gating
@@ -430,6 +455,53 @@ export function isIncomeActiveToday(
  *  useTodayMilestoneSet short-circuit, so "is anything milestone-gated" can't drift. */
 export function incomeHasMilestoneGate(incomes: AnyIncome[]): boolean {
     return incomes.some(inc => inc.startMilestoneId || inc.endMilestoneId);
+}
+
+/**
+ * Whether evaluating a milestone needs the cached PROJECTION timeline to resolve —
+ * i.e. it is SIM-DEPENDENT rather than resolvable from today's context alone.
+ *
+ * A milestone is sim-dependent iff any of its conditions is RELATIVE (MILESTONE_PLUS,
+ * "N years after X"): that's the only valueType that reads `milestoneReachYears`, the
+ * per-milestone reach map lifted out of the projected timeline. ABSOLUTE conditions —
+ * AGE/YEAR with a FIXED/EXPENSES/EXPENSES_GROSSED_UP target — and value/net-worth
+ * conditions (NET_WORTH/LIQUID_NET_WORTH/TOTAL_DEBT) all resolve against today's
+ * accounts/expenses/age in the from-scratch `evaluateAllMilestones` call, with NO
+ * projection required, so they are NOT sim-dependent.
+ */
+export function isMilestoneSimDependent(milestone: CustomMilestone): boolean {
+    return milestone.conditions.some(c => (c.valueType ?? 'FIXED') === 'MILESTONE_PLUS');
+}
+
+/**
+ * Per-income "its milestone gate can't be resolved right now" signal (findings 1/2/3).
+ *
+ * True iff BOTH:
+ *  - the projection itself hasn't run (`projectionHasRun === false`, i.e. the cached
+ *    `simulation` array is empty) — the ONLY honest "can't resolve" trigger. A relative
+ *    milestone that ran and simply never fired leaves the reach map empty too, but that
+ *    is a genuine UNREACHED result and must gate the income OFF, not fall back (finding
+ *    3) — so we key off the projection's existence, never the reach-map size; AND
+ *  - THIS income's own start or end milestone is sim-DEPENDENT (`isMilestoneSimDependent`)
+ *    — only then does the missing timeline actually prevent resolution. An income gated
+ *    on an absolute (AGE/YEAR) milestone resolves from today's context regardless, so it
+ *    keeps its normal gate even with no projection cached (finding 1).
+ *
+ * `milestonesById` maps milestone id → milestone so the income's referenced start/end
+ * milestone kind can be looked up.
+ */
+export function isIncomeMilestoneGateUnresolved(
+    inc: AnyIncome,
+    milestonesById: Map<string, CustomMilestone>,
+    projectionHasRun: boolean,
+): boolean {
+    if (projectionHasRun) return false;
+    const milestoneSimDependent = (id: string | undefined): boolean => {
+        if (!id) return false;
+        const milestone = milestonesById.get(id);
+        return milestone ? isMilestoneSimDependent(milestone) : false;
+    };
+    return milestoneSimDependent(inc.startMilestoneId) || milestoneSimDependent(inc.endMilestoneId);
 }
 
 /**

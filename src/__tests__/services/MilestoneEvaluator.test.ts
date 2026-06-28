@@ -7,7 +7,10 @@ import {
     evaluateMilestone,
     evaluateAllMilestones,
     isActiveByMilestone,
+    isActiveByMilestoneToday,
     isIncomeActiveToday,
+    isMilestoneSimDependent,
+    isIncomeMilestoneGateUnresolved,
     MilestoneContext,
 } from '../../services/simulation/MilestoneEvaluator';
 import { InvestedAccount, SavedAccount, DebtAccount, PropertyAccount, ESPPAccount, DeficitDebtAccount, AnyAccount } from '../../components/Objects/Accounts/models';
@@ -540,8 +543,8 @@ describe('MilestoneEvaluator', () => {
         // #152/#154: a relative (MILESTONE_PLUS) start milestone resolves out of the
         // cached projection timeline. On a fresh session (simulation === []) the today-
         // set can't confirm it as reached even when it fired years ago, so without the
-        // fallback a genuinely-active income is silently dropped. The
-        // `relativeMilestoneGateUnresolved` flag falls back to the fixed-date window.
+        // fallback a genuinely-active income is silently dropped. The per-income
+        // `milestoneGateUnresolved` arg falls back to the fixed-date window alone.
         describe('relative-milestone gate unresolved (empty sim timeline)', () => {
             it('INCLUDES a time-active relative-milestone income when the reach-year map is empty', () => {
                 // Past fixed start date → the date window passes; the MILESTONE 'fi+2'
@@ -580,6 +583,154 @@ describe('MilestoneEvaluator', () => {
                 // And reached → active, exactly as before.
                 expect(isIncomeActiveToday(inc, new Set(['fi+2']), false)).toBe(true);
             });
+        });
+    });
+
+    // ===================================================================================
+    // Per-income milestone-gate resolution (findings 1/2/3/10).
+    //
+    // The fallback that lets an unresolved RELATIVE milestone fall back to the date
+    // window must be PER-INCOME (not a global flag) and must trigger ONLY when the
+    // projection itself hasn't run AND the income's own milestone is sim-dependent.
+    // ===================================================================================
+    describe('per-income milestone-gate resolution', () => {
+        const EMPTY = new Set<string>();
+        const pastDate = new Date(new Date().getFullYear() - 1, 0, 1);
+
+        // An ABSOLUTE age-based milestone (the default "Retirement" AGE>= kind): resolves
+        // from current age alone, no projection needed → NOT sim-dependent.
+        const absoluteMilestone: CustomMilestone = {
+            id: 'retire-at-65',
+            name: 'Retirement',
+            conditions: [{ type: 'AGE', operator: '>=', value: 65, valueType: 'FIXED' }],
+        };
+        // A RELATIVE (MILESTONE_PLUS, "N years after X") milestone: needs the projection
+        // timeline's reach years to resolve → sim-dependent.
+        const relativeMilestone: CustomMilestone = {
+            id: 'fi-plus-2',
+            name: '2 Years After FI',
+            conditions: [{ type: 'AGE', operator: '>=', value: 2, valueType: 'MILESTONE_PLUS', referenceMilestoneId: 'fi' }],
+        };
+        // A value/net-worth milestone: resolves against today's accounts in the from-scratch
+        // evaluation, no timeline read → NOT sim-dependent (only MILESTONE_PLUS reads the map).
+        const netWorthMilestone: CustomMilestone = {
+            id: 'fi-1m',
+            name: 'FI ($1M)',
+            conditions: [{ type: 'NET_WORTH', operator: '>=', value: 1_000_000, valueType: 'FIXED' }],
+        };
+
+        const milestonesById = new Map<string, CustomMilestone>([
+            [absoluteMilestone.id, absoluteMilestone],
+            [relativeMilestone.id, relativeMilestone],
+            [netWorthMilestone.id, netWorthMilestone],
+        ]);
+
+        // An income with a past fixed start date so the date window passes; the milestone
+        // is the only thing gating it.
+        const makeDateActiveIncome = (id: string, startMilestoneId?: string) => {
+            const inc = new WorkIncome(
+                id, 'Job', 100_000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED', pastDate,
+            );
+            if (startMilestoneId) inc.startMilestoneId = startMilestoneId;
+            return inc;
+        };
+
+        describe('isMilestoneSimDependent', () => {
+            it('is true only for a MILESTONE_PLUS (relative) milestone', () => {
+                expect(isMilestoneSimDependent(relativeMilestone)).toBe(true);
+                expect(isMilestoneSimDependent(absoluteMilestone)).toBe(false);
+                expect(isMilestoneSimDependent(netWorthMilestone)).toBe(false);
+            });
+        });
+
+        describe('isIncomeMilestoneGateUnresolved', () => {
+            it('is false once a projection has run, regardless of milestone kind', () => {
+                const inc = makeDateActiveIncome('a', relativeMilestone.id);
+                expect(isIncomeMilestoneGateUnresolved(inc, milestonesById, /* projectionHasRun */ true)).toBe(false);
+            });
+
+            it('is true for a relative-milestone income when no projection has run', () => {
+                const inc = makeDateActiveIncome('b', relativeMilestone.id);
+                expect(isIncomeMilestoneGateUnresolved(inc, milestonesById, false)).toBe(true);
+            });
+
+            it('is FALSE for an absolute-milestone income even with no projection (finding 1)', () => {
+                const inc = makeDateActiveIncome('c', absoluteMilestone.id);
+                expect(isIncomeMilestoneGateUnresolved(inc, milestonesById, false)).toBe(false);
+            });
+
+            it('is false for a net-worth-milestone income (resolves from today, no timeline)', () => {
+                const inc = makeDateActiveIncome('d', netWorthMilestone.id);
+                expect(isIncomeMilestoneGateUnresolved(inc, milestonesById, false)).toBe(false);
+            });
+
+            it('is false for an income with no milestone gate at all', () => {
+                const inc = makeDateActiveIncome('e');
+                expect(isIncomeMilestoneGateUnresolved(inc, milestonesById, false)).toBe(false);
+            });
+        });
+
+        // Finding 1: an ABSOLUTE-milestone income, no fixed start, NO projection cached,
+        // with an unrelated relative milestone also present in the plan, must NOT show
+        // active today before its milestone fires — the absolute gate still applies.
+        it('finding 1: absolute-milestone income stays gated OFF with no projection (relative milestone also present)', () => {
+            // No fixed start date so ONLY the milestone gates it.
+            const inc = new WorkIncome(
+                'abs-inc', 'Pension', 100_000, 'Annually', 'No', 0, 0, 0, 0, '', null, 'FIXED',
+            );
+            inc.startMilestoneId = absoluteMilestone.id;
+
+            // No projection cached, but the income's own milestone is ABSOLUTE → resolvable.
+            const unresolved = isIncomeMilestoneGateUnresolved(inc, milestonesById, /* projectionHasRun */ false);
+            expect(unresolved).toBe(false);
+
+            // Milestone not fired today → income is NOT active today.
+            expect(isIncomeActiveToday(inc, EMPTY, unresolved)).toBe(false);
+            // (And the Priority-tab gate agrees.)
+            expect(isActiveByMilestoneToday(inc, EMPTY, unresolved)).toBe(false);
+        });
+
+        // Finding 2 (original intent holds): a RELATIVE income that already fired but has
+        // NO projection cached must be treated as active.
+        it('finding 2: already-fired relative income shows active with no projection cached', () => {
+            const inc = makeDateActiveIncome('rel-fired', relativeMilestone.id);
+
+            const unresolved = isIncomeMilestoneGateUnresolved(inc, milestonesById, /* projectionHasRun */ false);
+            expect(unresolved).toBe(true);
+
+            // Income tab: falls back to the (passing) fixed-date window → active.
+            expect(isIncomeActiveToday(inc, EMPTY, unresolved)).toBe(true);
+            // Priority tab: keeps it counted in the tax base → active.
+            expect(isActiveByMilestoneToday(inc, EMPTY, unresolved)).toBe(true);
+        });
+
+        // Finding 3: a RELATIVE income whose base never fires — a projection HAS run, but
+        // the reach map is empty for it → genuinely UNREACHED, must be gated OFF (NOT a
+        // fallback-shown income). The signal keys off the projection having run, not the
+        // reach-map size.
+        it('finding 3: relative income whose base never fires (projection ran) is gated OFF', () => {
+            const inc = makeDateActiveIncome('rel-unreached', relativeMilestone.id);
+
+            // Projection ran → never "unresolved", even though the milestone never fired.
+            const unresolved = isIncomeMilestoneGateUnresolved(inc, milestonesById, /* projectionHasRun */ true);
+            expect(unresolved).toBe(false);
+
+            // Milestone absent from today's set (it never fired) → income is NOT active.
+            expect(isIncomeActiveToday(inc, EMPTY, unresolved)).toBe(false);
+            expect(isActiveByMilestoneToday(inc, EMPTY, unresolved)).toBe(false);
+        });
+
+        // Finding 2 (Priority-tab path): a currently-active income gated by an
+        // already-fired relative START milestone, no projection cached → counted active
+        // on the Priority tab too (it consumes the SAME gate and so MUST get the fallback).
+        it('finding 2 (Priority path): active relative-milestone income is counted with no projection cached', () => {
+            const inc = makeDateActiveIncome('rel-priority', relativeMilestone.id);
+            const unresolved = isIncomeMilestoneGateUnresolved(inc, milestonesById, /* projectionHasRun */ false);
+
+            // isActiveByMilestoneToday is the Priority-tab gate (milestone-only, no fixed-date AND).
+            expect(isActiveByMilestoneToday(inc, EMPTY, unresolved)).toBe(true);
+            // Sanity: without the fallback the raw milestone gate would drop it.
+            expect(isActiveByMilestone(inc.startMilestoneId, inc.endMilestoneId, EMPTY)).toBe(false);
         });
     });
 });

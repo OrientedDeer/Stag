@@ -111,8 +111,15 @@ describe('PriorityTab relative (MILESTONE_PLUS) milestone income (#152 review #2
         expect(grossValue()).not.toBe('$0');
     });
 
-    it('without sim reach-year data the relative milestone cannot resolve (degrades to hidden, not a crash)', () => {
-        renderWithSim([]); // empty timeline → no milestoneEvents → MILESTONE_PLUS stays null
-        expect(grossValue()).toBe('$0');
+    it('with NO projection cached, an already-active relative-milestone income is COUNTED (finding 2)', () => {
+        // Empty timeline → the relative (MILESTONE_PLUS) milestone is genuinely
+        // unresolvable, not "unreached": there's no projection to read its reach year
+        // from. Per finding 2 the Priority tab now applies the SAME per-income fallback
+        // as the Income tab — an income whose fixed-date window is active falls back to
+        // the date window alone rather than being dropped (which would understate today's
+        // take-home / tax base). The income here has a past fixed start (2020), so the
+        // date window passes and it must be counted.
+        renderWithSim([]);
+        expect(grossValue()).not.toBe('$0');
     });
 });

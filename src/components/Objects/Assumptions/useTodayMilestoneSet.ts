@@ -9,14 +9,25 @@ import {
     evaluateAllMilestones,
     buildMilestoneReachYears,
     incomeHasMilestoneGate,
+    isIncomeMilestoneGateUnresolved,
     MilestoneContext,
 } from '../../../services/simulation/MilestoneEvaluator';
+import { AnyIncome } from '../Income/models';
+import { CustomMilestone } from '../../../services/simulation/types';
+
+/** Per-income predicate: is THIS income's start/end milestone gate unresolvable right
+ *  now (sim-dependent milestone + no projection cached)? See
+ *  `isIncomeMilestoneGateUnresolved`. */
+export type MilestoneGateUnresolvedFn = (inc: AnyIncome) => boolean;
 
 // Stable references returned on the common paths so callers' downstream memos
 // (e.g. PriorityTab's tax/deduction calcs that depend on the active-income set, and
 // IncomeTab's icicle data) don't invalidate on unrelated edits or re-simulations.
 const EMPTY_MILESTONE_SET: Set<string> = new Set<string>();
 const EMPTY_REACH_YEARS: Map<string, number> = new Map<string, number>();
+// Stable "nothing is unresolvable" predicate so the common (no-gating / projection-
+// cached) path returns the same function reference every render.
+const NEVER_UNRESOLVED: MilestoneGateUnresolvedFn = () => false;
 
 /**
  * The set of milestones already reached AS OF TODAY — the single shared source the
@@ -42,40 +53,17 @@ const EMPTY_REACH_YEARS: Map<string, number> = new Map<string, number>();
  *    updates when the next projection lands — the same lag every sim-derived view has.
  *
  * Short-circuits to a stable empty set when no income references any milestone.
- */
-export function useTodayMilestoneSet(): Set<string> {
-    return useTodayMilestoneState().todayMilestoneSet;
-}
-
-/**
- * Whether the today-milestone set's RELATIVE (MILESTONE_PLUS) gate is currently
- * UNRESOLVABLE — true when a relative milestone exists but the cached `simulation`
- * timeline is empty, so `buildMilestoneReachYears` yields no reach years and every
- * MILESTONE_PLUS condition resolves to "not reached" (#152/#154).
  *
- * On the Current/Income tab a projection may not have run yet (`simulation === []`),
- * so a genuinely-active relative-milestone income would be silently dropped from the
- * breakdown — the milestone can't be confirmed reached, not because it isn't, but
- * because there's no timeline to read it from. Callers use this to fall back to the
- * pre-#152 date-window-only gate for that case (see `isIncomeActiveToday`), rather
- * than treating the unresolvable milestone as unreached. When the timeline IS
- * available this is false and the milestone gate works normally.
- *
- * Returns a stable `false` whenever no relative milestone is in play, so it never
- * adds a dependency on `simulation` in the common case.
+ * Returns BOTH the today set and a PER-INCOME `isIncomeMilestoneGateUnresolved`
+ * predicate (findings 1/2/3/10): both surfaces get everything from this ONE hook call
+ * (so the derivation runs once — finding 10), and the per-income predicate lets each
+ * tab fall back to the date-window gate ONLY for an income whose own sim-dependent
+ * (relative) milestone can't be resolved because no projection has run — never via a
+ * global flag that opened the gate for every income (finding 1/2).
  */
-export function useRelativeMilestoneGateUnresolved(): boolean {
-    return useTodayMilestoneState().relativeMilestoneGateUnresolved;
-}
-
-/**
- * Shared derivation backing both `useTodayMilestoneSet` and
- * `useRelativeMilestoneGateUnresolved` so the (re)evaluation runs once and the two
- * surfaces can't drift. Each public hook reads a single field off the result.
- */
-function useTodayMilestoneState(): {
+export function useTodayMilestoneSet(): {
     todayMilestoneSet: Set<string>;
-    relativeMilestoneGateUnresolved: boolean;
+    isIncomeMilestoneGateUnresolved: MilestoneGateUnresolvedFn;
 } {
     const { state } = useContext(AssumptionsContext);
     const { accounts } = useContext(AccountContext);
@@ -98,13 +86,6 @@ function useTodayMilestoneState(): {
         [hasRelativeMilestone, simulation],
     );
 
-    // The relative gate is unresolvable only when a MILESTONE_PLUS condition is in
-    // play AND there's nothing to resolve it against — no reach years were extracted
-    // because no projection has been cached yet. Gated on a milestone-income existing
-    // so this stays false (and stable) for everyone who isn't milestone-gated.
-    const relativeMilestoneGateUnresolved =
-        hasMilestoneIncome && hasRelativeMilestone && milestoneReachYears.size === 0;
-
     // Computed at render (cheap primitive) and kept in the deps so the memo
     // re-evaluates across a calendar-year boundary rather than holding a stale year.
     const year = new Date().getFullYear();
@@ -126,5 +107,30 @@ function useTodayMilestoneState(): {
         // no relative milestone exists, so this doesn't churn on re-sims in that case.
     }, [hasMilestoneIncome, state.milestones, accounts, expenses, taxState.filingStatus, milestoneReachYears, year]);
 
-    return { todayMilestoneSet, relativeMilestoneGateUnresolved };
+    // The "can't resolve this income's milestone gate" signal keys off whether the
+    // PROJECTION itself has run (simulation non-empty) — NOT the reach-map size, which
+    // is also empty when a relative milestone ran and never fired (a genuine unreached
+    // result that must gate OFF, finding 3). It's a per-income predicate (finding 2):
+    // only sim-dependent (relative) milestones fall back, and only when no projection
+    // exists; absolute-milestone incomes keep their normal gate (finding 1).
+    const projectionHasRun = simulation.length > 0;
+
+    const milestonesById = useMemo(() => {
+        const map = new Map<string, CustomMilestone>();
+        for (const m of state.milestones ?? []) map.set(m.id, m);
+        return map;
+    }, [state.milestones]);
+
+    const isIncomeGateUnresolved = useMemo<MilestoneGateUnresolvedFn>(() => {
+        // Common path: a projection is cached, or nothing is milestone-gated, or no
+        // relative milestone is in play at all → nothing can be unresolvable. Return
+        // the stable shared predicate so callers' memos don't churn.
+        if (projectionHasRun || !hasMilestoneIncome || !hasRelativeMilestone) {
+            return NEVER_UNRESOLVED;
+        }
+        return (inc: AnyIncome) =>
+            isIncomeMilestoneGateUnresolved(inc, milestonesById, projectionHasRun);
+    }, [projectionHasRun, hasMilestoneIncome, hasRelativeMilestone, milestonesById]);
+
+    return { todayMilestoneSet, isIncomeMilestoneGateUnresolved: isIncomeGateUnresolved };
 }

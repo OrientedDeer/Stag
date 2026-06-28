@@ -13,8 +13,9 @@ import { formatCompactCurrency } from './tabs/FutureUtils';
 import { get401kLimit, getIRALimit, getHSALimit } from '../../data/ContributionLimits';
 import { getActiveExpenses } from '../../components/Objects/Budget/budgetUtils';
 import { isLongTermGoal, getGoalFundMonthlyCap } from '../../components/Objects/Expense/models';
-import { isActiveByMilestone, incomeHasMilestoneGate } from '../../services/simulation/MilestoneEvaluator';
+import { isActiveByMilestoneToday, incomeHasMilestoneGate } from '../../services/simulation/MilestoneEvaluator';
 import { useTodayMilestoneSet } from '../../components/Objects/Assumptions/useTodayMilestoneSet';
+import { WarningTriangleIcon } from '../../components/Layout/Icons/WarningTriangleIcon';
 
 // UI Components
 import { CurrencyInput } from '../../components/Layout/InputFields/CurrencyInput';
@@ -105,7 +106,7 @@ export default function PriorityTab() {
     // take-home. getMonthlyAmount(year) already prorates fixed start/end dates to
     // $0 when out of window, but it is milestone-BLIND — a milestone-started income
     // (no fixed start date) reports its full amount even when its milestone fires
-    // years out, inflating take-home/taxes/deductions. Gate on isActiveByMilestone
+    // years out, inflating take-home/taxes/deductions. Gate on isActiveByMilestoneToday
     // against todayMilestoneSet — the SHARED set of milestones reached as of today
     // (useTodayMilestoneSet, also used by the Income tab; resolves relative
     // MILESTONE_PLUS conditions via the engine's reach years). Note this tab applies
@@ -114,16 +115,23 @@ export default function PriorityTab() {
     // stay IN activeIncomes for the tax base. hasMilestoneIncome short-circuits so
     // activeIncomes stays the SAME reference as incomes when nothing is milestone-
     // gated, keeping the tax/deduction memos from recomputing on unrelated edits.
+    //
+    // finding 2: this tab consumes the SAME shared gate as the Income tab and so MUST
+    // get the same per-income fallback (isIncomeMilestoneGateUnresolved). Without it, on
+    // a fresh session (no projection cached) an already-fired RELATIVE-milestone income
+    // would be dropped here, understating take-home / the tax base. isActiveByMilestoneToday
+    // threads that fallback: a sim-dependent milestone that can't be resolved yet keeps
+    // the income counted, while an absolute-milestone income keeps its normal gate.
     const hasMilestoneIncome = useMemo(() => incomeHasMilestoneGate(incomes), [incomes]);
 
-    const todayMilestoneSet = useTodayMilestoneSet();
+    const { todayMilestoneSet, isIncomeMilestoneGateUnresolved } = useTodayMilestoneSet();
 
     const activeIncomes = useMemo(
         () => hasMilestoneIncome
             ? incomes.filter(inc =>
-                isActiveByMilestone(inc.startMilestoneId, inc.endMilestoneId, todayMilestoneSet))
+                isActiveByMilestoneToday(inc, todayMilestoneSet, isIncomeMilestoneGateUnresolved(inc)))
             : incomes,
-    [hasMilestoneIncome, incomes, todayMilestoneSet]);
+    [hasMilestoneIncome, incomes, todayMilestoneSet, isIncomeMilestoneGateUnresolved]);
 
     const totalMonthlyIncome = useMemo(() =>
         activeIncomes.reduce((sum, inc) => sum + (inc.getMonthlyAmount(year)), 0),
@@ -912,9 +920,7 @@ export default function PriorityTab() {
                                                                         </div>
                                                                         {unreachableIds.has(item.id) && (
                                                                             <div className="flex items-center gap-1 mt-0.5">
-                                                                                <svg className="w-3 h-3 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                                                                </svg>
+                                                                                <WarningTriangleIcon className="w-3 h-3 text-warning" />
                                                                                 <span className="text-xs text-warning">
                                                                                     Never funded — an "Everything Remaining" bucket above takes all surplus. Drag this above it.
                                                                                 </span>
@@ -922,9 +928,7 @@ export default function PriorityTab() {
                                                                         )}
                                                                         {priorityWarnings[item.id] && (
                                                                             <div className="flex items-center gap-1 mt-0.5">
-                                                                                <svg className="w-3 h-3 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                                                                </svg>
+                                                                                <WarningTriangleIcon className="w-3 h-3 text-warning" />
                                                                                 <span className="text-xs text-warning">
                                                                                     {priorityWarnings[item.id].message}
                                                                                 </span>

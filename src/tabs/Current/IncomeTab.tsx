@@ -1,6 +1,6 @@
 import { useState, useContext, useMemo } from "react";
 import { IncomeContext, IncomeDispatchContext } from "../../components/Objects/Income/IncomeContext";
-import { useTodayMilestoneSet, useRelativeMilestoneGateUnresolved } from "../../components/Objects/Assumptions/useTodayMilestoneSet";
+import { useTodayMilestoneSet } from "../../components/Objects/Assumptions/useTodayMilestoneSet";
 import { isIncomeActiveToday } from "../../services/simulation/MilestoneEvaluator";
 import {
 	AnyIncome,
@@ -101,15 +101,15 @@ const TabsContent = () => {
 	// the same gap #145 fixed on the Allocation tab. todayMilestoneSet (shared with
 	// PriorityTab) is the set of milestones reached as of today; isIncomeActiveToday
 	// AND-s it with the fixed-date window.
-	const todayMilestoneSet = useTodayMilestoneSet();
-
-	// #152/#154: that today-set resolves RELATIVE (MILESTONE_PLUS) milestones out of
-	// the cached projection timeline. On a fresh session this tab can render before any
-	// projection exists (simulation === []), leaving the relative gate unresolvable —
-	// an already-fired relative-milestone income would be wrongly dropped. When that's
-	// the case, isIncomeActiveToday falls back to the fixed-date window alone so a
-	// genuinely-active income still shows; with a real timeline the gate works normally.
-	const relativeMilestoneGateUnresolved = useRelativeMilestoneGateUnresolved();
+	//
+	// Both pieces come from the SINGLE hook call (finding 10), so the derivation runs
+	// once. isIncomeMilestoneGateUnresolved is the PER-INCOME fallback (findings 1/2/3):
+	// on a fresh session (no projection cached) an income gated on a sim-dependent
+	// (relative) milestone that already fired can't be confirmed from the empty timeline,
+	// so isIncomeActiveToday falls back to the fixed-date window ALONE for THAT income —
+	// while an absolute-milestone income keeps its normal gate and a relative milestone
+	// that ran and never fired stays gated OFF.
+	const { todayMilestoneSet, isIncomeMilestoneGateUnresolved } = useTodayMilestoneSet();
 
 	// Data wrangling for icicle chart
 	const hierarchicalData = useMemo(() => {
@@ -117,7 +117,7 @@ const TabsContent = () => {
 
 		// 1. Group incomes (only those active TODAY — fixed-date window AND milestone)
 		incomes
-			.filter(inc => isIncomeActiveToday(inc, todayMilestoneSet, relativeMilestoneGateUnresolved))
+			.filter(inc => isIncomeActiveToday(inc, todayMilestoneSet, isIncomeMilestoneGateUnresolved(inc)))
 			.forEach((inc) => {
 				const category = CLASS_TO_CATEGORY[inc.constructor.name] || 'Other';
 				if (!grouped[category]) grouped[category] = [];
@@ -154,7 +154,7 @@ const TabsContent = () => {
 			color: "var(--color-chart-money)", // Root node color
 			children: categoryChildren
 		};
-	}, [incomes, todayMilestoneSet, relativeMilestoneGateUnresolved]);
+	}, [incomes, todayMilestoneSet, isIncomeMilestoneGateUnresolved]);
 
 	return (
 		<div className="w-full min-h-full flex bg-surface-base justify-center pt-6 pb-24">
