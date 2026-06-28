@@ -78,6 +78,28 @@ function buildEoyCashflowDetail(
     // reinvested-destination branch in buildCashflowDetail is not exercised on this
     // path. (If a synthetic vest/interest id ever did reach here, the resolver would
     // fall back to the raw income name — still correct, just unlabeled by account.)
+    //
+    // Lightweight dev-only guard so the invariant above doesn't live in prose alone:
+    // if a future regression ever routes a synthetic `interest-`/`rsu-vest-` id into
+    // the raw income set, those incomes would need the (omitted) account-id maps to
+    // resolve their reinvested destination, so omitting the maps would silently
+    // mislabel them. Throwing in dev (tests run with import.meta.env.DEV === true)
+    // turns that latent drift into a loud failure; stripped from production builds,
+    // so the render/sim hot path pays nothing.
+    if (import.meta.env.DEV) {
+        const synthetic = incomes.find(
+            inc => inc.id.startsWith('interest-') || inc.id.startsWith('rsu-vest-'),
+        );
+        if (synthetic) {
+            throw new Error(
+                `buildEoyCashflowDetail received a synthetic income id ("${synthetic.id}") in ` +
+                `yearZero.incomes, but omits the rsuVestAccountId/interestAccountIdByIncomeId ` +
+                `maps needed to resolve its reinvested destination. Pass the account-id maps ` +
+                `here, or keep synthetic ids out of yearZero.incomes.`,
+            );
+        }
+    }
+
     const fullYear = buildCashflowDetail({
         incomes,
         expenses,

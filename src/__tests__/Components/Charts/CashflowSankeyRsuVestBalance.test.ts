@@ -463,6 +463,48 @@ describe('Reinvested-interest Sankey account resolution — explicit id (re-revi
         expect(src!.accountName).toBe('Emergency Fund');
     });
 
+    it('resolves a DUPLICATE account id FIRST-wins (matching the old accounts.find semantics) (re-review 3)', () => {
+        // Re-review [3]: the accountById lookup must preserve the old
+        // `accounts.find(a => a.id === X)` FIRST-wins behavior. A botched import /
+        // QR-restore can duplicate an account id; the prior `new Map(accounts.map(...))`
+        // kept the LAST entry, silently flipping the resolved destination.
+        //
+        // Two accounts share id 'dup'. The interest income's source account ('dup') is
+        // carried by the map, so resolution goes through accountById.get('dup'). It must
+        // pick the FIRST 'dup' ('First Account'), exactly as accounts.find() did — NOT
+        // the LAST ('Second Account'), which the last-wins Map would have returned.
+        const detail = buildCashflowDetail({
+            incomes: [
+                new PassiveIncome(
+                    `interest-dup-${YEAR}`,
+                    'Duped Interest',
+                    400,
+                    'Annually',
+                    'No',
+                    'Interest',
+                    new Date(YEAR, 0, 1),
+                    new Date(YEAR, 11, 31),
+                    true, // isReinvested → routed through the reinvested-destination resolver
+                ),
+            ],
+            expenses: [],
+            accounts: [
+                new SavedAccount('dup', 'First Account', 10000, 2),
+                new SavedAccount('dup', 'Second Account', 20000, 3),
+            ],
+            insurance: 0,
+            year: YEAR,
+            brokerageLTCGFromGross: 0,
+            interestAccountIdByIncomeId: { [`interest-dup-${YEAR}`]: 'dup' },
+        });
+        const src = detail.incomeBySource.find(s => s.kind === 'reinvested');
+        expect(src, 'a reinvested interest source').toBeDefined();
+        // FIRST-wins: the old find() returned the first 'dup'. A last-wins Map would
+        // resolve to 'Second Account' here (this assertion fails before the fix).
+        expect(src!.accountName).toBe('First Account');
+        expect(src!.accountName).not.toBe('Second Account');
+    });
+
     it('threads the interest account-id map end-to-end through the real engine', () => {
         // Drive the REAL engine: a savings account earns interest, which projectIncomes
         // mints as a reinvested PassiveIncome and records in interestAccountIdByIncomeId.

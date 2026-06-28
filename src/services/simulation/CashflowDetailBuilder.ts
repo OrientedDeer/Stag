@@ -125,8 +125,18 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
     // account, interest/RSU reinvested destinations, employer-inflow split). This
     // replaces four prior O(accounts) linear `accounts.find(a => a.id === …)` scans
     // (and the duplicate Map that the per-account deferral block used to build), so
-    // each lookup is O(1) — behavior-identical.
-    const accountById = new Map(accounts.map(a => [a.id, a]));
+    // each lookup is O(1).
+    //
+    // FIRST-WINS: built by skipping any id already seen, so a duplicate id resolves
+    // to the FIRST matching account — exactly what the replaced `accounts.find(a =>
+    // a.id === …)` returned. (`new Map(accounts.map(...))` would keep the LAST entry
+    // for a duplicate key, silently flipping the resolution.) Ids are unique in
+    // practice, but a botched import / QR-restore could duplicate one, so preserve
+    // the old semantics rather than rely on uniqueness.
+    const accountById = new Map<string, AnyAccount>();
+    for (const a of accounts) {
+        if (!accountById.has(a.id)) accountById.set(a.id, a);
+    }
 
     const incomeBySource: CashflowIncomeSource[] = [];
     let userPreTax401k = 0;
