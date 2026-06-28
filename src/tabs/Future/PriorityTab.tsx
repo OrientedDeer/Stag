@@ -499,13 +499,6 @@ export default function PriorityTab() {
 
             const surplusBefore = Math.max(0, currentRemaining);
 
-            // #60 C [0]/[1]: a debt-paydown bucket is a ONE-TIME event funded from
-            // the YEAR'S surplus, NOT a recurring monthly draw. The waterfall is a
-            // monthly steady-state view, so render the payoff as a distinct
-            // one-time callout that does NOT consume `currentRemaining` — that way
-            // the recurring buckets below show their TRUE steady-state funding (no
-            // /12 spread, no false clamp, no starving). Resolved via the SHARED
-            // predicate so the preview agrees with the engine.
             // #60 (linked-debt rework): a debt bucket is now a NORMAL CAPPED
             // bucket — its cap is the debt's current balance, and it consumes its
             // share of surplus like any other bucket (the engine reduces the
@@ -527,7 +520,7 @@ export default function PriorityTab() {
                 // an "approximate" disclaimer. The engine pays a debt as a ONE-TIME
                 // annual lump from the same surplus pool (min(remaining, balance)
                 // clamp), which no monthly steady-state line can faithfully replay.
-                return { ...item, actualDed, remainingAfter: currentRemaining, label, provenance, isDebtPaydown: true };
+                return { ...item, actualDed, remainingAfter: currentRemaining, label, provenance };
             }
 
             // [0]/[3]: a DEAD bucket persisted as REMAINDER (deleted account) must
@@ -557,7 +550,6 @@ export default function PriorityTab() {
                     remainingAfter: currentRemaining,
                     label: 'Not funded',
                     provenance,
-                    isDebtPaydown: false,
                 };
             }
 
@@ -624,7 +616,6 @@ export default function PriorityTab() {
                 remainingAfter: currentRemaining,
                 label,
                 provenance,
-                isDebtPaydown: false,
             };
         });
     }, [state.priorities, disposableAfterExpenses, totalMonthlyFixedExpenses, accountById, getAccountContributionLimit, formatMoney, paydownDebtFor, isDeadBucket]);
@@ -635,8 +626,8 @@ export default function PriorityTab() {
     // replay is the deferred redesign). The exact figures live in the Future
     // projection.
     const hasDebtPaydownBucket = useMemo(
-        () => waterfallItems.some(item => item.isDebtPaydown),
-        [waterfallItems]);
+        () => state.priorities.some(item => paydownDebtFor(item.accountId)),
+        [state.priorities, paydownDebtFor]);
 
     const finalRemaining = waterfallItems.length > 0
         ? waterfallItems[waterfallItems.length - 1].remainingAfter
