@@ -102,14 +102,17 @@ const TabsContent = () => {
 	// PriorityTab) is the set of milestones reached as of today; isIncomeActiveToday
 	// AND-s it with the fixed-date window.
 	//
-	// Both pieces come from the SINGLE hook call (finding 10), so the derivation runs
+	// Everything comes from the SINGLE hook call (finding 10), so the derivation runs
 	// once. isIncomeMilestoneGateUnresolved is the PER-INCOME fallback (findings 1/2/3):
 	// on a fresh session (no projection cached) an income gated on a sim-dependent
-	// (relative) milestone that already fired can't be confirmed from the empty timeline,
-	// so isIncomeActiveToday falls back to the fixed-date window ALONE for THAT income —
-	// while an absolute-milestone income keeps its normal gate and a relative milestone
-	// that ran and never fired stays gated OFF.
-	const { todayMilestoneSet, isIncomeMilestoneGateUnresolved } = useTodayMilestoneSet();
+	// (relative) milestone that already fired can't be confirmed from the empty timeline.
+	// isIncomeActiveToday and PriorityTab's gate now share the SAME milestone resolver
+	// (isMilestoneActiveToday, re-review finding 1), so both honor a resolvable absolute
+	// END that has already fired and default only the genuinely sim-bound side — they
+	// can't disagree on an ended income. milestonesById lets that shared resolver classify
+	// each referenced milestone's kind, so we thread it through here too (was previously
+	// passed only on the Priority path, which made the two surfaces diverge).
+	const { todayMilestoneSet, isIncomeMilestoneGateUnresolved, milestonesById } = useTodayMilestoneSet();
 
 	// Data wrangling for icicle chart
 	const hierarchicalData = useMemo(() => {
@@ -117,7 +120,7 @@ const TabsContent = () => {
 
 		// 1. Group incomes (only those active TODAY — fixed-date window AND milestone)
 		incomes
-			.filter(inc => isIncomeActiveToday(inc, todayMilestoneSet, isIncomeMilestoneGateUnresolved(inc)))
+			.filter(inc => isIncomeActiveToday(inc, todayMilestoneSet, isIncomeMilestoneGateUnresolved(inc), milestonesById))
 			.forEach((inc) => {
 				const category = CLASS_TO_CATEGORY[inc.constructor.name] || 'Other';
 				if (!grouped[category]) grouped[category] = [];
@@ -154,7 +157,7 @@ const TabsContent = () => {
 			color: "var(--color-chart-money)", // Root node color
 			children: categoryChildren
 		};
-	}, [incomes, todayMilestoneSet, isIncomeMilestoneGateUnresolved]);
+	}, [incomes, todayMilestoneSet, isIncomeMilestoneGateUnresolved, milestonesById]);
 
 	return (
 		<div className="w-full min-h-full flex bg-surface-base justify-center pt-6 pb-24">

@@ -509,6 +509,15 @@ describe('MilestoneEvaluator', () => {
         const makeIncome = () => new WorkIncome(
             'inc', 'Job', 100_000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED',
         );
+        // `fi+2` is a RELATIVE (MILESTONE_PLUS) milestone — sim-dependent, so when the gate
+        // is unresolved (no projection) the shared resolver assumes it STARTED rather than
+        // dropping the income. The production caller (IncomeTab) always supplies this map.
+        const relativeFiPlus2: CustomMilestone = {
+            id: 'fi+2',
+            name: '2 Years After FI',
+            conditions: [{ type: 'AGE', operator: '>=', value: 2, valueType: 'MILESTONE_PLUS', referenceMilestoneId: 'fi' }],
+        };
+        const milestonesById = new Map<string, CustomMilestone>([[relativeFiPlus2.id, relativeFiPlus2]]);
 
         it('non-milestone income with no start date is active today', () => {
             expect(isIncomeActiveToday(makeIncome(), EMPTY)).toBe(true);
@@ -559,20 +568,23 @@ describe('MilestoneEvaluator', () => {
 
                 // Without the flag (normal path), the unreached milestone hides it.
                 expect(isIncomeActiveToday(inc, EMPTY)).toBe(false);
-                // With the gate flagged unresolvable, the date window alone keeps it active.
-                expect(isIncomeActiveToday(inc, EMPTY, true)).toBe(true);
+                // With the gate flagged unresolvable AND the milestone map supplied (the
+                // production path), the relative start `fi+2` is classified sim-dependent →
+                // assumed STARTED, and with no end the (open) date window keeps it active.
+                expect(isIncomeActiveToday(inc, EMPTY, true, milestonesById)).toBe(true);
             });
 
             it('still respects the fixed-date window even when the gate is unresolved', () => {
-                // A FUTURE fixed start date must stay inactive — the fallback is the
-                // date window ALONE, not "always active".
+                // A FUTURE fixed start date must stay inactive — the milestone half can be
+                // satisfied (relative start assumed started), but isIncomeActiveToday ANDs
+                // the date window, which a future start fails.
                 const future = new Date(new Date().getFullYear() + 5, 0, 1);
                 const inc = new WorkIncome(
                     'inc-rel-future', 'Future Post-FI Job', 100_000, 'Annually', 'Yes',
                     0, 0, 0, 0, '', null, 'FIXED', future,
                 );
                 inc.startMilestoneId = 'fi+2';
-                expect(isIncomeActiveToday(inc, EMPTY, true)).toBe(false);
+                expect(isIncomeActiveToday(inc, EMPTY, true, milestonesById)).toBe(false);
             });
 
             it('does not relax the gate when it is resolvable (flag false → milestone still gates)', () => {
@@ -641,6 +653,26 @@ describe('MilestoneEvaluator', () => {
                 expect(isMilestoneSimDependent(absoluteMilestone)).toBe(false);
                 expect(isMilestoneSimDependent(netWorthMilestone)).toBe(false);
             });
+
+            // Bug [2]: milestones loaded from imported/QR backups can lack a `conditions`
+            // array. The unguarded `.some(...)` TypeErrors on every render and white-screens
+            // the Priority/Income/Withdrawal tabs. The guard `(conditions ?? [])` must hold.
+            it('does NOT throw and returns false when conditions is undefined (imported data)', () => {
+                const noConditions = { ...relativeMilestone, conditions: undefined } as unknown as CustomMilestone;
+                expect(() => isMilestoneSimDependent(noConditions)).not.toThrow();
+                expect(isMilestoneSimDependent(noConditions)).toBe(false);
+            });
+
+            // The same guard must survive a LIST scan (the useTodayMilestoneSet hook does
+            // `state.milestones.some(isMilestoneSimDependent)`, its hasRelativeMilestone): one
+            // milestone with an undefined `conditions` array in the list must not crash it.
+            it('a milestone list containing a conditions:undefined milestone does not throw on scan', () => {
+                const noConditions = { ...absoluteMilestone, conditions: undefined } as unknown as CustomMilestone;
+                const list = [relativeMilestone, noConditions, netWorthMilestone];
+                expect(() => list.some(isMilestoneSimDependent)).not.toThrow();
+                // The genuine relative milestone is still detected past the bad one.
+                expect(list.some(isMilestoneSimDependent)).toBe(true);
+            });
         });
 
         describe('isIncomeMilestoneGateUnresolved', () => {
@@ -698,10 +730,11 @@ describe('MilestoneEvaluator', () => {
             const unresolved = isIncomeMilestoneGateUnresolved(inc, milestonesById, /* projectionHasRun */ false);
             expect(unresolved).toBe(true);
 
-            // Income tab: falls back to the (passing) fixed-date window → active.
-            expect(isIncomeActiveToday(inc, EMPTY, unresolved)).toBe(true);
-            // Priority tab: the relative START is sim-dependent + unresolved → assumed
-            // started, no end → kept in the tax base → active.
+            // Income tab: the relative START is sim-dependent + unresolved → assumed started
+            // (via the SHARED resolver, with milestonesById now threaded through), and the
+            // (passing) fixed-date window keeps it active.
+            expect(isIncomeActiveToday(inc, EMPTY, unresolved, milestonesById)).toBe(true);
+            // Priority tab: same shared resolver → assumed started, no end → active.
             expect(isActiveByMilestoneToday(inc, EMPTY, unresolved, milestonesById)).toBe(true);
         });
 
@@ -798,6 +831,56 @@ describe('MilestoneEvaluator', () => {
                 const unresolved = isIncomeMilestoneGateUnresolved(inc, milestonesById, /* projectionHasRun */ false);
 
                 expect(isActiveByMilestoneToday(inc, todayWithEnd, unresolved, milestonesById)).toBe(false);
+            });
+        });
+
+        // ===========================================================================
+        // RE-REVIEW finding [1] (headline): the unresolved-gate fix was originally applied
+        // to ONLY the Priority gate (isActiveByMilestoneToday). isIncomeActiveToday still
+        // returned the bare fixed-date window on an unresolved gate, IGNORING an already-
+        // fired ABSOLUTE end milestone. So the Income tab (over-counted, ACTIVE) and the
+        // Priority tab (ENDED) DISAGREED. Both now share the isMilestoneActiveToday helper
+        // AND isIncomeActiveToday accepts milestonesById, so they must match.
+        // ===========================================================================
+        describe("finding [1]: both active-today gates agree on a fired absolute end", () => {
+            // Relative START (sim-dependent, fired but unresolvable) + ABSOLUTE END that has
+            // already fired + a PAST fixed start date so the date window is OPEN. The only
+            // thing that should gate it OFF is the resolvable absolute end.
+            const makeRelStartAbsEnd = (id: string) => {
+                const inc = makeDateActiveIncome(id, relativeMilestone.id); // past fixed start → window open
+                inc.endMilestoneId = absoluteMilestone.id; // absolute → resolvable from todaySet
+                return inc;
+            };
+
+            it("isIncomeActiveToday: relative start (unresolved) + fired absolute end + open window → NOT active (matches Priority gate)", () => {
+                const inc = makeRelStartAbsEnd('inc-rel-start-abs-end-fired');
+                const todayWithEnd = new Set<string>([absoluteMilestone.id]); // end has fired
+                const unresolved = isIncomeMilestoneGateUnresolved(inc, milestonesById, /* projectionHasRun */ false);
+                expect(unresolved).toBe(true);
+
+                // The fix: isIncomeActiveToday must now honor the resolvable fired absolute end.
+                // (Pre-fix it ignored milestonesById and returned the open date window → true.)
+                const incomeGate = isIncomeActiveToday(inc, todayWithEnd, unresolved, milestonesById);
+                const priorityGate = isActiveByMilestoneToday(inc, todayWithEnd, unresolved, milestonesById);
+                expect(incomeGate).toBe(false);
+                // CONSISTENCY: the two surfaces must agree.
+                expect(incomeGate).toBe(priorityGate);
+            });
+
+            it("regression: active income (no end / end not fired, open window) stays active and the two gates agree", () => {
+                // Relative start (unresolved, assumed started), NO end milestone, open window.
+                const incNoEnd = makeDateActiveIncome('inc-rel-start-no-end', relativeMilestone.id);
+                const unresolvedNoEnd = isIncomeMilestoneGateUnresolved(incNoEnd, milestonesById, false);
+                const incomeNoEnd = isIncomeActiveToday(incNoEnd, EMPTY, unresolvedNoEnd, milestonesById);
+                expect(incomeNoEnd).toBe(true);
+                expect(incomeNoEnd).toBe(isActiveByMilestoneToday(incNoEnd, EMPTY, unresolvedNoEnd, milestonesById));
+
+                // Relative start + absolute end that has NOT fired, open window → still active.
+                const incUnfiredEnd = makeRelStartAbsEnd('inc-rel-start-abs-end-unfired');
+                const unresolvedUnfired = isIncomeMilestoneGateUnresolved(incUnfiredEnd, milestonesById, false);
+                const incomeUnfired = isIncomeActiveToday(incUnfiredEnd, EMPTY, unresolvedUnfired, milestonesById);
+                expect(incomeUnfired).toBe(true);
+                expect(incomeUnfired).toBe(isActiveByMilestoneToday(incUnfiredEnd, EMPTY, unresolvedUnfired, milestonesById));
             });
         });
     });

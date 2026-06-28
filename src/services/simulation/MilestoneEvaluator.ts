@@ -400,7 +400,11 @@ export function isActiveByMilestone(
  * the Income tab uses THIS function (fixed-date window AND milestone) because its
  * breakdown wants a hard active/inactive boolean; the Priority tab applies only the
  * milestone gate (`isActiveByMilestoneToday`) and lets `getMonthlyAmount` zero out-of-
- * window fixed dates, because a $0 income must stay in its tax base.
+ * window fixed dates, because a $0 income must stay in its tax base. The MILESTONE half
+ * of both predicates is now the SINGLE shared `isMilestoneActiveToday` helper — this
+ * function is `isIncomeActiveInCurrentMonth(inc) && isMilestoneActiveToday(...)`, the
+ * Priority tab is `isMilestoneActiveToday(...)` alone — so the two can't diverge on which
+ * milestone has fired OR on the unresolved-gate fallback (re-review finding 1).
  *
  * `milestoneGateUnresolved` (findings 1/2/3, supersedes the global #152/#154 flag):
  * a PER-INCOME signal that THIS income's own start/end milestone genuinely can't be
@@ -408,8 +412,10 @@ export function isActiveByMilestone(
  * years after X") conditions out of the cached simulation timeline; on the Current/
  * Income tab no projection may have run yet (`simulation === []`), so a relative
  * milestone can't be confirmed reached even when it fired years ago. For ONLY those
- * incomes we fall back to the fixed-date window alone — gating on a milestone set we
- * know is incomplete would silently drop a genuinely-active relative-milestone income.
+ * incomes the shared helper resolves each side it still can and defaults only the
+ * genuinely sim-bound one — see `isMilestoneActiveToday` for the per-side logic. The
+ * caller therefore passes `milestonesById` so the helper can classify each referenced
+ * milestone's kind.
  *
  * Crucially the fallback is PER-INCOME and applies only to sim-DEPENDENT milestones:
  * an income gated on an ABSOLUTE (AGE/YEAR) milestone resolves from current age/year
@@ -422,29 +428,33 @@ export function isIncomeActiveToday(
     inc: AnyIncome,
     todayMilestoneSet: Set<string>,
     milestoneGateUnresolved = false,
+    milestonesById?: Map<string, CustomMilestone>,
 ): boolean {
-    if (milestoneGateUnresolved) {
-        return isIncomeActiveInCurrentMonth(inc);
-    }
     return isIncomeActiveInCurrentMonth(inc) &&
-        isActiveByMilestone(inc.startMilestoneId, inc.endMilestoneId, todayMilestoneSet);
+        isMilestoneActiveToday(
+            inc.startMilestoneId,
+            inc.endMilestoneId,
+            todayMilestoneSet,
+            milestoneGateUnresolved,
+            milestonesById,
+        );
 }
 
 /**
- * The Priority/Allocation-tab counterpart of `isIncomeActiveToday`: applies ONLY the
- * start/end milestone gate (the tab lets `getMonthlyAmount` zero out-of-window fixed
- * dates and a $0 income must stay in the tax base, so it deliberately omits the
- * fixed-date AND). Threads the SAME per-income `milestoneGateUnresolved` fallback as
- * the Income tab (finding 2/4): an already-fired relative-milestone income with no
- * projection cached must stay counted here too — otherwise its take-home/tax base is
- * understated — while an absolute-milestone income keeps its normal gate.
+ * The SINGLE shared per-side milestone resolution behind BOTH active-today gates
+ * (`isIncomeActiveToday` and `isActiveByMilestoneToday`), so the two surfaces can NOT
+ * diverge on which milestone-gated income counts right now (re-review finding 1). Returns
+ * `started && !ended`.
  *
- * When `milestoneGateUnresolved` is true (re-review finding 1/2) we do NOT blindly
- * return active — that over-counts an income that has actually ENDED. The gate flag is
- * raised when AT LEAST ONE of this income's milestones is sim-dependent (relative) and
- * no projection is cached, but the OTHER side may still be perfectly resolvable from
- * today's set. So we evaluate each side, HONORING every milestone we can resolve and
- * defaulting only the genuinely-unresolvable (sim-dependent + no projection) ones:
+ * When the gate is RESOLVED (`gateUnresolved === false`) this is exactly the plain
+ * `isActiveByMilestone` start/end check against `todayMilestoneSet`.
+ *
+ * When the gate is UNRESOLVED for THIS income (a sim-dependent/relative milestone is in
+ * play and no projection is cached) we do NOT blindly return active — that over-counts an
+ * income that has actually ENDED. The flag is raised when AT LEAST ONE side is
+ * sim-dependent, but the OTHER side may still be perfectly resolvable from today's set. So
+ * we evaluate each side, HONORING every milestone we can resolve and defaulting only the
+ * genuinely-unresolvable (sim-dependent + no projection) ones:
  *
  *  - START: no start milestone → started; start NOT sim-dependent (absolute AGE/YEAR or
  *    value) → todaySet.has(startId); start sim-dependent & unresolved → assume STARTED
@@ -453,28 +463,28 @@ export function isIncomeActiveToday(
  *    (this is the fix — a RESOLVABLE absolute end that has already fired now gates the
  *    income OFF instead of being skipped); end sim-dependent & unresolved → assume NOT
  *    ENDED (don't prematurely hide it).
- *  - active = started && !ended.
  *
  * `milestonesById` lets us classify each referenced milestone's kind. When it's omitted
  * (or a referenced milestone isn't in it) the milestone is treated as NOT sim-dependent,
  * i.e. resolved against `todaySet` — the same conservative behavior as the resolved path.
  *
- * IRREDUCIBLE TRADE-OFF: a genuinely-unresolvable RELATIVE end milestone is assumed not
- * ended (case A — a MILESTONE_PLUS end that already fired stays SHOWN until a projection
- * runs and resolves its reach year), and symmetrically a not-yet-fired RELATIVE start is
- * assumed started. Without the cached timeline we cannot know a relative milestone's
- * reach year, so we err toward "don't drop the income" until the next projection lands —
- * the same sim-lag every relative-milestone view carries. Only the genuinely sim-bound
- * cases default; everything resolvable from `todaySet` is honored.
+ * IRREDUCIBLE TRADE-OFF (finding 3): a genuinely-unresolvable RELATIVE end milestone is
+ * assumed not ended (case A — a MILESTONE_PLUS end that already fired stays SHOWN until a
+ * projection runs and resolves its reach year), and symmetrically a not-yet-fired RELATIVE
+ * start is assumed started. Without the cached timeline we cannot know a relative
+ * milestone's reach year, so we err toward "don't drop the income" until the next
+ * projection lands — the same sim-lag every relative-milestone view carries. Only the
+ * genuinely sim-bound cases default; everything resolvable from `todaySet` is honored.
  */
-export function isActiveByMilestoneToday(
-    inc: AnyIncome,
+export function isMilestoneActiveToday(
+    startMilestoneId: string | undefined,
+    endMilestoneId: string | undefined,
     todayMilestoneSet: Set<string>,
-    milestoneGateUnresolved = false,
+    gateUnresolved: boolean,
     milestonesById?: Map<string, CustomMilestone>,
 ): boolean {
-    if (!milestoneGateUnresolved) {
-        return isActiveByMilestone(inc.startMilestoneId, inc.endMilestoneId, todayMilestoneSet);
+    if (!gateUnresolved) {
+        return isActiveByMilestone(startMilestoneId, endMilestoneId, todayMilestoneSet);
     }
 
     // Gate is unresolved for THIS income, but resolve every side we still can.
@@ -485,25 +495,49 @@ export function isActiveByMilestoneToday(
 
     // START side.
     let started: boolean;
-    if (!inc.startMilestoneId) {
+    if (!startMilestoneId) {
         started = true;
-    } else if (isSimDependentId(inc.startMilestoneId)) {
+    } else if (isSimDependentId(startMilestoneId)) {
         started = true; // sim-dependent & unresolved → assume started (don't drop)
     } else {
-        started = todayMilestoneSet.has(inc.startMilestoneId); // resolvable → honor it
+        started = todayMilestoneSet.has(startMilestoneId); // resolvable → honor it
     }
 
     // END side.
     let ended: boolean;
-    if (!inc.endMilestoneId) {
+    if (!endMilestoneId) {
         ended = false;
-    } else if (isSimDependentId(inc.endMilestoneId)) {
+    } else if (isSimDependentId(endMilestoneId)) {
         ended = false; // sim-dependent & unresolved → assume NOT ended (don't hide)
     } else {
-        ended = todayMilestoneSet.has(inc.endMilestoneId); // resolvable → honor it (the fix)
+        ended = todayMilestoneSet.has(endMilestoneId); // resolvable → honor it (the fix)
     }
 
     return started && !ended;
+}
+
+/**
+ * The Priority/Allocation-tab counterpart of `isIncomeActiveToday`: applies ONLY the
+ * start/end milestone gate (the tab lets `getMonthlyAmount` zero out-of-window fixed
+ * dates and a $0 income must stay in the tax base, so it deliberately omits the
+ * fixed-date AND). Delegates the per-side milestone resolution to the SHARED
+ * `isMilestoneActiveToday` helper — the same one `isIncomeActiveToday` ANDs with the
+ * fixed-date window — so the Income tab and the Priority tab can't diverge on an
+ * already-fired absolute end milestone (re-review finding 1).
+ */
+export function isActiveByMilestoneToday(
+    inc: AnyIncome,
+    todayMilestoneSet: Set<string>,
+    milestoneGateUnresolved = false,
+    milestonesById?: Map<string, CustomMilestone>,
+): boolean {
+    return isMilestoneActiveToday(
+        inc.startMilestoneId,
+        inc.endMilestoneId,
+        todayMilestoneSet,
+        milestoneGateUnresolved,
+        milestonesById,
+    );
 }
 
 /** True when any income references a start/end milestone — i.e. milestone gating
@@ -526,7 +560,10 @@ export function incomeHasMilestoneGate(incomes: AnyIncome[]): boolean {
  * projection required, so they are NOT sim-dependent.
  */
 export function isMilestoneSimDependent(milestone: CustomMilestone): boolean {
-    return milestone.conditions.some(c => (c.valueType ?? 'FIXED') === 'MILESTONE_PLUS');
+    // Milestones loaded from imported/QR backups can lack a `conditions` array, so guard
+    // the dereference — an unguarded `.some(...)` TypeErrors on every render and
+    // white-screens the Priority/Income/Withdrawal tabs.
+    return (milestone.conditions ?? []).some(c => (c.valueType ?? 'FIXED') === 'MILESTONE_PLUS');
 }
 
 /**
