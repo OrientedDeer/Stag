@@ -9,6 +9,8 @@ import {
     getDeferralDestinationValidationMessage,
     getDeferralDestinationMessageFor,
     hasConfiguredDeferral,
+    getNonVestingRSUReason,
+    getIncomeNonVestingRSUReason,
 } from '../../components/Objects/Income/incomeCardUtils';
 import {
     WorkIncome,
@@ -504,5 +506,100 @@ describe('getDeferralDestinationMessageFor (shared form-shape core)', () => {
 
     it('returns null for a deferral pointing at a real account', () => {
         expect(getDeferralDestinationMessageFor(cfg({ preTax401k: 1000, matchAccountId: '401k-1' }), ACCOUNTS)).toBeNull();
+    });
+});
+
+describe('getNonVestingRSUReason (#132 results-surface predicate)', () => {
+    // Builds a WorkIncome with a real RSU grant linked to 'rsu-acct-1'. Mirrors the
+    // engine's vesting inputs: a vesting schedule + shares, an account id, and a
+    // fixed start date are all present by default so a fully-valid grant returns
+    // null. Tests flip exactly one input to exercise each $0-skip condition.
+    function makeRSUWorkIncome(overrides: Partial<{
+        rsuVestingSchedule: 'NONE' | 'cliff-1yr' | 'graded-3yr' | 'graded-4yr';
+        rsuGrantShares: number;
+        rsuAccountId: string | null;
+        startDate: Date | undefined;
+        startMilestoneId: string | undefined;
+        end_date: Date | undefined;
+    }> = {}): WorkIncome {
+        const w = makeWorkIncome();
+        w.rsuVestingSchedule = overrides.rsuVestingSchedule ?? 'cliff-1yr';
+        w.rsuGrantShares = overrides.rsuGrantShares ?? 1000;
+        w.rsuAccountId = 'rsuAccountId' in overrides ? overrides.rsuAccountId ?? null : 'rsu-acct-1';
+        w.startDate = 'startDate' in overrides ? overrides.startDate : new Date(2024, 0, 1);
+        if ('startMilestoneId' in overrides) w.startMilestoneId = overrides.startMilestoneId;
+        if ('end_date' in overrides) w.end_date = overrides.end_date;
+        return w;
+    }
+
+    function makeRSUAccount(currentSharePrice?: number): RSUAccount {
+        const acc = new RSUAccount('rsu-acct-1', 'My RSUs', 0);
+        acc.currentSharePrice = currentSharePrice;
+        return acc;
+    }
+
+    it('returns null for a fully-valid grant (price + fixed start date)', () => {
+        const w = makeRSUWorkIncome();
+        expect(getNonVestingRSUReason(w, [makeRSUAccount(150)])).toBeNull();
+    });
+
+    it('returns null when no grant is configured (schedule NONE) — never alarms', () => {
+        const w = makeRSUWorkIncome({ rsuVestingSchedule: 'NONE' });
+        expect(getNonVestingRSUReason(w, [makeRSUAccount(150)])).toBeNull();
+    });
+
+    it('returns null for a 0-share grant (mirrors the card gate, never alarms)', () => {
+        const w = makeRSUWorkIncome({ rsuGrantShares: 0 });
+        expect(getNonVestingRSUReason(w, [makeRSUAccount(undefined)])).toBeNull();
+    });
+
+    it("flags 'no-price' when the linked account has a blank share price", () => {
+        const w = makeRSUWorkIncome();
+        expect(getNonVestingRSUReason(w, [makeRSUAccount(undefined)])).toBe('no-price');
+    });
+
+    it("flags 'no-price' when the linked account has a $0 share price (0 = unset)", () => {
+        const w = makeRSUWorkIncome();
+        expect(getNonVestingRSUReason(w, [makeRSUAccount(0)])).toBe('no-price');
+    });
+
+    it("flags 'no-start-date' for a milestone-started grant (no fixed startDate)", () => {
+        // Even with a valid price, a grant with no fixed startDate has no anchor for
+        // the engine to schedule the vest against → $0. The missing start date is the
+        // cause, so that reason takes precedence over the price check.
+        const w = makeRSUWorkIncome({ startDate: undefined, startMilestoneId: 'ms-retire' });
+        expect(w.startDate).toBeUndefined();
+        expect(getNonVestingRSUReason(w, [makeRSUAccount(150)])).toBe('no-start-date');
+        // ...and still 'no-start-date' (not 'no-price') when BOTH are missing.
+        expect(getNonVestingRSUReason(w, [makeRSUAccount(undefined)])).toBe('no-start-date');
+    });
+
+    it('returns null when no account is linked (that has its own dedicated banner)', () => {
+        const w = makeRSUWorkIncome({ rsuAccountId: null });
+        expect(getNonVestingRSUReason(w, [makeRSUAccount(150)])).toBeNull();
+    });
+
+    it('returns null when the linked id is dangling (the needs-account banner owns it)', () => {
+        const w = makeRSUWorkIncome({ rsuAccountId: 'deleted-acct' });
+        expect(getNonVestingRSUReason(w, [makeRSUAccount(150)])).toBeNull();
+    });
+
+    it('returns null for an ENDED job even with a blank price (grant can no longer vest)', () => {
+        // A finished job's $0 can't reach a forward-looking headline — mirrors the
+        // card's #141 ended-job suppression.
+        const w = makeRSUWorkIncome({ end_date: new Date(2000, 0, 1) });
+        expect(getNonVestingRSUReason(w, [makeRSUAccount(undefined)])).toBeNull();
+    });
+
+    describe('getIncomeNonVestingRSUReason (income-level entry point)', () => {
+        it('returns null for non-WorkIncome', () => {
+            expect(getIncomeNonVestingRSUReason(makeFERSPension(), [])).toBeNull();
+            expect(getIncomeNonVestingRSUReason(makeFutureSS(), [])).toBeNull();
+        });
+
+        it("surfaces the WorkIncome's reason", () => {
+            const w = makeRSUWorkIncome();
+            expect(getIncomeNonVestingRSUReason(w, [makeRSUAccount(undefined)])).toBe('no-price');
+        });
     });
 });

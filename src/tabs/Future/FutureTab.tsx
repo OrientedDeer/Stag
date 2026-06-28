@@ -4,6 +4,7 @@ import { AssumptionsContext, getBirthYear } from '../../components/Objects/Assum
 import { getSimulationInputHash } from '../../services/simulationHash';
 import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { ESPPAccount, RSUAccount, InvestedAccount, PropertyAccount, SavedAccount } from '../../components/Objects/Accounts/models';
+import { getIncomeNonVestingRSUReason, NonVestingRSUReason } from '../../components/Objects/Income/incomeCardUtils';
 import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
 import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
@@ -216,6 +217,20 @@ export default function FutureTab() {
         return assumptions.priorities.some(p => p.capType === 'REMAINDER');
     }, [assumptions.priorities]);
 
+    // 1b. Non-vesting RSU grants (#132). A configured RSU grant that can't be
+    // valued — no current share price, or no fixed start date — makes the engine
+    // recognize $0 ordinary income at vest (see processRSUVesting's `fmvAtVest <= 0`
+    // and `!anchorDate` skips). The only existing cues were card-level/display-only,
+    // so the misleading $0 could silently land in these headline numbers. Surface a
+    // top-level warning naming each affected income and WHY. Derived via the same
+    // predicate the engine's skip conditions drive, so the banner can't disagree.
+    const nonVestingRSUWarnings = useMemo(() => {
+        const rsuAccounts = accounts.filter((acc): acc is RSUAccount => acc instanceof RSUAccount);
+        return incomes
+            .map((inc) => ({ name: inc.name, reason: getIncomeNonVestingRSUReason(inc, rsuAccounts) }))
+            .filter((w): w is { name: string; reason: NonVestingRSUReason } => w.reason !== null);
+    }, [accounts, incomes]);
+
     const executeSimulation = useCallback(
         () => buildProjection(assumptions, accounts, incomes, expenses, taxState, budgetMonths, simulation),
         [assumptions, accounts, incomes, expenses, taxState, budgetMonths, simulation],
@@ -357,6 +372,37 @@ export default function FutureTab() {
                             Any unallocated cash (surplus income) will disappear from the simulation instead of being saved.
                             <br/>
                             Please go to the <strong>Allocation</strong> page and create a bucket with Cap Type: <strong>"Remainder"</strong>.
+                        </p>
+                    </AlertBanner>
+                )}
+
+                {/* 2b. Non-vesting RSU grant warning (#132). A configured grant that
+                    can't be valued recognizes $0 ordinary income at vest, silently
+                    landing in the headline numbers. Surface it at the top of the
+                    results so it can't be missed by collapsing/scrolling past the card. */}
+                {nonVestingRSUWarnings.length > 0 && (
+                    <AlertBanner severity="warning" title="RSU Grant Won't Vest" className="mb-6">
+                        <p className="text-sm">
+                            One or more income sources have a configured RSU grant that the
+                            projection can&apos;t value, so each affected vest recognizes
+                            <strong> $0</strong> of income:
+                        </p>
+                        <ul className="mt-2 list-disc list-inside text-sm space-y-1">
+                            {nonVestingRSUWarnings.map((w) => (
+                                <li key={`${w.name}-${w.reason}`}>
+                                    <strong>{w.name}</strong>
+                                    {w.reason === 'no-price'
+                                        ? "'s RSU grant won't vest — its linked RSU account has no current share price set."
+                                        : "'s RSU grant won't vest — it has no fixed start date, so vesting recognizes $0."}
+                                </li>
+                            ))}
+                        </ul>
+                        <p className="mt-2 text-sm">
+                            Fix it on the income card in the <strong>Income</strong> tab
+                            {nonVestingRSUWarnings.some((w) => w.reason === 'no-price')
+                                ? ' (set a Current Share Price on the linked RSU account)'
+                                : ''}
+                            {' '}so the vest value reaches your projection.
                         </p>
                     </AlertBanner>
                 )}

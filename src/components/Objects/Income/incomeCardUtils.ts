@@ -11,6 +11,7 @@ import {
     AutoMax401kOption,
     isSocialSecurity,
 } from './models';
+import { hasWindowEnded } from '../modelUtils';
 import { isActiveRSUGrant } from './rsuGrant';
 import { formatCompactCurrency } from '../../../tabs/Future/tabs/FutureUtils';
 import { get401kLimit, getHSALimit } from '../../../data/ContributionLimits';
@@ -263,6 +264,101 @@ export function rsuGrantNeedsAccount(
     rsuAccounts: RSUAccount[],
 ): boolean {
     return isActiveRSUGrant(config) && !rsuAccounts.some(acc => acc.id === config.rsuAccountId);
+}
+
+/**
+ * Why a configured RSU grant recognizes $0 at vest. Mirrors the two engine skip
+ * conditions in `processRSUVesting` (src/services/simulation/RSUVesting.ts) that
+ * a results-level reader can detect statically:
+ *
+ * - `'no-price'`  → the linked RSUAccount has no positive `currentSharePrice`, so
+ *   `projectFMVAtVest` returns 0 and the engine SKIPS vest recognition
+ *   (`if (fmvAtVest <= 0) return`, with a per-year `[WARN]`).
+ * - `'no-start-date'` → the grant has no fixed `startDate`, so the engine has no
+ *   anchor to schedule the vest against (`resolveRSUAnchorDate`/the
+ *   `if (!anchorDate) return` guard). A milestone-started grant only vests once
+ *   its milestone fires inside the horizon; statically (no sim) the results
+ *   surface can't guarantee that, and the card validation uses the same
+ *   `!startDate` structural convention.
+ *
+ * The "no linked account" case is intentionally NOT covered here — it has its own
+ * dedicated banner via {@link rsuGrantNeedsAccount}, mirrored by the card.
+ */
+export type NonVestingRSUReason = 'no-price' | 'no-start-date';
+
+/**
+ * Structural shape the non-vesting check reads off a work income. `WorkIncome`
+ * satisfies it directly; kept structural so it stays testable without minting a
+ * full model instance.
+ */
+export interface NonVestingRSUConfig {
+    rsuVestingSchedule: RSUValidationConfig['rsuVestingSchedule'];
+    rsuGrantShares: number;
+    rsuAccountId: string | null;
+    startDate?: Date;
+    startMilestoneId?: string;
+    end_date?: Date;
+}
+
+/**
+ * Why a work income's CONFIGURED RSU grant won't vest (recognizes $0), or `null`
+ * when it vests fine / isn't a real grant. Single source of truth for the
+ * results-surface projection warning (#132), derived from the SAME conditions the
+ * engine uses so the banner can't disagree with the math:
+ *
+ * 1. No real grant (schedule NONE or 0 shares) → null. Mirrors the card gate
+ *    (`isActiveRSUGrant`): a half-configured 0-share income must NOT alarm.
+ * 2. A job that has definitively ENDED → null. Its grant can no longer vest, so a
+ *    $0 can't reach a forward-looking headline — mirrors the card's `!incomeEnded`
+ *    suppression (#141).
+ * 3. No fixed `startDate` → `'no-start-date'`. The engine has no anchor to vest
+ *    against (`resolveRSUAnchorDate`).
+ * 4. No linked account (unset OR dangling id) → null. That's `rsuGrantNeedsAccount`'s
+ *    dedicated banner, not this one.
+ * 5. Linked account has no positive `currentSharePrice` → `'no-price'`. Mirrors the
+ *    engine's `fmvAtVest <= 0` skip (and the card's price-required validation).
+ *
+ * Pure so it's testable. Reads structurally (no instanceof) so the caller filters
+ * to WorkIncome first.
+ */
+export function getNonVestingRSUReason(
+    config: NonVestingRSUConfig,
+    rsuAccounts: RSUAccount[],
+): NonVestingRSUReason | null {
+    // (1) Only flag a real, configured grant — never a 0-share / NONE income.
+    if (!isActiveRSUGrant(config)) return null;
+
+    // (2) A finished job's grant can't vest going forward → no misleading $0.
+    //     Mirrors hasIncomeEnded() (which is just hasWindowEnded over the income's
+    //     start/end window); called structurally so this predicate stays shape-based.
+    if (hasWindowEnded({ startDate: config.startDate, endDate: config.end_date })) return null;
+
+    // (3) No fixed start date → engine recognizes no vest (no anchor to schedule).
+    if (!config.startDate) return 'no-start-date';
+
+    // (4) No EXISTING linked account → the dedicated "needs account" banner owns it.
+    if (!config.rsuAccountId) return null;
+    const linked = rsuAccounts.find(acc => acc.id === config.rsuAccountId);
+    if (!linked) return null;
+
+    // (5) No positive current share price → engine skips with fmvAtVest <= 0.
+    if (!linked.currentSharePrice || linked.currentSharePrice <= 0) return 'no-price';
+
+    return null;
+}
+
+/**
+ * The income-level entry point used by the results surface (#132): returns the
+ * non-vesting reason for a `WorkIncome`, or null for any other income type (only a
+ * WorkIncome carries an RSU grant). Delegates to the shape-agnostic
+ * {@link getNonVestingRSUReason} so the predicate stays single-sourced.
+ */
+export function getIncomeNonVestingRSUReason(
+    income: AnyIncome,
+    rsuAccounts: RSUAccount[],
+): NonVestingRSUReason | null {
+    if (!(income instanceof WorkIncome)) return null;
+    return getNonVestingRSUReason(income, rsuAccounts);
 }
 
 /**
