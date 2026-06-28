@@ -38,9 +38,9 @@ interface WorkIncomeFieldsProps {
     hasMatchingPensionIncome?: boolean;
     /** True when this job has definitively ENDED (fixed past end date). Its grant/ESPP
      *  can no longer vest, so the missing-account warnings are pure noise — suppress
-     *  the card-level banners here AND the in-section copies (threaded into the
-     *  RSU/ESPP clusters). Defaults false: the Add-Income modal doesn't pass it, so a
-     *  brand-new income keeps warning exactly as today (finding 4). */
+     *  the card-level banners here (the in-section copies are already off in the card
+     *  via showMissingAccountWarning={false}). Defaults false: the Add-Income modal
+     *  doesn't pass it, so a brand-new income keeps warning exactly as today (finding 4). */
     incomeEnded?: boolean;
 }
 
@@ -73,7 +73,9 @@ export function WorkIncomeFields({
                 collapse). `*GrantNeedsAccount` gates on an ACTIVE grant AND no EXISTING
                 account, so it skips a 0-share grant and catches a dangling id (#141 review).
                 Suppressed entirely for an ENDED job — a finished grant can no longer vest,
-                so the warning is pure noise (finding 4). */}
+                so the warning is pure noise (finding 4). Because the in-section copies are
+                already off in the card, this `!incomeEnded` card-level guard is the SINGLE
+                ended-job suppression mechanism. */}
             {!incomeEnded && rsuGrantNeedsAccount(income, rsuAccounts) && (
                 <AlertBanner
                     severity="warning"
@@ -154,7 +156,6 @@ export function WorkIncomeFields({
                     idPrefix={income.id}
                     showAccountLink
                     showMissingAccountWarning={false}
-                    incomeEnded={incomeEnded}
                 />
             </CardSection>
 
@@ -170,7 +171,6 @@ export function WorkIncomeFields({
                     idPrefix={income.id}
                     showAccountLink
                     showMissingAccountWarning={false}
-                    incomeEnded={incomeEnded}
                 />
             </CardSection>
 

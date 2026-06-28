@@ -48,14 +48,11 @@ interface RSUFieldsProps {
     showPriceValidation?: boolean;
     // The "no linked RSU account" warnings. The income CARD suppresses them here
     // (false) because it renders a more prominent CARD-LEVEL copy outside the
-    // collapsible RSU section (#141). The modal keeps them (default true) — it has
-    // no collapse to hide them. The account DROPDOWN itself is unaffected.
+    // collapsible RSU section (#141) — that card-level copy is also where the
+    // ended-job suppression lives (a finished grant can't vest, finding 4). The
+    // modal keeps them (default true) — it has no collapse to hide them. The
+    // account DROPDOWN itself is unaffected.
     showMissingAccountWarning?: boolean;
-    // True when the parent job has definitively ENDED (fixed past end date). An
-    // ended grant can no longer vest, so the missing-account warning is pure noise
-    // — suppress it (finding 4). Defaults false: the Add-Income modal never passes
-    // it, so a brand-new income keeps warning exactly as today.
-    incomeEnded?: boolean;
 }
 
 export function RSUFields({
@@ -66,12 +63,10 @@ export function RSUFields({
     showAccountLink = false,
     showPriceValidation = true,
     showMissingAccountWarning = true,
-    incomeEnded = false,
 }: RSUFieldsProps): ReactElement {
     const priceValidationMessage = showPriceValidation
         ? getRSUPriceValidationMessageFor(values, rsuAccounts)
         : null;
-    const showAccountWarning = showMissingAccountWarning && !incomeEnded;
     return (
         <>
             <DropdownInput
@@ -136,7 +131,7 @@ export function RSUFields({
                             value={values.rsuAccountId || ''}
                             tooltip="Account where vested RSU shares will be deposited."
                         />
-                    ) : (showAccountWarning && rsuGrantNeedsAccount(values, rsuAccounts) && (
+                    ) : (showMissingAccountWarning && rsuGrantNeedsAccount(values, rsuAccounts) && (
                         <AlertBanner severity="warning" size="sm" title="No RSU Account" className="col-span-full">
                             Create an RSU account to track your vested shares.
                             {showAccountLink ? <> <AddStockAccountLink kind="RSU" /></> : ' (Accounts tab.)'}
@@ -144,7 +139,7 @@ export function RSUFields({
                     ))}
                     {/* `rsuGrantNeedsAccount` also catches a DANGLING id (linked account
                         deleted) — `!values.rsuAccountId` alone missed it (#141 review). */}
-                    {showAccountWarning && rsuAccounts.length > 0 && rsuGrantNeedsAccount(values, rsuAccounts) && (
+                    {showMissingAccountWarning && rsuAccounts.length > 0 && rsuGrantNeedsAccount(values, rsuAccounts) && (
                         <AlertBanner severity="warning" size="sm" title="RSU Account Not Linked" className="col-span-full">
                             Select an RSU account above to track your vesting tranches.
                         </AlertBanner>
