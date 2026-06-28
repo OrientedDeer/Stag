@@ -11,6 +11,7 @@ import {
     hasConfiguredDeferral,
     getNonVestingRSUReason,
     getIncomeNonVestingRSUReason,
+    classifyNonVestingRSU,
 } from '../../components/Objects/Income/incomeCardUtils';
 import {
     WorkIncome,
@@ -264,6 +265,7 @@ describe('getRSUPriceValidationMessage', () => {
         rsuGrantShares: number;
         rsuAccountId: string | null;
         startDate: Date | undefined;
+        startMilestoneId: string | undefined;
     }> = {}): WorkIncome {
         const w = makeWorkIncome();
         w.rsuVestingSchedule = overrides.rsuVestingSchedule ?? 'cliff-1yr';
@@ -272,8 +274,9 @@ describe('getRSUPriceValidationMessage', () => {
         w.rsuAccountId = 'rsuAccountId' in overrides ? overrides.rsuAccountId ?? null : 'rsu-acct-1';
         // A fixed start date is the grant date the engine vests against. Default to
         // one so the price-required banner can actually fire; tests that exercise the
-        // milestone-started (no startDate) path pass `startDate: undefined`.
+        // anchor edge cases pass `startDate: undefined` (with or without a milestone).
         w.startDate = 'startDate' in overrides ? overrides.startDate : new Date(2024, 0, 1);
+        if ('startMilestoneId' in overrides) w.startMilestoneId = overrides.startMilestoneId;
         return w;
     }
 
@@ -330,17 +333,31 @@ describe('getRSUPriceValidationMessage', () => {
         expect(msg).toContain('Current Share Price');
     });
 
-    it('returns null for a milestone-started grant (no startDate) even with a blank price', () => {
-        // Milestone-started WorkIncome has no fixed startDate, so the engine
-        // recognizes NO vest at all (RSUVesting: `if (!inc.startDate) return`).
-        // The $0 projection there is the missing start date, not the price —
-        // a banner saying "set a price, otherwise $0" would misdiagnose the cause.
+    it('returns null for a genuinely un-anchored grant (no startDate AND no milestone) even with a blank price', () => {
+        // With neither a fixed startDate nor a startMilestoneId, the engine has no
+        // anchor at all (resolveRSUAnchorDate is undefined → `if (!anchorDate) return`).
+        // The $0 there is the missing anchor, not the price — a banner saying "set a
+        // price, otherwise $0" would misdiagnose the cause.
         const w = makeRSUWorkIncome({ startDate: undefined });
         expect(w.startDate).toBeUndefined();
+        expect(w.startMilestoneId).toBeUndefined();
         expect(w.rsuGrantShares).toBeGreaterThan(0);
         expect(getRSUPriceValidationMessage(w, [makeRSUAccount(undefined)])).toBeNull();
-        // ...and a $0 price is likewise not the cause for a milestone-started grant.
+        // ...and a $0 price is likewise not the cause for a no-anchor grant.
         expect(getRSUPriceValidationMessage(w, [makeRSUAccount(0)])).toBeNull();
+    });
+
+    it('FIRES for a milestone-started grant (no startDate, milestone set) with a blank price', () => {
+        // A milestone-started grant DOES vest — the engine anchors it on Jan 1 of the
+        // milestone year (resolveRSUAnchorDate, #131). So a blank price IS the cause
+        // here, matching the FutureTab predicate (the two surfaces share one core).
+        const w = makeRSUWorkIncome({ startDate: undefined, startMilestoneId: 'ms-retire' });
+        expect(w.startDate).toBeUndefined();
+        const msg = getRSUPriceValidationMessage(w, [makeRSUAccount(undefined)]);
+        expect(msg).not.toBeNull();
+        expect(msg).toContain('Current Share Price');
+        // ...and stays null once a valid price is set (the grant then vests fine).
+        expect(getRSUPriceValidationMessage(w, [makeRSUAccount(150)])).toBeNull();
     });
 
     it('passes once a positive share price is set on the linked account', () => {
@@ -563,25 +580,41 @@ describe('getNonVestingRSUReason (#132 results-surface predicate)', () => {
         expect(getNonVestingRSUReason(w, [makeRSUAccount(0)])).toBe('no-price');
     });
 
-    it("flags 'no-start-date' for a milestone-started grant (no fixed startDate)", () => {
-        // Even with a valid price, a grant with no fixed startDate has no anchor for
-        // the engine to schedule the vest against → $0. The missing start date is the
-        // cause, so that reason takes precedence over the price check.
+    it('returns NULL for a milestone-started grant with a valid price (it vests — #132 fix [1])', () => {
+        // A milestone-started grant (startMilestoneId set, no fixed startDate) DOES
+        // vest — the engine anchors it on Jan 1 of the milestone year
+        // (resolveRSUAnchorDate, #131). It must NOT be flagged: whether the milestone
+        // fires in-horizon is sim-dependent and the static predicate can't know it.
         const w = makeRSUWorkIncome({ startDate: undefined, startMilestoneId: 'ms-retire' });
         expect(w.startDate).toBeUndefined();
-        expect(getNonVestingRSUReason(w, [makeRSUAccount(150)])).toBe('no-start-date');
-        // ...and still 'no-start-date' (not 'no-price') when BOTH are missing.
-        expect(getNonVestingRSUReason(w, [makeRSUAccount(undefined)])).toBe('no-start-date');
+        expect(getNonVestingRSUReason(w, [makeRSUAccount(150)])).toBeNull();
     });
 
-    it('returns null when no account is linked (that has its own dedicated banner)', () => {
+    it("flags 'no-price' for a milestone-started grant whose linked account has no price", () => {
+        // A milestone grant vests, so a blank price IS the cause here (same as a
+        // fixed-startDate grant). The card and FutureTab now agree on this.
+        const w = makeRSUWorkIncome({ startDate: undefined, startMilestoneId: 'ms-retire' });
+        expect(getNonVestingRSUReason(w, [makeRSUAccount(undefined)])).toBe('no-price');
+    });
+
+    it("flags 'no-anchor' when there is NEITHER a start date NOR a milestone", () => {
+        // Genuinely un-anchored: resolveRSUAnchorDate is undefined → engine skips.
+        const w = makeRSUWorkIncome({ startDate: undefined });
+        expect(w.startDate).toBeUndefined();
+        expect(w.startMilestoneId).toBeUndefined();
+        expect(getNonVestingRSUReason(w, [makeRSUAccount(150)])).toBe('no-anchor');
+        // 'no-anchor' takes precedence over a missing price (anchor is checked first).
+        expect(getNonVestingRSUReason(w, [makeRSUAccount(undefined)])).toBe('no-anchor');
+    });
+
+    it("flags 'no-account' when no account is linked (#132 fix [5] — FutureTab must cover it)", () => {
         const w = makeRSUWorkIncome({ rsuAccountId: null });
-        expect(getNonVestingRSUReason(w, [makeRSUAccount(150)])).toBeNull();
+        expect(getNonVestingRSUReason(w, [makeRSUAccount(150)])).toBe('no-account');
     });
 
-    it('returns null when the linked id is dangling (the needs-account banner owns it)', () => {
+    it("flags 'no-account' when the linked id is dangling (account deleted)", () => {
         const w = makeRSUWorkIncome({ rsuAccountId: 'deleted-acct' });
-        expect(getNonVestingRSUReason(w, [makeRSUAccount(150)])).toBeNull();
+        expect(getNonVestingRSUReason(w, [makeRSUAccount(150)])).toBe('no-account');
     });
 
     it('returns null for an ENDED job even with a blank price (grant can no longer vest)', () => {
@@ -600,6 +633,39 @@ describe('getNonVestingRSUReason (#132 results-surface predicate)', () => {
         it("surfaces the WorkIncome's reason", () => {
             const w = makeRSUWorkIncome();
             expect(getIncomeNonVestingRSUReason(w, [makeRSUAccount(undefined)])).toBe('no-price');
+        });
+    });
+
+    describe('consolidated core (#132 finding [6]) — card price validation and FutureTab agree', () => {
+        // Both the card's getRSUPriceValidationMessageFor and the FutureTab's
+        // getNonVestingRSUReason delegate to classifyNonVestingRSU, so they can never
+        // describe the same grant differently. The card only SURFACES the 'no-price'
+        // cause as a banner; the no-anchor / no-account causes have their own copy.
+        it('card price banner fires IFF the shared core classifies the grant no-price', () => {
+            const cases: WorkIncome[] = [
+                makeRSUWorkIncome(),                                              // valid anchor+account, no price below
+                makeRSUWorkIncome({ startDate: undefined, startMilestoneId: 'ms' }), // milestone anchor
+                makeRSUWorkIncome({ startDate: undefined }),                     // no anchor
+                makeRSUWorkIncome({ rsuAccountId: null }),                       // no account
+            ];
+            const accountsBlank = [makeRSUAccount(undefined)];
+            const accountsPriced = [makeRSUAccount(150)];
+            for (const w of [...cases]) {
+                for (const accts of [accountsBlank, accountsPriced]) {
+                    const reason = classifyNonVestingRSU(w, accts);
+                    const banner = getRSUPriceValidationMessage(w, accts);
+                    // Banner present exactly when the shared core says 'no-price'.
+                    expect(banner !== null).toBe(reason === 'no-price');
+                }
+            }
+        });
+
+        it('a milestone grant with no price: core says no-price, banner fires, FutureTab agrees', () => {
+            const w = makeRSUWorkIncome({ startDate: undefined, startMilestoneId: 'ms-retire' });
+            const accts = [makeRSUAccount(undefined)];
+            expect(classifyNonVestingRSU(w, accts)).toBe('no-price');
+            expect(getRSUPriceValidationMessage(w, accts)).not.toBeNull();
+            expect(getIncomeNonVestingRSUReason(w, accts)).toBe('no-price');
         });
     });
 });

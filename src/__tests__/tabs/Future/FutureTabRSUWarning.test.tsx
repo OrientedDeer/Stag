@@ -9,11 +9,12 @@ import { RSUAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome } from '../../../components/Objects/Income/models';
 
 /**
- * #132 — a configured RSU grant the projection can't value (no current share
- * price, or no fixed start date) recognizes $0 at vest and silently reaches the
- * headline numbers. FutureTab surfaces a TOP-LEVEL warning naming each affected
- * income. These render tests assert the banner shows for the two non-vesting
- * causes and stays hidden for a fully-valid / no-grant plan.
+ * #132 — a configured RSU grant the projection can't value (no anchor, no linked
+ * account, or no current share price) recognizes $0 at vest and silently reaches
+ * the headline numbers. FutureTab surfaces a TOP-LEVEL warning naming each affected
+ * income. These render tests assert the banner shows for each non-vesting cause,
+ * stays hidden for a fully-valid / milestone-anchored / ended / no-grant plan, that
+ * the footer guidance is cause-complete, and that two same-named incomes both list.
  */
 
 // Stub the chart-heavy child tabs — these tests are about the top-level banner.
@@ -39,22 +40,30 @@ const fakeYear = {
 } as unknown as SimulationYear;
 
 function makeRSUWorkIncome(opts: {
+    id?: string;
+    name?: string;
     startDate?: Date;
+    startMilestoneId?: string;
     rsuAccountId?: string | null;
+    end_date?: Date;
 }): WorkIncome {
     const w = new WorkIncome(
-        'inc-1', 'Acme', 100_000, 'Annually', 'Yes',
+        opts.id ?? 'inc-1', opts.name ?? 'Acme', 100_000, 'Annually', 'Yes',
         0, 0, 0, 0, '', null, 'FIXED',
     );
     w.rsuVestingSchedule = 'cliff-1yr';
     w.rsuGrantShares = 1000;
     w.rsuAccountId = 'rsuAccountId' in opts ? opts.rsuAccountId ?? null : 'rsu-1';
     w.startDate = opts.startDate;
+    if ('startMilestoneId' in opts) w.startMilestoneId = opts.startMilestoneId;
+    if ('end_date' in opts) w.end_date = opts.end_date;
     return w;
 }
 
-function makeRSUAccount(currentSharePrice?: number): RSUAccount {
-    const acc = new RSUAccount('rsu-1', 'Acme RSUs', 0);
+// A second RSU account id so a grant can link a real account while another links a
+// dangling one in the mixed-cause test.
+function makeRSUAccount(currentSharePrice?: number, id = 'rsu-1'): RSUAccount {
+    const acc = new RSUAccount(id, 'Acme RSUs', 0);
     acc.currentSharePrice = currentSharePrice;
     return acc;
 }
@@ -85,17 +94,54 @@ describe('FutureTab — non-vesting RSU warning (#132)', () => {
         );
         expect(screen.getByText("RSU Grant Won't Vest")).toBeInTheDocument();
         expect(screen.getByText(/no current share price set/i)).toBeInTheDocument();
+        expect(screen.getByText(/set a Current Share Price/i)).toBeInTheDocument();
         // The affected income is named so the user knows which one.
         expect(screen.getByText('Acme')).toBeInTheDocument();
     });
 
-    it('renders the warning for a milestone-started grant with no fixed start date', () => {
+    it('renders the warning for a genuinely un-anchored grant (no start date AND no milestone)', () => {
         renderFutureTab(
             [makeRSUWorkIncome({ startDate: undefined })],
             [makeRSUAccount(150)],
         );
         expect(screen.getByText("RSU Grant Won't Vest")).toBeInTheDocument();
-        expect(screen.getByText(/no fixed start date/i)).toBeInTheDocument();
+        expect(screen.getByText(/neither a start date nor a start milestone/i)).toBeInTheDocument();
+        expect(screen.getByText(/set a start date or start milestone/i)).toBeInTheDocument();
+    });
+
+    it('renders the warning for a grant with no linked account (#132 fix [5])', () => {
+        renderFutureTab(
+            [makeRSUWorkIncome({ startDate: new Date(2024, 0, 1), rsuAccountId: null })],
+            [makeRSUAccount(150)],
+        );
+        expect(screen.getByText("RSU Grant Won't Vest")).toBeInTheDocument();
+        expect(screen.getByText(/isn't linked to an RSU account/i)).toBeInTheDocument();
+        expect(screen.getByText(/link an RSU account/i)).toBeInTheDocument();
+    });
+
+    it('renders the warning for a grant with a DANGLING account id (account deleted)', () => {
+        renderFutureTab(
+            [makeRSUWorkIncome({ startDate: new Date(2024, 0, 1), rsuAccountId: 'deleted-acct' })],
+            [makeRSUAccount(150)],
+        );
+        expect(screen.getByText("RSU Grant Won't Vest")).toBeInTheDocument();
+        expect(screen.getByText(/isn't linked to an RSU account/i)).toBeInTheDocument();
+    });
+
+    it('does NOT render the warning for a milestone-started grant with a valid price (#132 fix [1])', () => {
+        renderFutureTab(
+            [makeRSUWorkIncome({ startDate: undefined, startMilestoneId: 'ms-retire' })],
+            [makeRSUAccount(150)],
+        );
+        expect(screen.queryByText("RSU Grant Won't Vest")).not.toBeInTheDocument();
+    });
+
+    it('does NOT render the warning for an ENDED job even with a blank price', () => {
+        renderFutureTab(
+            [makeRSUWorkIncome({ startDate: new Date(2010, 0, 1), end_date: new Date(2015, 0, 1) })],
+            [makeRSUAccount(undefined)],
+        );
+        expect(screen.queryByText("RSU Grant Won't Vest")).not.toBeInTheDocument();
     });
 
     it('does NOT render the warning for a fully-valid grant', () => {
@@ -109,5 +155,38 @@ describe('FutureTab — non-vesting RSU warning (#132)', () => {
     it('does NOT render the warning when there is no income at all', () => {
         renderFutureTab([], []);
         expect(screen.queryByText("RSU Grant Won't Vest")).not.toBeInTheDocument();
+    });
+
+    it('footer guidance is cause-complete for a MIXED no-price + no-account plan (#132 fix [4])', () => {
+        renderFutureTab(
+            [
+                // no-price: links a real account (rsu-1) whose price is blank.
+                makeRSUWorkIncome({ id: 'inc-price', name: 'Acme Price', startDate: new Date(2024, 0, 1), rsuAccountId: 'rsu-1' }),
+                // no-account: unset link.
+                makeRSUWorkIncome({ id: 'inc-acct', name: 'Acme Acct', startDate: new Date(2024, 0, 1), rsuAccountId: null }),
+            ],
+            [makeRSUAccount(undefined, 'rsu-1')],
+        );
+        expect(screen.getByText("RSU Grant Won't Vest")).toBeInTheDocument();
+        // Both per-item reasons present.
+        expect(screen.getByText(/no current share price set/i)).toBeInTheDocument();
+        expect(screen.getByText(/isn't linked to an RSU account/i)).toBeInTheDocument();
+        // Footer covers BOTH remedies, not just the price fix.
+        expect(screen.getByText(/set a Current Share Price on the linked RSU account/i)).toBeInTheDocument();
+        expect(screen.getByText(/link an RSU account/i)).toBeInTheDocument();
+    });
+
+    it('lists BOTH of two same-named non-vesting incomes (unique key, #132 fix [3])', () => {
+        renderFutureTab(
+            [
+                makeRSUWorkIncome({ id: 'inc-a', name: 'Acme', startDate: new Date(2024, 0, 1), rsuAccountId: 'rsu-1' }),
+                makeRSUWorkIncome({ id: 'inc-b', name: 'Acme', startDate: new Date(2024, 0, 1), rsuAccountId: 'rsu-1' }),
+            ],
+            [makeRSUAccount(undefined, 'rsu-1')],
+        );
+        expect(screen.getByText("RSU Grant Won't Vest")).toBeInTheDocument();
+        // Two same-named incomes with the same reason → two distinct <li> rows. With a
+        // `name-reason` key one row was silently dropped; a unique id key keeps both.
+        expect(screen.getAllByText('Acme')).toHaveLength(2);
     });
 });

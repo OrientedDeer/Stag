@@ -210,6 +210,12 @@ export interface RSUValidationConfig {
     rsuVestingSchedule: 'NONE' | 'cliff-1yr' | 'graded-3yr' | 'graded-4yr';
     rsuGrantShares: number;
     startDate?: Date;
+    // A milestone-started grant (no fixed startDate) still has an anchor: the
+    // engine vests it on Jan 1 of the milestone year (resolveRSUAnchorDate, #131).
+    // So a grant with a startMilestoneId is NOT a "no-anchor" case. Optional, so
+    // the modal's form shape (which has no milestone field) satisfies it as
+    // undefined and the card's WorkIncome (startMilestoneId?: string) supplies it.
+    startMilestoneId?: string;
     rsuAccountId: string | null;
 }
 
@@ -219,33 +225,30 @@ export interface RSUValidationConfig {
  * modal's `IncomeFormState` form object converge on ONE implementation. See
  * `getRSUPriceValidationMessage` for the full rationale; this carries the logic.
  * Pure so it's testable.
+ *
+ * Single-sourced with the results-surface predicate: it delegates to the SAME
+ * {@link classifyNonVestingRSU} core and only surfaces the `'no-price'` cause as a
+ * banner here. The no-anchor / no-account causes have their own dedicated copy in
+ * the RSU section (the account dropdown / `rsuGrantNeedsAccount` banner), so the
+ * card and FutureTab can never describe one grant differently (#132 finding [6]).
  */
 export function getRSUPriceValidationMessageFor(
     config: RSUValidationConfig,
     rsuAccounts: RSUAccount[]
 ): string | null {
-    // Only validate once vesting is actually configured.
-    if (!isActiveRSUGrant(config)) return null;
-
-    // A milestone-started grant has no fixed startDate, and the engine recognizes
-    // NO vest without one (RSUVesting: `if (!inc.startDate) return`), so a $0
-    // projection there is the missing start date, not the missing price — adding a
-    // price wouldn't help. Don't misdiagnose it with a "price required" banner.
-    if (!config.startDate) return null;
-
-    // No linked account is a separate condition the RSU section already flags.
-    if (!config.rsuAccountId) return null;
+    // The shared classifier returns 'no-price' only when there IS a real grant
+    // with a valid anchor and an existing linked account whose price is unset/≤0 —
+    // exactly the condition this price banner should fire on.
+    if (classifyNonVestingRSU(config, rsuAccounts) !== 'no-price') return null;
 
     const linked = rsuAccounts.find((acc) => acc.id === config.rsuAccountId);
+    // `linked` is guaranteed by the 'no-price' classification (it only returns
+    // 'no-price' for an existing account), but narrow for the type-checker.
     if (!linked) return null;
 
-    if (!linked.currentSharePrice || linked.currentSharePrice <= 0) {
-        return `Set a Current Share Price on the "${linked.name}" RSU account — `
-            + 'an RSU grant with a vesting schedule needs a price to value each vest, '
-            + 'otherwise the projection shows $0.';
-    }
-
-    return null;
+    return `Set a Current Share Price on the "${linked.name}" RSU account — `
+        + 'an RSU grant with a vesting schedule needs a price to value each vest, '
+        + 'otherwise the projection shows $0.';
 }
 
 /**
@@ -267,29 +270,33 @@ export function rsuGrantNeedsAccount(
 }
 
 /**
- * Why a configured RSU grant recognizes $0 at vest. Mirrors the two engine skip
- * conditions in `processRSUVesting` (src/services/simulation/RSUVesting.ts) that
- * a results-level reader can detect statically:
+ * Why a configured RSU grant recognizes $0 at vest. Mirrors the engine's STATIC
+ * skip conditions in `processRSUVesting` (src/services/simulation/RSUVesting.ts)
+ * that a results-level reader can detect without running the simulation:
  *
- * - `'no-price'`  → the linked RSUAccount has no positive `currentSharePrice`, so
+ * - `'no-anchor'` → the grant has NEITHER a fixed `startDate` NOR a
+ *   `startMilestoneId`, so `resolveRSUAnchorDate` returns undefined and the engine
+ *   skips with `if (!anchorDate) return`. A grant with a `startMilestoneId` DOES
+ *   vest (anchored on Jan 1 of the milestone year, #131), so it is NOT flagged —
+ *   whether that milestone fires inside the horizon is sim-dependent and must not
+ *   be guessed by a static predicate.
+ * - `'no-account'` → no linked RSU account: an unset `rsuAccountId`, OR a dangling
+ *   id that resolves to no existing RSUAccount. Either way `processRSUVesting`
+ *   can't resolve an account (`if (!inc.rsuAccountId) return` / the `!rsuAccount`
+ *   skip) and the grant silently never vests. (The CARD already shows this via its
+ *   own #141 badge / `rsuGrantNeedsAccount`; FutureTab needs it too so the $0
+ *   doesn't land silently in the headline — finding [5].)
+ * - `'no-price'` → the linked RSUAccount has no positive `currentSharePrice`, so
  *   `projectFMVAtVest` returns 0 and the engine SKIPS vest recognition
  *   (`if (fmvAtVest <= 0) return`, with a per-year `[WARN]`).
- * - `'no-start-date'` → the grant has no fixed `startDate`, so the engine has no
- *   anchor to schedule the vest against (`resolveRSUAnchorDate`/the
- *   `if (!anchorDate) return` guard). A milestone-started grant only vests once
- *   its milestone fires inside the horizon; statically (no sim) the results
- *   surface can't guarantee that, and the card validation uses the same
- *   `!startDate` structural convention.
- *
- * The "no linked account" case is intentionally NOT covered here — it has its own
- * dedicated banner via {@link rsuGrantNeedsAccount}, mirrored by the card.
  */
-export type NonVestingRSUReason = 'no-price' | 'no-start-date';
+export type NonVestingRSUReason = 'no-anchor' | 'no-account' | 'no-price';
 
 /**
- * Structural shape the non-vesting check reads off a work income. `WorkIncome`
- * satisfies it directly; kept structural so it stays testable without minting a
- * full model instance.
+ * Structural shape the non-vesting classifier reads. `WorkIncome` and the modal's
+ * `RSUValidationConfig` both satisfy it; kept structural so it stays testable
+ * without minting a full model instance. `end_date` is read only by the
+ * income-level reader's ended-job suppression.
  */
 export interface NonVestingRSUConfig {
     rsuVestingSchedule: RSUValidationConfig['rsuVestingSchedule'];
@@ -301,22 +308,52 @@ export interface NonVestingRSUConfig {
 }
 
 /**
- * Why a work income's CONFIGURED RSU grant won't vest (recognizes $0), or `null`
- * when it vests fine / isn't a real grant. Single source of truth for the
- * results-surface projection warning (#132), derived from the SAME conditions the
- * engine uses so the banner can't disagree with the math:
+ * Shared CORE that classifies why a configured RSU grant won't vest, matching the
+ * engine's static skip conditions in order: anchor → account → price. Returns null
+ * for a grant that vests fine (or isn't a real grant). This is the SINGLE source
+ * both the card's price validation (`getRSUPriceValidationMessageFor`) and the
+ * FutureTab results warning (`getNonVestingRSUReason`) consume, so the two surfaces
+ * can never classify the same grant differently (#132 finding [6]).
  *
- * 1. No real grant (schedule NONE or 0 shares) → null. Mirrors the card gate
- *    (`isActiveRSUGrant`): a half-configured 0-share income must NOT alarm.
- * 2. A job that has definitively ENDED → null. Its grant can no longer vest, so a
+ * Does NOT apply the ended-job suppression — that's forward-looking, results-only
+ * policy layered on by {@link getNonVestingRSUReason}; the card's price validation
+ * must still fire on an in-section grant regardless of its window.
+ */
+export function classifyNonVestingRSU(
+    config: NonVestingRSUConfig,
+    rsuAccounts: RSUAccount[],
+): NonVestingRSUReason | null {
+    // Only flag a real, configured grant — never a 0-share / NONE income.
+    if (!isActiveRSUGrant(config)) return null;
+
+    // No anchor at all → engine recognizes no vest (resolveRSUAnchorDate is
+    // undefined). A startMilestoneId IS an anchor, so only flag when BOTH are unset.
+    if (!config.startDate && !config.startMilestoneId) return 'no-anchor';
+
+    // No EXISTING linked account: unset id OR a dangling id (account deleted).
+    // Mirrors processRSUVesting's `!inc.rsuAccountId` / `!rsuAccount` skips.
+    if (!config.rsuAccountId) return 'no-account';
+    const linked = rsuAccounts.find(acc => acc.id === config.rsuAccountId);
+    if (!linked) return 'no-account';
+
+    // No positive current share price → engine skips with fmvAtVest <= 0.
+    if (!linked.currentSharePrice || linked.currentSharePrice <= 0) return 'no-price';
+
+    return null;
+}
+
+/**
+ * Why a work income's CONFIGURED RSU grant won't vest (recognizes $0), or `null`
+ * when it vests fine / isn't a real grant. The results-surface entry point for the
+ * #132 projection warning: it layers a forward-looking ENDED-JOB suppression on top
+ * of the shared {@link classifyNonVestingRSU} core, so the FutureTab banner stays
+ * single-sourced with the card's price validation:
+ *
+ * 1. A job that has definitively ENDED → null. Its grant can no longer vest, so a
  *    $0 can't reach a forward-looking headline — mirrors the card's `!incomeEnded`
  *    suppression (#141).
- * 3. No fixed `startDate` → `'no-start-date'`. The engine has no anchor to vest
- *    against (`resolveRSUAnchorDate`).
- * 4. No linked account (unset OR dangling id) → null. That's `rsuGrantNeedsAccount`'s
- *    dedicated banner, not this one.
- * 5. Linked account has no positive `currentSharePrice` → `'no-price'`. Mirrors the
- *    engine's `fmvAtVest <= 0` skip (and the card's price-required validation).
+ * 2. Otherwise → the shared classifier's reason: `'no-anchor'`, `'no-account'`, or
+ *    `'no-price'` (or null when the grant vests fine).
  *
  * Pure so it's testable. Reads structurally (no instanceof) so the caller filters
  * to WorkIncome first.
@@ -325,26 +362,15 @@ export function getNonVestingRSUReason(
     config: NonVestingRSUConfig,
     rsuAccounts: RSUAccount[],
 ): NonVestingRSUReason | null {
-    // (1) Only flag a real, configured grant — never a 0-share / NONE income.
-    if (!isActiveRSUGrant(config)) return null;
-
-    // (2) A finished job's grant can't vest going forward → no misleading $0.
-    //     Mirrors hasIncomeEnded() (which is just hasWindowEnded over the income's
-    //     start/end window); called structurally so this predicate stays shape-based.
-    if (hasWindowEnded({ startDate: config.startDate, endDate: config.end_date })) return null;
-
-    // (3) No fixed start date → engine recognizes no vest (no anchor to schedule).
-    if (!config.startDate) return 'no-start-date';
-
-    // (4) No EXISTING linked account → the dedicated "needs account" banner owns it.
-    if (!config.rsuAccountId) return null;
-    const linked = rsuAccounts.find(acc => acc.id === config.rsuAccountId);
-    if (!linked) return null;
-
-    // (5) No positive current share price → engine skips with fmvAtVest <= 0.
-    if (!linked.currentSharePrice || linked.currentSharePrice <= 0) return 'no-price';
-
-    return null;
+    // A finished job's grant can't vest going forward → no misleading $0. Mirrors
+    // hasIncomeEnded() (hasWindowEnded over the income's start/end window); called
+    // structurally so this predicate stays shape-based. Gate it on a real grant
+    // first so a non-grant income never short-circuits here.
+    if (isActiveRSUGrant(config)
+        && hasWindowEnded({ startDate: config.startDate, endDate: config.end_date })) {
+        return null;
+    }
+    return classifyNonVestingRSU(config, rsuAccounts);
 }
 
 /**

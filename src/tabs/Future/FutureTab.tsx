@@ -218,18 +218,34 @@ export default function FutureTab() {
     }, [assumptions.priorities]);
 
     // 1b. Non-vesting RSU grants (#132). A configured RSU grant that can't be
-    // valued — no current share price, or no fixed start date — makes the engine
-    // recognize $0 ordinary income at vest (see processRSUVesting's `fmvAtVest <= 0`
-    // and `!anchorDate` skips). The only existing cues were card-level/display-only,
-    // so the misleading $0 could silently land in these headline numbers. Surface a
-    // top-level warning naming each affected income and WHY. Derived via the same
-    // predicate the engine's skip conditions drive, so the banner can't disagree.
+    // valued — no anchor (neither a start date nor a milestone), no linked account,
+    // or no current share price — makes the engine recognize $0 ordinary income at
+    // vest (see processRSUVesting's `!anchorDate`, `!rsuAccount`, and `fmvAtVest <= 0`
+    // skips). The only existing cues were card-level/display-only, so the misleading
+    // $0 could silently land in these headline numbers. Surface a top-level warning
+    // naming each affected income and WHY. Derived via the same shared classifier the
+    // card uses, so the banner can't disagree with the card or the engine. Carry the
+    // income `id` so the list key is unique even for two same-named incomes (a
+    // `name-reason` key collided and silently dropped a row — finding [3]).
     const nonVestingRSUWarnings = useMemo(() => {
         const rsuAccounts = accounts.filter((acc): acc is RSUAccount => acc instanceof RSUAccount);
         return incomes
-            .map((inc) => ({ name: inc.name, reason: getIncomeNonVestingRSUReason(inc, rsuAccounts) }))
-            .filter((w): w is { name: string; reason: NonVestingRSUReason } => w.reason !== null);
+            .map((inc) => ({ id: inc.id, name: inc.name, reason: getIncomeNonVestingRSUReason(inc, rsuAccounts) }))
+            .filter((w): w is { id: string; name: string; reason: NonVestingRSUReason } => w.reason !== null);
     }, [accounts, incomes]);
+
+    // Cause-complete remediation hints for the banner footer: one per DISTINCT cause
+    // actually present, so the guidance never mentions only the price fix while an
+    // un-anchored / unlinked grant goes unaddressed (finding [4]). Empty when the only
+    // remedy is "fix it on the income card" with no cause-specific step to add.
+    const rsuFixHints = useMemo(() => {
+        const reasons = new Set(nonVestingRSUWarnings.map((w) => w.reason));
+        const hints: string[] = [];
+        if (reasons.has('no-anchor')) hints.push('set a start date or start milestone');
+        if (reasons.has('no-account')) hints.push('link an RSU account');
+        if (reasons.has('no-price')) hints.push('set a Current Share Price on the linked RSU account');
+        return hints;
+    }, [nonVestingRSUWarnings]);
 
     const executeSimulation = useCallback(
         () => buildProjection(assumptions, accounts, incomes, expenses, taxState, budgetMonths, simulation),
@@ -389,19 +405,19 @@ export default function FutureTab() {
                         </p>
                         <ul className="mt-2 list-disc list-inside text-sm space-y-1">
                             {nonVestingRSUWarnings.map((w) => (
-                                <li key={`${w.name}-${w.reason}`}>
+                                <li key={w.id}>
                                     <strong>{w.name}</strong>
                                     {w.reason === 'no-price'
                                         ? "'s RSU grant won't vest — its linked RSU account has no current share price set."
-                                        : "'s RSU grant won't vest — it has no fixed start date, so vesting recognizes $0."}
+                                        : w.reason === 'no-account'
+                                            ? "'s RSU grant won't vest — it isn't linked to an RSU account, so vesting recognizes $0."
+                                            : "'s RSU grant won't vest — it has neither a start date nor a start milestone, so there's no anchor to vest against."}
                                 </li>
                             ))}
                         </ul>
                         <p className="mt-2 text-sm">
                             Fix it on the income card in the <strong>Income</strong> tab
-                            {nonVestingRSUWarnings.some((w) => w.reason === 'no-price')
-                                ? ' (set a Current Share Price on the linked RSU account)'
-                                : ''}
+                            {rsuFixHints.length > 0 ? ` (${rsuFixHints.join('; ')})` : ''}
                             {' '}so the vest value reaches your projection.
                         </p>
                     </AlertBanner>
