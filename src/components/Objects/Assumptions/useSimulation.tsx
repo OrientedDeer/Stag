@@ -68,6 +68,16 @@ function buildEoyCashflowDetail(
     year: number,
     remainingFraction: number,
 ): CashflowDetail {
+    // No vest/interest account-id maps (rsuVestAccountId / interestAccountIdByIncomeId)
+    // are passed here, and that is intentional: this builds the EOY row from
+    // `yearZero.incomes`, which holds only the user's RAW incomes (WorkIncome,
+    // pensions, SS, etc.). The synthetic reinvested incomes those maps key on —
+    // `rsu-vest-…` vest ids and `interest-…` interest ids — are minted ONLY inside
+    // the engine's per-year projection (RSUVesting / IncomeProjection) and never
+    // reach `yearZero.incomes`, so there is nothing for the maps to resolve and the
+    // reinvested-destination branch in buildCashflowDetail is not exercised on this
+    // path. (If a synthetic vest/interest id ever did reach here, the resolver would
+    // fall back to the raw income name — still correct, just unlabeled by account.)
     const fullYear = buildCashflowDetail({
         incomes,
         expenses,

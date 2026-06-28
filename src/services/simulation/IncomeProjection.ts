@@ -11,6 +11,14 @@ export interface IncomeProjectionResult {
     nextIncomes: AnyIncome[];
     interestIncomes: PassiveIncome[];
     allIncomes: AnyIncome[];
+    /**
+     * The source savings account id per synthetic reinvested-interest income, keyed
+     * by the interest income's id (`interest-{accountId}-{year}`). The account id is
+     * KNOWN here at mint time (`acc.id`), so the Cashflow Sankey resolves the
+     * reinvested destination by EXACT id from this map instead of reverse-engineering
+     * it from the id string — mirroring the RSU-vest account-id map.
+     */
+    interestAccountIdByIncomeId: Record<string, string>;
     logs: string[];
 }
 
@@ -364,12 +372,17 @@ export function projectIncomes(
 
     // Calculate interest income from savings accounts (before they grow)
     const interestIncomes: PassiveIncome[] = [];
+    // The source account id per minted interest income, keyed by the income id, so
+    // the Cashflow Sankey resolves the reinvested destination by EXACT id (the id is
+    // KNOWN here — `acc.id` — rather than parsed back out of the income id string).
+    const interestAccountIdByIncomeId: Record<string, string> = {};
     for (const acc of accounts) {
         if (acc instanceof SavedAccount && acc.apr > 0 && acc.amount > 0) {
             const interestEarned = acc.amount * (acc.apr / 100);
             if (interestEarned > 0.01) {
+                const interestIncomeId = `interest-${acc.id}-${year}`;
                 interestIncomes.push(new PassiveIncome(
-                    `interest-${acc.id}-${year}`,
+                    interestIncomeId,
                     `${acc.name} Interest`,
                     interestEarned,
                     'Annually',
@@ -382,6 +395,7 @@ export function projectIncomes(
                     new Date(year, 11, 31),
                     true  // isReinvested
                 ));
+                interestAccountIdByIncomeId[interestIncomeId] = acc.id;
             }
         }
     }
@@ -393,6 +407,7 @@ export function projectIncomes(
         nextIncomes: incomesWithEarningsTest,
         interestIncomes,
         allIncomes,
+        interestAccountIdByIncomeId,
         logs
     };
 }

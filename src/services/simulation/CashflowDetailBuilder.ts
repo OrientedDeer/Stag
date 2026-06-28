@@ -95,6 +95,19 @@ interface BuildCashflowDetailInput {
      * deleted). Omitted when no RSU vested this year.
      */
     rsuVestAccountId?: Record<string, string>;
+    /**
+     * The source savings account id per synthetic reinvested-interest income, keyed
+     * by the interest income's id (IncomeProjectionResult.interestAccountIdByIncomeId).
+     * The destination account is resolved by EXACT id from this map rather than
+     * reverse-engineering it from the `interest-{accountId}-{year}` id string. The
+     * account id is KNOWN at mint time (IncomeProjection.ts), so this mirrors the
+     * RSU-vest map and avoids parsing the id. Falls back to the positional parse (and
+     * then the income name) when the id isn't present — the positional parse is
+     * unambiguous today (single trailing year token), so the map is a consistency /
+     * maintainability win rather than a current-bug fix. Omitted when no interest was
+     * reinvested this year (e.g. the EOY path, or callers with no savings APR).
+     */
+    interestAccountIdByIncomeId?: Record<string, string>;
 }
 
 /**
@@ -105,7 +118,15 @@ interface BuildCashflowDetailInput {
  * to re-derive it (and drift from the sim's actual values).
  */
 export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDetail {
-    const { incomes, expenses, accounts, insurance, year, brokerageLTCGFromGross, employerInflows, userContributions, userContributionsByIncome, rsuVestWithholding, rsuVestAccountId } = input;
+    const { incomes, expenses, accounts, insurance, year, brokerageLTCGFromGross, employerInflows, userContributions, userContributionsByIncome, rsuVestWithholding, rsuVestAccountId, interestAccountIdByIncomeId } = input;
+
+    // buildCashflowDetail runs once per simulated year, so build the account-by-id
+    // lookup ONCE at the top and reuse it for every account resolution below (match
+    // account, interest/RSU reinvested destinations, employer-inflow split). This
+    // replaces four prior O(accounts) linear `accounts.find(a => a.id === …)` scans
+    // (and the duplicate Map that the per-account deferral block used to build), so
+    // each lookup is O(1) — behavior-identical.
+    const accountById = new Map(accounts.map(a => [a.id, a]));
 
     const incomeBySource: CashflowIncomeSource[] = [];
     let userPreTax401k = 0;
@@ -179,7 +200,7 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
             if (inc.matchAccountId && !employerInflows) {
                 const match = inc.getEffectiveAnnualEmployerMatch(year);
                 if (match >= MIN_AMOUNT) {
-                    const matchAccount = accounts.find(a => a.id === inc.matchAccountId);
+                    const matchAccount = accountById.get(inc.matchAccountId);
                     if (isRothAccount(matchAccount)) {
                         employerMatchRoth += match;
                     } else {
@@ -204,15 +225,28 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
                 // Resolve the destination account so the chart labels it correctly.
                 //   Interest: `interest-{accountId}-{year}`
                 //   RSU vest: `rsu-vest-{accountId}-{incomeId}-{year}`
-                // Account/income ids can themselves contain hyphens. The interest id is
-                // still parsed positionally, but the vest's source account is carried
-                // explicitly via `rsuVestAccountId` (keyed by the vest income id) so it
-                // resolves by EXACT id — no ambiguous prefix matching.
+                // Account/income ids can themselves contain hyphens. Both the interest
+                // and vest source accounts are now carried explicitly via id maps
+                // (`interestAccountIdByIncomeId` / `rsuVestAccountId`, keyed by the
+                // reinvested income's id) so resolution is an EXACT-id lookup — no
+                // ambiguous prefix/positional parsing.
                 let destAccount: AnyAccount | undefined;
                 if (inc.id.startsWith('interest-')) {
-                    const idParts = inc.id.split('-');
-                    const accountId = idParts.length >= 3 ? idParts.slice(1, -1).join('-') : null;
-                    destAccount = accountId ? accounts.find(a => a.id === accountId) : undefined;
+                    // The interest income's source account is KNOWN at mint time
+                    // (IncomeProjection.ts) and carried in interestAccountIdByIncomeId
+                    // keyed by this income's id, so look it up by exact id. The map
+                    // mirrors the RSU-vest map exactly. Fall back to the positional
+                    // parse only when the id is absent from the map (the parse is
+                    // unambiguous today — a single trailing year token — so it remains a
+                    // safe backstop, e.g. for callers that don't pass the map).
+                    const interestAccountId = interestAccountIdByIncomeId?.[inc.id];
+                    if (interestAccountId) {
+                        destAccount = accountById.get(interestAccountId);
+                    } else {
+                        const idParts = inc.id.split('-');
+                        const accountId = idParts.length >= 3 ? idParts.slice(1, -1).join('-') : null;
+                        destAccount = accountId ? accountById.get(accountId) : undefined;
+                    }
                     // Fall back to the income name minus the " Interest" suffix when the
                     // source account was deleted — that yields the bare account label.
                     source.accountName = destAccount?.name ?? inc.name.replace(' Interest', '');
@@ -222,7 +256,7 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
                     // it up by exact id. Unambiguous even when account/income ids share a
                     // textual prefix (`rsu` vs `rsu-2`).
                     const vestAccountId = rsuVestAccountId?.[inc.id];
-                    destAccount = vestAccountId ? accounts.find(a => a.id === vestAccountId) : undefined;
+                    destAccount = vestAccountId ? accountById.get(vestAccountId) : undefined;
                     // No " Interest" suffix on a vest income; fall back to the raw vest
                     // name (e.g. "Engineer RSU Vest") when the account can't be resolved
                     // (id absent from the map or the account was deleted).
@@ -269,7 +303,7 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
     if (employerInflows) {
         for (const [accountId, match] of Object.entries(employerInflows)) {
             if (match < MIN_AMOUNT) continue;
-            const matchAccount = accounts.find(a => a.id === accountId);
+            const matchAccount = accountById.get(accountId);
             if (isRothAccount(matchAccount)) {
                 employerMatchRoth += match;
             } else {
@@ -314,9 +348,9 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
     // unchanged; a deposit with no matching income falls back to the account taxType.
     // (Per-feeder shares are NOT keyed by income id, so this stays correct even when
     // the colliding ids that forced us here repeat across the feeders.)
-        // Pre-bucket the WorkIncome feeders by destination account ONCE (and the
-        // accounts by id) so the per-deposit loop is a Map lookup instead of an
-        // incomes.filter() + accounts.find() per deposit.
+        // Pre-bucket the WorkIncome feeders by destination account ONCE so the
+        // per-deposit loop is a Map lookup instead of an incomes.filter() per
+        // deposit. (The accounts-by-id lookup is the function-level `accountById`.)
         const feedersByAccount = new Map<string, WorkIncome[]>();
         for (const inc of incomes) {
             if (!(inc instanceof WorkIncome) || !inc.matchAccountId) continue;
@@ -324,7 +358,6 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
             if (bucket) bucket.push(inc);
             else feedersByAccount.set(inc.matchAccountId, [inc]);
         }
-        const accountById = new Map(accounts.map(a => [a.id, a]));
 
         for (const [accountId, deferral] of Object.entries(userContributions!)) {
             if (deferral < MIN_AMOUNT) continue;

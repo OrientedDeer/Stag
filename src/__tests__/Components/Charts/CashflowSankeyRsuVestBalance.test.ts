@@ -345,3 +345,176 @@ describe('RSU-vest Sankey account resolution — explicit id (re-review 4/5)', (
         expect(src!.accountName).toBe('Engineer C RSU Vest');
     });
 });
+
+/**
+ * Re-review finding [7] — reinvested-INTEREST Sankey destination resolution by
+ * EXPLICIT id.
+ *
+ * The interest income id is `interest-${acc.id}-${year}`, and the source account
+ * id is KNOWN at mint time (IncomeProjection.ts). Like the RSU-vest map, the
+ * reinvested-interest destination is now carried explicitly via
+ * `interestAccountIdByIncomeId` (keyed by the interest income id) and threaded
+ * IncomeProjection → SimulationEngine → buildCashflowDetail, so resolution is an
+ * EXACT-id lookup rather than a positional `split('-')` parse of the id string.
+ *
+ * The positional parse is hyphen-safe today (a single trailing year token, so
+ * `slice(1, -1).join('-')` reconstructs even a hyphenated account id), so this is a
+ * consistency/maintainability change — the parse is retained only as a fallback for
+ * callers that don't pass the map. These tests pin: (a) the map drives resolution
+ * (it can point somewhere the parse would NOT), (b) a hyphen-containing account id
+ * resolves, and (c) the real engine threads the map end-to-end.
+ */
+import { SavedAccount } from '../../../components/Objects/Accounts/models';
+
+describe('Reinvested-interest Sankey account resolution — explicit id (re-review 7)', () => {
+    const YEAR = new Date().getFullYear();
+
+    it('resolves the interest destination from the explicit map (map wins over the positional parse)', () => {
+        // The interest id `interest-acct-real-2026` would positionally parse to account
+        // id 'acct-real'. We put 'acct-real' in the accounts AND a DIFFERENT account
+        // 'acct-mapped' in the map keyed by the income id. The map must win — proving
+        // resolution goes through the explicit map, not the id-string parse.
+        const detail = buildCashflowDetail({
+            incomes: [
+                new PassiveIncome(
+                    `interest-acct-real-${YEAR}`,
+                    'Savings Interest',
+                    500,
+                    'Annually',
+                    'No',
+                    'Interest',
+                    new Date(YEAR, 0, 1),
+                    new Date(YEAR, 11, 31),
+                    true, // isReinvested → routed through the reinvested-destination resolver
+                ),
+            ],
+            expenses: [],
+            accounts: [
+                new SavedAccount('acct-real', 'Parsed Account', 10000, 2),
+                new SavedAccount('acct-mapped', 'Mapped Account', 10000, 2),
+            ],
+            insurance: 0,
+            year: YEAR,
+            brokerageLTCGFromGross: 0,
+            // Map keyed by the interest income id → a DIFFERENT account than the parse.
+            interestAccountIdByIncomeId: { [`interest-acct-real-${YEAR}`]: 'acct-mapped' },
+        });
+        const src = detail.incomeBySource.find(s => s.kind === 'reinvested');
+        expect(src, 'a reinvested interest source').toBeDefined();
+        // Pre-change there was no map and resolution always parsed the id → 'Parsed
+        // Account'. With the map, it resolves by exact id → 'Mapped Account'.
+        expect(src!.accountName).toBe('Mapped Account');
+    });
+
+    it('resolves a hyphen-containing account id from the map', () => {
+        // An account id with internal hyphens, carried by the map → exact-id lookup.
+        const detail = buildCashflowDetail({
+            incomes: [
+                new PassiveIncome(
+                    `interest-my-hsa-2-${YEAR}`,
+                    'My HSA Interest',
+                    300,
+                    'Annually',
+                    'No',
+                    'Interest',
+                    new Date(YEAR, 0, 1),
+                    new Date(YEAR, 11, 31),
+                    true,
+                ),
+            ],
+            expenses: [],
+            accounts: [new SavedAccount('my-hsa-2', 'HSA Savings', 8000, 3)],
+            insurance: 0,
+            year: YEAR,
+            brokerageLTCGFromGross: 0,
+            interestAccountIdByIncomeId: { [`interest-my-hsa-2-${YEAR}`]: 'my-hsa-2' },
+        });
+        const src = detail.incomeBySource.find(s => s.kind === 'reinvested');
+        expect(src, 'a reinvested interest source').toBeDefined();
+        expect(src!.accountName).toBe('HSA Savings');
+    });
+
+    it('falls back to the positional parse when the income id is absent from the map', () => {
+        // No map entry for this income → the resolver uses the (hyphen-safe) positional
+        // parse `interest-{accountId}-{year}`, recovering account 'sav-1'.
+        const detail = buildCashflowDetail({
+            incomes: [
+                new PassiveIncome(
+                    `interest-sav-1-${YEAR}`,
+                    'Emergency Fund Interest',
+                    120,
+                    'Annually',
+                    'No',
+                    'Interest',
+                    new Date(YEAR, 0, 1),
+                    new Date(YEAR, 11, 31),
+                    true,
+                ),
+            ],
+            expenses: [],
+            accounts: [new SavedAccount('sav-1', 'Emergency Fund', 6000, 2)],
+            insurance: 0,
+            year: YEAR,
+            brokerageLTCGFromGross: 0,
+            // Map omitted entirely → exercises the positional-parse fallback.
+        });
+        const src = detail.incomeBySource.find(s => s.kind === 'reinvested');
+        expect(src, 'a reinvested interest source').toBeDefined();
+        expect(src!.accountName).toBe('Emergency Fund');
+    });
+
+    it('threads the interest account-id map end-to-end through the real engine', () => {
+        // Drive the REAL engine: a savings account earns interest, which projectIncomes
+        // mints as a reinvested PassiveIncome and records in interestAccountIdByIncomeId.
+        // SimulationEngine passes that map to buildCashflowDetail, so the reinvested
+        // source resolves to the SAVINGS ACCOUNT name via the plumbed map.
+        const BIRTH_YEAR = 1988;
+        const START_YEAR = new Date().getFullYear();
+        const ts: TaxState = {
+            filingStatus: 'Single',
+            stateResidency: 'California',
+            deductionMethod: 'Standard',
+            fedOverride: null,
+            ficaOverride: null,
+            stateOverride: null,
+            year: START_YEAR,
+        };
+        const asmpt: AssumptionsState = {
+            ...defaultAssumptions,
+            demographics: {},
+            milestones: createBuiltinMilestones(BIRTH_YEAR, 65, 95),
+            income: { ...defaultAssumptions.income, salaryGrowth: 0 },
+            macro: { ...defaultAssumptions.macro, inflationRate: 0, inflationAdjusted: false },
+            investments: {
+                ...defaultAssumptions.investments,
+                returnRates: { ror: 0 },
+                taxOptimizationEnabled: false,
+                autoRothConversions: false,
+            },
+            withdrawalStrategy: [],
+            priorities: [],
+        };
+        const accounts = [new SavedAccount('hys-1', 'High Yield Savings', 100000, 4)];
+        const incomes = [
+            new WorkIncome(
+                'job', 'Engineer', 150000, 'Annually', 'Yes',
+                0, 0, 0, 0, '', null, 'FIXED',
+                new Date(START_YEAR, 0, 1),
+            ),
+        ];
+        const expenses = [
+            new FoodExpense('exp-living', 'Living', 48000, 'Annually', new Date(START_YEAR, 0, 1)),
+        ];
+        const sim = runSimulation(3, accounts, incomes, expenses, asmpt, ts);
+
+        // Find an engine year whose cashflow detail carries the reinvested interest source.
+        const interestSource = sim
+            .map(y => y.cashflowDetail?.incomeBySource.find(
+                s => s.kind === 'reinvested' && /Interest/i.test(s.name),
+            ))
+            .find(Boolean);
+        expect(interestSource, 'a reinvested interest source from the real engine').toBeDefined();
+        // Resolved via the plumbed interestAccountIdByIncomeId map → the account name.
+        expect(interestSource!.accountName).toBe('High Yield Savings');
+    });
+});
