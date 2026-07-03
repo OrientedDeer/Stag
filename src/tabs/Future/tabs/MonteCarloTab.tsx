@@ -16,6 +16,7 @@ import { DropdownInput } from '../../../components/Layout/InputFields/DropdownIn
 import { PercentageInput } from '../../../components/Layout/InputFields/PercentageInput';
 import { NumberInput } from '../../../components/Layout/InputFields/NumberInput';
 import { ToggleInput } from '../../../components/Layout/InputFields/ToggleInput';
+import { useHorizonTriptych } from './useHorizonTriptych';
 
 interface MonteCarloTabProps {
     simulationData: SimulationYear[];
@@ -128,6 +129,24 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
     const deterministicLine = useMemo(() => {
         return extractDeterministicLine(simulationData);
     }, [simulationData]);
+
+    // Horizon triptych (F13/#160): three deterministic re-scores at death 75/85/95.
+    // Computed OUTSIDE the MC run (no MC results needed), gated on the sub-tab so
+    // the Historical view never pays for the sims.
+    const triptych = useHorizonTriptych(
+        activeSubTab === 'monte-carlo',
+        accounts, incomes, expenses, assumptions, taxState,
+        simulationData[0]?.chosenWithdrawalOrder,
+    );
+
+    // Near-tie tiebreak note (#160 task 3): when the baseline comparison ran and
+    // both the success rate and the median after-tax outcome are essentially
+    // tied, point at the bad-market (p10) delta as the discriminator.
+    const cmp = summary?.baselineComparison;
+    const nearTie = !!cmp
+        && Math.abs(cmp.deltaSuccessRate) < 1
+        && cmp.baselineAfterTax.p50 > 0
+        && Math.abs(cmp.afterTaxDelta.p50) < 0.02 * cmp.baselineAfterTax.p50;
 
     // Handle preset selection - uses inflation setting to determine real vs nominal.
     // Custom preset pulls its return mean from assumptions (ror + inflation if toggle on).
@@ -475,6 +494,58 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                             </div>
                         </div>
                     </div>
+                    {/* CRRA certainty equivalents (fp-review F13 / #160). Solvent-only
+                        by convention — CRRA is undefined at ≤$0 wealth — so the line
+                        always names the conditioning and sits next to the failure rate. */}
+                    {summary.certaintyEquivalents && (
+                        <div className="mt-3 pt-3 border-t border-border-default text-sm text-content-muted">
+                            <span
+                                className="cursor-help underline decoration-dotted underline-offset-2"
+                                title="A certainty equivalent is the guaranteed amount you'd trade the risky distribution for; higher γ means more risk-averse. Computed over solvent paths only — failed paths are reported by the failure rate instead."
+                            >
+                                Certainty-equivalent (γ=2 / γ=4)
+                            </span>
+                            {': '}
+                            <span className="text-content-default font-medium tabular-nums">
+                                {formatCompactCurrency(summary.certaintyEquivalents.gamma2, { forceExact })}
+                                {' / '}
+                                {formatCompactCurrency(summary.certaintyEquivalents.gamma4, { forceExact })}
+                            </span>
+                            {' '}— among the {((summary.certaintyEquivalents.solventCount / summary.certaintyEquivalents.totalCount) * 100).toFixed(0)}%
+                            of paths that stay solvent ({summary.certaintyEquivalents.solventCount} of {summary.certaintyEquivalents.totalCount});
+                            read alongside the {(100 - summary.successRate).toFixed(1)}% failure rate.
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Horizon triptych (fp-review F13 / #160): deterministic re-scores of the
+                current plan ended at 75/85/95. Independent of the MC run. */}
+            {triptych && triptych.some(h => h.afterTaxNetWorth !== null) && (
+                <div className="bg-surface-overlay/50 rounded-xl p-4 border border-border-default">
+                    <h4 className="text-content-default font-medium mb-1">If the Plan Ends at 75 / 85 / 95</h4>
+                    <p className="text-content-muted text-xs mb-3">
+                        Deterministic re-scores of your current plan ended at each age on the
+                        expected-return path — not Monte Carlo percentiles. Values are after-tax
+                        terminal net worth, on the same valuation as the after-tax row.
+                    </p>
+                    <div className="grid grid-cols-3 gap-4">
+                        {triptych.map(h => (
+                            <div key={h.age}>
+                                <div className="text-content-muted text-xs uppercase tracking-wider mb-1">
+                                    Ends at {h.age}
+                                </div>
+                                <div className="text-lg lg:text-xl font-bold text-content-default truncate">
+                                    {h.afterTaxNetWorth !== null
+                                        ? formatCompactCurrency(h.afterTaxNetWorth, { forceExact })
+                                        : '—'}
+                                </div>
+                                {h.afterTaxNetWorth === null && (
+                                    <div className="text-content-muted text-xs mt-1">Already past this age</div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
 
@@ -560,6 +631,17 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                             </span>
                         </div>
                     </div>
+                    {/* Near-tie tiebreak (#160 task 3): success and median after-tax are
+                        essentially tied, so point at the bad-market tail. */}
+                    {nearTie && (
+                        <p className="text-content-muted text-xs mt-3">
+                            Success rate and median after-tax outcome are nearly tied here — use
+                            the bad-market (p10) after-tax delta of{' '}
+                            {summary.baselineComparison.afterTaxDelta.p10 >= 0 ? '+' : ''}
+                            {formatCompactCurrency(summary.baselineComparison.afterTaxDelta.p10, { forceExact })}{' '}
+                            as the tiebreak.
+                        </p>
+                    )}
                 </div>
             )}
 
