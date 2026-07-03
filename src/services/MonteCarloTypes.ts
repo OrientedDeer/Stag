@@ -223,6 +223,28 @@ export interface McBaselineComparison {
 }
 
 /**
+ * CRRA certainty equivalents over the per-path terminal AFTER-TAX net worth
+ * (fp-review F13 / #160). A certainty equivalent is the guaranteed amount a
+ * household with that risk aversion would accept in place of the risky
+ * distribution; higher gamma = more risk-averse, so gamma4 <= gamma2 <= mean.
+ *
+ * CONVENTION: CRRA utility is undefined/degenerate at <= $0 wealth, so the CE
+ * is computed over SOLVENT paths only — no epsilon floors, no fabricated tail
+ * utility — and must always be displayed alongside the failure rate.
+ * "Solvent" == the #111 `success` definition the summary already uses.
+ */
+export interface McCertaintyEquivalents {
+    /** CE at CRRA gamma=2 over solvent paths' terminal after-tax net worth. */
+    gamma2: number;
+    /** CE at CRRA gamma=4 (more risk-averse; always <= gamma2). */
+    gamma4: number;
+    /** Paths in the CE set: `success` AND terminal after-tax NW > 0. */
+    solventCount: number;
+    /** All paths in the run (solvent + excluded). */
+    totalCount: number;
+}
+
+/**
  * Summary of Monte Carlo simulation results
  */
 export interface MonteCarloSummary {
@@ -253,6 +275,12 @@ export interface MonteCarloSummary {
      * supplied (e.g. summaries built directly in older tests).
      */
     afterTaxPercentiles?: TerminalPercentiles;
+    /**
+     * CRRA certainty equivalents over the same per-path after-tax values (F13 /
+     * #160), solvent paths only. Undefined when the ruler wasn't supplied or no
+     * path is solvent with positive after-tax wealth.
+     */
+    certaintyEquivalents?: McCertaintyEquivalents;
     /** Conversion-facing stats (F11). Undefined only for pre-existing summaries. */
     conversionStats?: ConversionMcStats;
     /** Paired same-seed plan-vs-baseline comparison (F7); set only when the
