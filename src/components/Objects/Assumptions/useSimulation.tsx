@@ -13,6 +13,7 @@ import { BaselineProjections } from '../../../services/simulation/types';
 import { getRMDStartAge } from '../../../data/RMDData';
 import { buildDPYearContexts, planConversionsViaDP, DPPlan, DPInputs, DPObjectiveOptions, DPPolicy, QuadratureNodes } from '../../../services/simulation/RothConversionDP';
 import { searchConversionPlanByEngine, extractConversionPlan, generateCandidateWithdrawalOrders, withAllSellableAccounts } from '../../../services/simulation/EngineDirectConversionSearch';
+import { getIRMAASchedule } from '../../../data/IRMAAData';
 import { getTotalBrokerageBalance, getTotalTraditionalBalance, getTotalRothBalance } from '../../../services/simulation/YearSolver';
 import { buildTradValuation, terminalAfterTaxNetWorth } from '../../../tabs/Future/tabs/FutureUtils';
 
@@ -1022,12 +1023,18 @@ export const buildMcConversionPolicy = (
         },
         seedPlans: [{ label: 'legacy-dp', plan: stochasticPlan.conversionsByYear }],
         startingTradBalance: dpInputs.currentTradBalance,
+        // F9: same IRMAA/ACA cliff probes as the deterministic search, so h* is derived
+        // from an identically-gridded search.
+        irmaaScheduleForYear: (year, fs) => getIRMAASchedule(fs, year, assumptions),
     });
     // h* = the optimum's taxable-income headroom above the standard deduction:
     //   • a fill-to-h grid point won → that headroom (cap at it);
     //   • the std-ded baseline won → 0 (tight cap — the over-conversion corner);
     //   • the DP (policy central) won → undefined ⇒ NO cap (policy already at/under the optimum,
     //     e.g. real-SS; capping would neuter the #98 bull-path adaptivity).
+    //   • a SCALED seed variant won (F8, label 'legacy-dp×k') → bestHeadroom is null ⇒ undefined
+    //     ⇒ no cap, matching the pre-F8 behavior on that class (the raw DP used to win there);
+    //     a DP-shaped winner has no h to cap against.
     const capHeadroom: number | undefined =
         search.diagnostics.bestLabel === 'legacy-dp' ? undefined
             : search.diagnostics.bestLabel === 'std-ded-baseline' ? 0
@@ -1176,7 +1183,7 @@ export const runSimulationWithOptimization = (
             // `fullStrategy`, a different order, and must run its own baseline. In the common (nothing-omitted)
             // case this is true and the path is byte-for-byte identical to before.
             const canReuseUserBaseline = fullStrategy === assumptions.withdrawalStrategy;
-            const buildArtifacts = (order: typeof assumptions.withdrawalStrategy) => {
+            const buildArtifacts = (order: typeof assumptions.withdrawalStrategy, reuseDpPlan?: DPPlan) => {
                 const isUser = order === fullStrategy;
                 const aOrder: AssumptionsState = (isUser && canReuseUserBaseline)
                     ? assumptions : { ...assumptions, withdrawalStrategy: order };
@@ -1187,7 +1194,18 @@ export const runSimulationWithOptimization = (
                     { referenceDate, conversionMode: 'std-ded-only', eoyContributionAdditions, eoyDebtReductions, eoyMortgageReductions },
                 );
                 const { dpInputs, effectiveDpObjective } = buildDpSolveInputs(accounts, incomes, expenses, aOrder, taxState, baselineO);
-                const dpPlan = planConversionsViaDP(dpInputs, effectiveDpObjective);
+                // F5a (fp-review 2026-07-02): the synchronous DP solve is the dominant cost of the joint
+                // search (~3–5s per order vs a fraction of that for all of an order's engine replays),
+                // and its plan is only a SEED — the engine-direct search scores it on the real engine
+                // like every other candidate. So the DP is solved ONCE, under the user's order, and
+                // REUSED as the seed for every candidate order (≈ halves interactive latency with 2
+                // orders, ~2/3 with 3). The dominance guarantees survive: the user-order search still
+                // contains its own true DP seed, and a candidate order only replaces the incumbent on a
+                // strictly HIGHER engine score. What a candidate order gives up is its own DP shape as a
+                // seed; the fill-to-h family + the F8 scaled-seed sweep cover magnitude, and the engine
+                // score decides. (The per-order dpInputs/contexts are still built from that order's own
+                // baseline — only the expensive solve is shared.)
+                const dpPlan = reuseDpPlan ?? planConversionsViaDP(dpInputs, effectiveDpObjective);
                 return { order, aOrder, baselineO, dpInputs, dpPlan };
             };
             const runUnderOrder = (aOrder: AssumptionsState, plan: Map<number, number>) => runSimulation(
@@ -1204,22 +1222,27 @@ export const runSimulationWithOptimization = (
                     baseline: { afterTaxNW: terminalAfterTaxNetWorth(art.baselineO, tradValuationRuler), timeline: art.baselineO, plan: extractConversionPlan(art.baselineO) },
                     seedPlans: [{ label: 'legacy-dp', plan: art.dpPlan.conversionsByYear }],
                     startingTradBalance: art.dpInputs.currentTradBalance,
+                    // F9: lets the search append IRMAA-tier (and ACA-cliff) h-grid probes.
+                    irmaaScheduleForYear: (year, fs) => getIRMAASchedule(fs, year, assumptions),
                 });
                 return {
                     order: art.order, timeline: s.winningTimeline,
                     nw: terminalAfterTaxNetWorth(s.winningTimeline, tradValuationRuler),
                     label: s.diagnostics.bestLabel, sims: s.diagnostics.sims + 1,
-                    dpPlan: art.dpPlan, // the order's DP plan — its traces feed the debug screen for the winner
+                    dpPlan: art.dpPlan, // the DP seed this order searched with (since F5a: always the user-order solve) — its traces feed the debug screen
                 };
             };
             // Full-search EVERY candidate order and keep the highest after-tax NW. The user's order is
             // first in the candidate set, so the result can never regress below the manual order.
-            const userResult = fullSearch(buildArtifacts(fullStrategy));
+            // The user-order artifacts run FIRST and own the single DP solve (F5a); every other
+            // candidate order reuses that plan as its seed.
+            const userArtifacts = buildArtifacts(fullStrategy);
+            const userResult = fullSearch(userArtifacts);
             let best = userResult;
             let totalSims = userResult.sims;
             for (const order of candidateOrders) {
                 if (order === fullStrategy) continue;
-                const result = fullSearch(buildArtifacts(order));
+                const result = fullSearch(buildArtifacts(order, userArtifacts.dpPlan));
                 totalSims += result.sims;
                 if (result.nw > best.nw + 1) best = result; // the de-converted truth decides; ties keep the incumbent
             }
@@ -1240,10 +1263,15 @@ export const runSimulationWithOptimization = (
                     `order-optimization gain $${Math.round(orderGain).toLocaleString()}; ` +
                     `conversions: ${best.label} (total converted $${Math.round(executedTotal).toLocaleString()}).`,
                 );
-                // Restore the Roth-conversion debug screen (RothConversionDebug reads selectedYear.dpTrace):
-                // attach the WINNING order's DP analysis. NOTE the executed plan is the engine-direct search
-                // result, which may differ from the DP plan — so dpTrace shows the DP's analysis, not the
-                // executed conversions. (We don't re-sim just to populate dpDebugByYear; trace + summary is enough.)
+                // Restore the Roth-conversion debug screen (RothConversionDebug reads selectedYear.dpTrace).
+                // Since F5a the DP is solved ONCE under the USER's order and reused as every candidate
+                // order's seed, so best.dpPlan — whichever order wins — always carries the USER-ORDER DP
+                // analysis. That's the explicit fallback for a winning non-user order (its own DP was never
+                // solved): the trace shown is exactly the seed that order's search actually scored, just
+                // solved against the user-order baseline. NOTE (pre-existing) the executed plan is the
+                // engine-direct search result, which may differ from the DP plan — dpTrace explains the
+                // seed, not the executed conversions. (We don't re-sim just to populate dpDebugByYear;
+                // trace + summary is enough.)
                 for (const year of finalTimeline) {
                     const trace = best.dpPlan.diagnostics.perYearTraces.get(year.year);
                     if (trace) year.dpTrace = trace;

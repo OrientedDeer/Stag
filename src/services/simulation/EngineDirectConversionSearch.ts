@@ -15,7 +15,9 @@
  *     feasibility floor never fires);
  *   • the legacy DP plan (a seed — guarantees the result is ≥ the DP);
  *   • a bracket-aligned grid of "fill ordinary income to (standard deduction + headroom h)"
- *     plans, then a golden-section refine on h for the precise peak between bracket tops.
+ *     plans, then a golden-section refine on h for the precise peak between bracket tops;
+ *   • when a SEED wins, scaled variants of it (×0.8/0.9/1.1/1.2, with one recursive pass) —
+ *     so a winning seed ships as a verified local scaling peak instead of unexplored (F8).
  *
  * Fill-to-h is automatically year-adaptive from one scalar — it converts more in low-income
  * gap years and less once Social Security / RMDs raise the income floor, the gap-year shape
@@ -28,6 +30,8 @@
  */
 import { DPYearContext } from './RothConversionDP';
 import { SimulationYear } from './types';
+import { FilingStatus } from '../../data/TaxData';
+import type { ResolvedIRMAASchedule } from '../../data/IRMAAData';
 import { AnyAccount, SavedAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
 // Single source of truth for "can the drawdown liquidate this?" — defined alongside the
 // #111 fallback tier so the tax-opt optimizer and the manual-order safety net can't diverge.
@@ -204,6 +208,15 @@ export interface EngineSearchOptions {
      * fill-to-headroom family (#5), matching the engine's realized-RMD basis.
      */
     startingTradBalance: number;
+    /**
+     * Resolve the IRMAA schedule (tier floors + surcharge) for a year + filing status (F9) —
+     * production passes `(year, fs) => getIRMAASchedule(fs, year, assumptions)`. This module
+     * can't call getIRMAASchedule itself: the schedule's inflation indexing needs `assumptions`,
+     * which the search deliberately doesn't know about. When provided AND the contexts price
+     * IRMAA, tier thresholds are appended to the coarse grid as h-space cliff probes; omitted
+     * (e.g. unit tests) → the bracket-top grid is unchanged.
+     */
+    irmaaScheduleForYear?: (year: number, filingStatus: FilingStatus) => ResolvedIRMAASchedule;
 }
 
 export interface EngineSearchDiagnostics {
@@ -258,17 +271,70 @@ function fillToHeadroomPlan(contexts: DPYearContext[], headroom: number, startin
     return plan;
 }
 
+/** Land cliff probes just UNDER the modeled threshold; the h→MAGI mapping is approximate anyway. */
+const CLIFF_PROBE_EPSILON = 1_000;
+
+/**
+ * h-space probes for the REAL cash cliffs the bracket-top grid cannot see (F9, fp-review
+ * 2026-07-02): IRMAA tier thresholds ($2,297+/yr MFJ tier-1, charged by the engine with its
+ * 2-year lookback — real money in the scored replay) and the ACA 400%-FPL subsidy cliff. Both
+ * sit MID-INTERVAL between federal bracket tops, making J(h) non-unimodal — golden-section can
+ * settle on the wrong shelf. A threshold−ε grid probe pins the just-under-the-cliff candidate
+ * explicitly, the cliff-awareness the legacy rate-match search always had (helpers.ts
+ * nextThresholdAbove) and the default path dropped. The ACA probe is added ahead of the engine
+ * pricing the cliff as real cash (F1): harmless before that lands (just one more fill-to-h
+ * candidate), necessary after.
+ *
+ * h→MAGI mapping (approximate, year-dependent): a fill-to-h plan targets total non-SS ordinary
+ * income = stdDed_y + h, while IRMAA MAGI ≈ ordinary + TAXABLE SS + LTCG and ACA MAGI ≈
+ * ordinary + GROSS SS + LTCG. Each cliff is mapped at the FIRST context that prices it, with
+ * taxable SS approximated at the 85% cap (accurate at IRMAA-level MAGIs). Later years' stdDed /
+ * SS / threshold drift and the torpedo's nonlinearity make the mapping approximate — the probe
+ * REDUCES the wrong-shelf failure mode rather than eliminating it, which is all a grid point
+ * needs to do (the engine score stays exact).
+ */
+export function computeCliffHeadroomProbes(
+    contexts: DPYearContext[],
+    irmaaScheduleForYear?: (year: number, filingStatus: FilingStatus) => ResolvedIRMAASchedule,
+): number[] {
+    const probes: number[] = [];
+    // IRMAA: the first context that prices IRMAA (a Medicare year, or the DP-controlled
+    // age-63/64 lookback year for early retirees — see DPYearContext.irmaaSurchargeForMAGI).
+    const irmaaCtx = contexts.find(c => c.irmaaSurchargeForMAGI);
+    if (irmaaCtx && irmaaScheduleForYear) {
+        const sched = irmaaScheduleForYear(irmaaCtx.year, irmaaCtx.filingStatus);
+        const offset = irmaaCtx.fedParams.standardDeduction + 0.85 * irmaaCtx.ssBenefits + irmaaCtx.ltcgIncome;
+        let magi = 0;
+        for (let tier = 0; tier < 8; tier++) { // walk the tier floors upward (≤ 6 in the schedule)
+            const next = sched.nextThreshold(magi);
+            if (next === null) break;
+            probes.push(next - offset - CLIFF_PROBE_EPSILON);
+            magi = next;
+        }
+    }
+    // ACA 400%-FPL cliff (pre-65 subsidized years). ACA MAGI uses GROSS SS, unlike IRMAA's taxable SS.
+    const acaCtx = contexts.find(c => c.acaOptions?.acaSubsidyAware && (c.acaOptions.acaCliffThreshold ?? 0) > 0);
+    if (acaCtx?.acaOptions) {
+        const offset = acaCtx.fedParams.standardDeduction + acaCtx.ssBenefits + acaCtx.ltcgIncome;
+        probes.push(acaCtx.acaOptions.acaCliffThreshold - offset - CLIFF_PROBE_EPSILON);
+    }
+    return probes;
+}
+
 /**
  * Bracket-aligned coarse grid of taxable-income headrooms above the standard deduction.
  * Each bracket threshold is a natural "fill to the top of the bracket below it" target.
  * Capped at the 32% bracket — draining a solvent household past that never wins, and it keeps
- * the sim count down.
+ * the sim count down. Cliff probes (F9) ride the same cap, and the grid stays SORTED — the
+ * golden-section bracketing indexes a winner's neighbors by position.
  */
-function headroomGrid(contexts: DPYearContext[]): number[] {
+function headroomGrid(contexts: DPYearContext[], cliffProbes: number[] = []): number[] {
     const fed = contexts[0].fedParams;
     const cap = fed.brackets.find(b => b.rate >= 0.35)?.threshold ?? Number.POSITIVE_INFINITY;
     const tops = fed.brackets.map(b => b.threshold).filter(t => t > 0 && t <= cap);
-    return [0, ...tops];
+    const merged = [0, ...tops, ...cliffProbes.filter(p => p > 0 && p <= cap)].sort((a, b) => a - b);
+    // Drop near-coincident points (a probe landing on a bracket top adds nothing but a sim).
+    return merged.filter((h, i) => i === 0 || h - merged[i - 1] > 1);
 }
 
 export function searchConversionPlanByEngine(
@@ -276,25 +342,29 @@ export function searchConversionPlanByEngine(
     scorePlan: ConversionPlanScorer,
     opts: EngineSearchOptions,
 ): EngineSearchResult {
-    const { baseline, seedPlans = [], startingTradBalance } = opts;
+    const { baseline, seedPlans = [], startingTradBalance, irmaaScheduleForYear } = opts;
     // Fill-to-headroom with the engine's prior-year-end RMD basis baked in (#5).
     const fillPlan = (h: number): Map<number, number> => fillToHeadroomPlan(contexts, h, startingTradBalance);
 
     let sims = 0;
+    // `kind` tags where the winner came from: 'baseline' (the pre-scored std-ded plan),
+    // 'seed' (a passed-in seed plan or a scaled variant of one), or 'grid' (fill-to-h).
+    // The golden-section refine keys off `headroom`; the seed-scaling pass keys off `kind`.
+    type CandidateKind = 'baseline' | 'seed' | 'grid';
     // Seed with the pre-scored std-ded baseline (its TRUE score + timeline) — the result is
     // ≥ the baseline by construction, so the downstream feasibility floor never fires.
-    let best: { headroom: number | null; plan: Map<number, number>; score: ConversionPlanScore; label: string } =
-        { headroom: null, plan: baseline.plan, score: { afterTaxNW: baseline.afterTaxNW, timeline: baseline.timeline }, label: 'std-ded-baseline' };
+    let best: { headroom: number | null; plan: Map<number, number>; score: ConversionPlanScore; label: string; kind: CandidateKind } =
+        { headroom: null, plan: baseline.plan, score: { afterTaxNW: baseline.afterTaxNW, timeline: baseline.timeline }, label: 'std-ded-baseline', kind: 'baseline' };
 
-    const consider = (label: string, headroom: number | null, plan: Map<number, number>): ConversionPlanScore => {
+    const consider = (label: string, headroom: number | null, plan: Map<number, number>, kind: CandidateKind): ConversionPlanScore => {
         const score = scorePlan(plan);
         sims++;
-        if (score.afterTaxNW > best.score.afterTaxNW) best = { headroom, plan, score, label };
+        if (score.afterTaxNW > best.score.afterTaxNW) best = { headroom, plan, score, label, kind };
         return score;
     };
 
     // Seed candidates (e.g. the legacy DP plan) — guarantees the result is ≥ each of them.
-    for (const s of seedPlans) consider(s.label, null, s.plan);
+    for (const s of seedPlans) consider(s.label, null, s.plan, 'seed');
 
     // Nothing to vary year-over-year → baseline / seeds are the whole search.
     if (contexts.length === 0) {
@@ -305,9 +375,9 @@ export function searchConversionPlanByEngine(
         };
     }
 
-    // Bracket-aligned fill-to-headroom grid.
-    const grid = headroomGrid(contexts);
-    for (const h of grid) consider(`h=${Math.round(h).toLocaleString()}`, h, fillPlan(h));
+    // Bracket-aligned fill-to-headroom grid, plus IRMAA/ACA cliff probes (F9).
+    const grid = headroomGrid(contexts, computeCliffHeadroomProbes(contexts, irmaaScheduleForYear));
+    for (const h of grid) consider(`h=${Math.round(h).toLocaleString()}`, h, fillPlan(h), 'grid');
 
     // Golden-section refine over the continuous headroom, in the interval bracketing the best
     // grid point — finds the precise peak between two bracket tops. Skipped only if a non-grid
@@ -323,19 +393,54 @@ export function searchConversionPlanByEngine(
         const phi = (Math.sqrt(5) - 1) / 2;
         let a = lo, c = hi;
         let x1 = c - phi * (c - a), x2 = a + phi * (c - a);
-        let f1 = consider(`h=${Math.round(x1).toLocaleString()}`, x1, fillPlan(x1)).afterTaxNW;
-        let f2 = consider(`h=${Math.round(x2).toLocaleString()}`, x2, fillPlan(x2)).afterTaxNW;
+        let f1 = consider(`h=${Math.round(x1).toLocaleString()}`, x1, fillPlan(x1), 'grid').afterTaxNW;
+        let f2 = consider(`h=${Math.round(x2).toLocaleString()}`, x2, fillPlan(x2), 'grid').afterTaxNW;
         for (let i = 0; i < 4; i++) {
             if (f1 >= f2) {
                 c = x2; x2 = x1; f2 = f1;
                 x1 = c - phi * (c - a);
-                f1 = consider(`h=${Math.round(x1).toLocaleString()}`, x1, fillPlan(x1)).afterTaxNW;
+                f1 = consider(`h=${Math.round(x1).toLocaleString()}`, x1, fillPlan(x1), 'grid').afterTaxNW;
             } else {
                 a = x1; x1 = x2; f1 = f2;
                 x2 = a + phi * (c - a);
-                f2 = consider(`h=${Math.round(x2).toLocaleString()}`, x2, fillPlan(x2)).afterTaxNW;
+                f2 = consider(`h=${Math.round(x2).toLocaleString()}`, x2, fillPlan(x2), 'grid').afterTaxNW;
             }
         }
+    }
+
+    // SEED-SCALING PASS (F8, fp-review 2026-07-02): local scaling exploration around a WINNING seed.
+    // Seed plans score once with headroom=null, so the golden-section gate above never refines
+    // around them — a winning seed (the legacy DP on most real-SS profiles) used to ship with ZERO
+    // local exploration. The known #89 failure class was a MAGNITUDE error at a correct SHAPE
+    // (~$131k on the cookbook corner), exactly what the ~8 flat-h rivals cannot express — so score
+    // seedPlan × {0.8, 0.9, 1.1, 1.2} as candidates, making "the shipped seed plan is a local
+    // scaling peak" a PRODUCTION invariant rather than a certification-panel-fixture-only test.
+    //
+    // Scaling happens in plan-space only: like every other candidate, the engine clamps each
+    // year's request to the available Traditional, and the returned timeline is the scored replay
+    // of the exact returned plan (the byte-identical-replay invariant is preserved because
+    // `consider` stores the timeline produced by scoring that plan).
+    //
+    // Recursion decision: if a scaled variant wins the first pass, ONE more pass rescales around
+    // the new winner (reach ×0.64…×1.44 of the raw seed), then stops — bounded at +8 replays
+    // worst case. Deeper recursion buys little: interior multipliers are already bracketed, and
+    // the certification sweep's own tolerance is coarser than a ×1.1² step.
+    const SEED_SCALES = [0.8, 0.9, 1.1, 1.2];
+    const scalePlan = (plan: Map<number, number>, k: number): Map<number, number> => {
+        const scaled = new Map<number, number>();
+        for (const [year, amt] of plan) {
+            const v = amt * k;
+            if (v > 0.5) scaled.set(year, v); // same materiality floor as fillToHeadroomPlan
+        }
+        return scaled;
+    };
+    for (let pass = 0; pass < 2; pass++) {
+        if (best.kind !== 'seed' || best.plan.size === 0) break; // only a winning non-empty seed gets the sweep
+        const anchor = best;
+        for (const k of SEED_SCALES) {
+            consider(`${anchor.label}×${k}`, null, scalePlan(anchor.plan, k), 'seed');
+        }
+        if (best === anchor) break; // the anchor is a local scaling peak — certified, done
     }
 
     return {
