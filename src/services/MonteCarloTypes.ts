@@ -192,6 +192,13 @@ export interface ConversionMcStats {
      */
     medianConvertedAfterDownYear: number | null;
     medianConvertedAfterOtherYears: number | null;
+    /**
+     * Sizes of the two buy-the-dip samples (converting-window years pooled
+     * across all paths). The UI hides the comparison when either sample is
+     * too small for its median to mean anything (#162).
+     */
+    sampleYearsAfterDown: number;
+    sampleYearsAfterOther: number;
 }
 
 /**

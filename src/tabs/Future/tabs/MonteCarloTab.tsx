@@ -9,7 +9,7 @@ import { TaxContext } from '../../../components/Objects/Taxes/TaxContext';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { applyChosenWithdrawalOrder } from '../../../services/simulation/EngineDirectConversionSearch';
 import { calculateNetWorth, formatCompactCurrency } from './FutureUtils';
-import { YearlyPercentile, RETURN_PRESETS, ReturnPresetKey, getPresetReturnMean } from '../../../services/MonteCarloTypes';
+import { YearlyPercentile, RETURN_PRESETS, ReturnPresetKey, getPresetReturnMean, ConversionMcStats } from '../../../services/MonteCarloTypes';
 import { HISTORICAL_STATS } from '../../../data/HistoricalReturns';
 import { HistoricalBacktestPanel } from './HistoricalBacktestPanel';
 import { DropdownInput } from '../../../components/Layout/InputFields/DropdownInput';
@@ -43,6 +43,37 @@ function extractDeterministicLine(simulationData: SimulationYear[]): YearlyPerce
         year: year.year,
         netWorth: calculateNetWorth(year.accounts),
     }));
+}
+
+/**
+ * Buy-the-dip line (#162): turn the after-a-down-year vs other-years median
+ * conversion comparison into ONE interpreted sentence instead of two nearly
+ * identical dollar figures. Returns null (line hidden) when either sample is
+ * too small for its median to mean anything, or when the other-years median
+ * is $0 (no base for a percentage).
+ */
+const DIP_MIN_SAMPLE_YEARS = 20;
+const DIP_MEANINGFUL_DIFF_PCT = 5;
+
+function describeBuyTheDip(stats: ConversionMcStats, fmt: (n: number) => string): string | null {
+    const down = stats.medianConvertedAfterDownYear;
+    const other = stats.medianConvertedAfterOtherYears;
+    if (down === null || other === null) return null;
+    // Older persisted summaries predate the sample counts; undefined fails the
+    // gate and the line simply stays hidden until the next run.
+    if (!(stats.sampleYearsAfterDown >= DIP_MIN_SAMPLE_YEARS)
+        || !(stats.sampleYearsAfterOther >= DIP_MIN_SAMPLE_YEARS)) return null;
+    if (other <= 0) return null;
+    const diffPct = (down / other - 1) * 100;
+    const medians = `(median ${fmt(down)} vs ${fmt(other)})`;
+    if (Math.abs(diffPct) < DIP_MEANINGFUL_DIFF_PCT) {
+        return `The conversion policy converted about the same after down years as in other years ${medians} — on your inputs, market dips barely change the recommended conversions.`;
+    }
+    const n = Math.round(Math.abs(diffPct));
+    if (diffPct > 0) {
+        return `The conversion policy converted ${n}% more in the year after a market loss ${medians} — the policy buys the dip: converting after a crash moves more shares for the same tax.`;
+    }
+    return `The conversion policy converted ${n}% less in the year after a market loss ${medians}.`;
 }
 
 /**
@@ -129,6 +160,12 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
     const deterministicLine = useMemo(() => {
         return extractDeterministicLine(simulationData);
     }, [simulationData]);
+
+    // Buy-the-dip line (#162): one interpreted sentence, or null (hidden) on a
+    // thin sample / $0 base.
+    const dipLine = summary?.conversionStats
+        ? describeBuyTheDip(summary.conversionStats, (n) => formatCompactCurrency(n, { forceExact }))
+        : null;
 
     // Near-tie tiebreak note (#160 task 3): when the baseline comparison ran and
     // both the success rate and the median after-tax outcome are essentially
@@ -536,17 +573,7 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                                 {(summary.conversionStats.fractionOfPathsConverting * 100).toFixed(0)}%
                             </span>
                         </div>
-                        {summary.conversionStats.medianConvertedAfterDownYear !== null
-                            && summary.conversionStats.medianConvertedAfterOtherYears !== null && (
-                            <div>
-                                Median converted the year after a market loss vs other years:{' '}
-                                <span className="text-content-default font-medium tabular-nums">
-                                    {formatCompactCurrency(summary.conversionStats.medianConvertedAfterDownYear, { forceExact })}
-                                    {' vs '}
-                                    {formatCompactCurrency(summary.conversionStats.medianConvertedAfterOtherYears, { forceExact })}
-                                </span>
-                            </div>
-                        )}
+                        {dipLine && <div>{dipLine}</div>}
                     </div>
                 </div>
             )}
