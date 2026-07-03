@@ -1,4 +1,4 @@
-import React, { useState, useContext, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useContext, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useSubTabKeyboardNav } from '../../hooks/useKeyboardShortcuts';
 import { AssumptionsContext, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { getSimulationInputHash } from '../../services/simulationHash';
@@ -21,7 +21,8 @@ import { colorMapForKeys } from '../../components/Charts/chartColors';
 
 // --- Tabs ---
 import { OverviewTab } from './tabs/OverviewTab';
-import { buildProjection } from './buildProjection';
+import { buildProjectionAsync } from './buildProjection';
+import { JointSearchSupersededError } from '../../services/jointSearchRunner';
 import { AfterTaxNetWorthChart } from './tabs/AfterTaxNetWorthChart';
 import { CashflowTab } from './tabs/CashflowTabs';
 import { DebtTab } from './tabs/DebtTab';
@@ -247,24 +248,54 @@ export default function FutureTab() {
         return hints;
     }, [nonVestingRSUWarnings]);
 
-    const executeSimulation = useCallback(
-        () => buildProjection(assumptions, accounts, incomes, expenses, taxState, budgetMonths, simulation),
-        [assumptions, accounts, incomes, expenses, taxState, budgetMonths, simulation],
-    );
+    // #158: the joint search runs in a Web Worker (buildProjectionAsync), so a
+    // recalc no longer freezes the main thread — the spinner actually spins and
+    // edits made mid-run take effect (the runner supersedes the in-flight
+    // worker). Two refs implement the staleness contract:
+    //   latestHashRef        — the hash of the inputs as of the LAST render;
+    //                          a resolved result whose request-time hash no
+    //                          longer matches is DROPPED (never dispatched).
+    //   lastRequestedHashRef — the hash the most recent request was started
+    //                          for; the debounce effect keys off it instead of
+    //                          `isLoading` so a mid-run edit schedules a new
+    //                          request (superseding the old one) rather than
+    //                          waiting for the doomed run to finish.
+    const latestHashRef = useRef(currentInputHash);
+    useEffect(() => { latestHashRef.current = currentInputHash; }, [currentInputHash]);
+    const lastRequestedHashRef = useRef<string | null>(null);
+    const [loadingMessage, setLoadingMessage] = useState('Running simulation...');
 
     const handleRecalculate = useCallback(() => {
+        const hashAtRequest = currentInputHash;
+        lastRequestedHashRef.current = hashAtRequest;
         setIsLoading(true);
-        // Use setTimeout to allow the UI to update before running the simulation
-        setTimeout(() => {
-            const newSimulation = executeSimulation();
+        setLoadingMessage('Running simulation...');
+        buildProjectionAsync(
+            assumptions, accounts, incomes, expenses, taxState, budgetMonths, simulation,
+            setLoadingMessage,
+        ).then(newSimulation => {
+            if (latestHashRef.current !== hashAtRequest) {
+                // Inputs changed while this (sync-fallback or worker) run was in
+                // flight — drop the stale result; the debounce effect below has
+                // already scheduled/started a run for the new inputs.
+                setIsLoading(false);
+                return;
+            }
             // Store simulation with input hash for staleness detection
             dispatchSimulation({
                 type: 'SET_SIMULATION_WITH_HASH',
-                payload: { simulation: newSimulation, inputHash: currentInputHash }
+                payload: { simulation: newSimulation, inputHash: hashAtRequest }
             });
             setIsLoading(false);
-        }, 50);
-    }, [executeSimulation, dispatchSimulation, currentInputHash]);
+        }).catch(err => {
+            // Superseded → the newer request owns the spinner; anything else is
+            // unexpected (buildProjectionAsync already swallowed worker failures
+            // into the sync fallback) — release the spinner so the UI can't hang.
+            if (err instanceof JointSearchSupersededError) return;
+            setIsLoading(false);
+        });
+    }, [assumptions, accounts, incomes, expenses, taxState, budgetMonths, simulation,
+        dispatchSimulation, currentInputHash]);
 
     // Auto-recalculate simulation on mount if we have data but no simulation
     // This fixes the issue where localStorage data loads but simulation is stale/empty
@@ -273,29 +304,25 @@ export default function FutureTab() {
         const hasNoSimulation = simulation.length === 0;
 
         if (hasData && hasNoSimulation) {
-            setIsLoading(true);
-            setTimeout(() => {
-                const newSimulation = executeSimulation();
-                dispatchSimulation({
-                    type: 'SET_SIMULATION_WITH_HASH',
-                    payload: { simulation: newSimulation, inputHash: currentInputHash }
-                });
-                setIsLoading(false);
-            }, 50);
+            handleRecalculate();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // Only run on mount - we want to check localStorage state once
 
-    // Auto-run simulation after 500ms of being stale (inputs changed)
+    // Auto-run simulation after 500ms of being stale (inputs changed). Keyed on
+    // lastRequestedHashRef (not isLoading): a request for THESE inputs must only
+    // be started once, but an edit while an older run is still in flight should
+    // start (and supersede into) a new run immediately after the debounce.
     useEffect(() => {
-        if (!isSimulationStale || isLoading) return;
+        if (!isSimulationStale) return;
+        if (lastRequestedHashRef.current === currentInputHash) return;
 
         const timer = setTimeout(() => {
             handleRecalculate();
         }, 500);
 
         return () => clearTimeout(timer);
-    }, [isSimulationStale, currentInputHash, isLoading, handleRecalculate]);
+    }, [isSimulationStale, currentInputHash, handleRecalculate]);
 
     // Calculate milestones using the centralized service
     const milestones = useMemo(() =>
@@ -491,7 +518,7 @@ export default function FutureTab() {
 
                 {/* Main Content */}
                 <Panel padding="lg" className="shadow-2xl mb-4 overflow-visible relative">
-                    {isLoading && <LoadingOverlay message="Running simulation..." />}
+                    {isLoading && <LoadingOverlay message={loadingMessage} />}
                     {renderTabContent()}
                 </Panel>
             </div>
