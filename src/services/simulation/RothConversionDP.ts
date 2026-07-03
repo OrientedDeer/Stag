@@ -1411,20 +1411,43 @@ export function bracketAwareTradExitValue(
      * still approximate (inflating the brackets too would need a year-indexed param set).
      */
     cola: number = 0,
+    /**
+     * State tax params for the residency the residual exits under (fp-review F2). The
+     * conversion-cost side prices state tax in full (computeYearTax / the engine), so a
+     * fed-only exit over-values residual Traditional and biases the optimizer toward
+     * under-conversion in taxed states. Mirrors computeYearTax's state base: non-SS
+     * ordinary income, plus the IRS-taxable slice of SS only for SS-taxing states.
+     * Frozen at the terminal year's nominal thresholds, same as `fedParams`.
+     * null/omitted ⇒ no state tax (no-tax state, unresolvable params, or legacy callers).
+     */
+    stateParams: TaxParameters | null = null,
 ): number {
     if (B < 1) return 0;
     if (userSituation === 'bequeath') return B * (1 - HEIR_EXIT_RATE);
     let bal = B, pv = 0, age = terminalAge, t = 0;
     let grossW = 0, totalTax = 0;
     let ss = ssBenefit, fixed = fixedIncome; // grown by COLA each year below
+    // State tax on a drawdown-year ordinary-income base (fp-review F2). Reads the
+    // COLA-grown `ss` from the enclosing scope, so it's recomputed per year like the
+    // federal side.
+    const stateTaxOn = (ordinary: number): number => {
+        if (!stateParams) return 0;
+        let base = ordinary;
+        if (ss > 0 && stateParams.socialSecurityTreatment === 'taxable') {
+            base += TaxService.getTaxableSocialSecurityBenefits(ss, ordinary, 0, filing);
+        }
+        return TaxService.calculateTax(base, 0, stateParams);
+    };
     while (bal > 100 && t < 45) {
         const div = Math.max(2, getDistributionPeriod(Math.min(age, 115)));
         const w = Math.min(bal, bal / div);
         // The residual withdrawal bears only the MARGINAL tax above the persisting
         // income base (so SS/fixed income aren't taxed to the residual). Recomputed per
         // year because the base grows with COLA.
-        const baseTax = TaxService.calculateTotalFederalTax(fixed, ss, 0, 0, 0, filing, fedParams).totalTax;
-        const taxWith = TaxService.calculateTotalFederalTax(fixed + w, ss, 0, 0, 0, filing, fedParams).totalTax;
+        const baseTax = TaxService.calculateTotalFederalTax(fixed, ss, 0, 0, 0, filing, fedParams).totalTax
+            + stateTaxOn(fixed);
+        const taxWith = TaxService.calculateTotalFederalTax(fixed + w, ss, 0, 0, 0, filing, fedParams).totalTax
+            + stateTaxOn(fixed + w);
         const tax = Math.max(0, taxWith - baseTax); // marginal tax attributable to the withdrawal
         pv += (w - tax) / Math.pow(1 + g, t);
         grossW += w; totalTax += tax;
@@ -1588,11 +1611,15 @@ export function planConversionsViaDP(
     // Self-liquidate stacks the residual drawdown on the retiree's persisting
     // late-life income — last-year SS + non-SS fixed income (pension/passive,
     // excl. RMD/conversion). Bequeath ignores these (heir drains it standalone).
+    // State tax rides the drawdown too (fp-review F2), using the last context's
+    // event-resolved stateParams — the same residency/status the in-horizon side
+    // prices conversions with.
     const tradTerminalAt = (tradBal: number): number =>
         terminalValuation === 'bracket-aware'
             ? bracketAwareTradExitValue(
                 tradBal, terminalAge, lastCtx.growthRate, lastCtx.fedParams, lastCtx.filingStatus,
-                userSituation, lastCtx.ssBenefits, lastCtx.nonSSOrdinaryIncomeExclRMD, terminalCola)
+                userSituation, lastCtx.ssBenefits, lastCtx.nonSSOrdinaryIncomeExclRMD, terminalCola,
+                lastCtx.stateParams)
             : tradBal * (1 - tau);
     // Terminal wealth = Roth + residual-Trad exit value ONLY (#7). Brokerage and savings
     // are NOT terminal state variables here — the DP's state is (trad, roth), keeping the

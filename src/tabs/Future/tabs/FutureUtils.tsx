@@ -212,6 +212,11 @@ export function buildTradValuation(
     const terminalAge = last.year - birthYear + 1;
     const fedParams = TaxService.getTaxParameters(last.year, taxState.filingStatus, 'federal', undefined, assumptions);
     if (!fedParams) return { rate: projectedRMDRate };
+    // State tax rides the exit drawdown too (fp-review F2): the conversion-cost side
+    // prices state tax in full, so a fed-only exit over-values the residual and biases
+    // the optimizer toward under-conversion in taxed states. No-tax states (or an
+    // unknown residency) resolve to undefined → fed-only, unchanged.
+    const stateParams = TaxService.getTaxParameters(last.year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions) ?? null;
     const g = (assumptions.investments.returnRates.ror ?? 7) / 100
         + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0);
     const ss = TaxService.getSocialSecurityBenefits(last.incomes, last.year);
@@ -220,7 +225,7 @@ export function buildTradValuation(
     return {
         rate: projectedRMDRate,
         tradDeferredTax: (b: number) =>
-            bracketAwareTradExitValue(b, terminalAge, g, fedParams, taxState.filingStatus, 'self-liquidate', ss, fixed, cola),
+            bracketAwareTradExitValue(b, terminalAge, g, fedParams, taxState.filingStatus, 'self-liquidate', ss, fixed, cola, stateParams),
     };
 }
 
