@@ -1370,6 +1370,24 @@ function determineGridScales(
 export const HEIR_EXIT_RATE = 0.32;
 
 /**
+ * Scale the DOLLAR thresholds a post-horizon drawdown year actually consumes —
+ * standard deduction + ordinary bracket thresholds — by an inflation-index factor
+ * (#157). The exit drawdown prices only ordinary income + SS (no LTCG/STCG →
+ * capitalGainsBrackets/NIIT/wageBase are dead here; senior fields are consumed by
+ * federalTax.ts, not calculateTotalFederalTax), so those fields pass through
+ * unscaled. The SS provisional-income thresholds ($25k/$32k…) are statutorily
+ * FROZEN in nominal terms — they live as constants inside TaxService and are
+ * correctly untouched by this scaling.
+ */
+function indexTaxParams(p: TaxParameters, factor: number): TaxParameters {
+    return {
+        ...p,
+        standardDeduction: p.standardDeduction * factor,
+        brackets: p.brackets.map(b => ({ threshold: b.threshold * factor, rate: b.rate })),
+    };
+}
+
+/**
  * Bracket-aware exit VALUE (in horizon-year dollars) of a residual Traditional
  * balance `B` at the horizon — the heart of Change 1 (#89). Instead of a flat
  * (1−τ) haircut, value the residual at the best rate it can actually leave at:
@@ -1409,10 +1427,7 @@ export function bracketAwareTradExitValue(
      * COLA / inflation rate (#10): the persisting SS + fixed income grow with it each
      * drawdown year, mirroring the nominal inflation-adjusted engine (the residual
      * compounds at nominal g). 0 = freeze nominal (pre-#10 behavior; callers/tests that
-     * don't pass it are unchanged). NOTE: income grows with COLA but `fedParams` brackets
-     * stay at the terminal year's nominal thresholds across the 45-yr drawdown, so some
-     * bracket creep remains in the valuation — an improvement over frozen-nominal income,
-     * still approximate (inflating the brackets too would need a year-indexed param set).
+     * don't pass it are unchanged).
      */
     cola: number = 0,
     /**
@@ -1425,38 +1440,65 @@ export function bracketAwareTradExitValue(
      * null/omitted ⇒ no state tax (no-tax state, unresolvable params, or legacy callers).
      */
     stateParams: TaxParameters | null = null,
+    /**
+     * Annual inflation-indexation rate for the tax PARAMETERS during the drawdown
+     * (#157). Real federal/state brackets and standard deductions are inflation-
+     * indexed, so freezing them at the terminal year's nominal thresholds while the
+     * residual compounds at nominal g manufactures bracket creep the real world
+     * doesn't have — overstating the exit tax on long drawdowns (an over-conversion
+     * bias, opposite sign to the F2 state-tax gap). When > 0, drawdown year t prices
+     * taxes with `indexTaxParams(params, (1+rate)^t)`. The SS provisional-income
+     * thresholds stay statutorily frozen (constants inside TaxService) — which is
+     * exactly why this is an in-loop indexation rather than the "evaluate in real
+     * terms" (g_real, cola=0) rewrite: a pure real-terms swap would implicitly index
+     * those frozen thresholds too, over-valuing SS-heavy small residuals by ~1-2%
+     * (measured; see RothExitBracketIndexation.test.ts's truth harness).
+     * 0 = prior frozen-bracket behavior; production passes the household inflation
+     * rate whenever the sim runs nominal (inflationAdjusted).
+     */
+    bracketIndexRate: number = 0,
 ): number {
     if (B < 1) return 0;
     if (userSituation === 'bequeath') return B * (1 - HEIR_EXIT_RATE);
     let bal = B, pv = 0, age = terminalAge, t = 0;
     let grossW = 0, totalTax = 0;
     let ss = ssBenefit, fixed = fixedIncome; // grown by COLA each year below
+    // Year-indexed tax params (#157): brackets/std-deduction inflate by
+    // (1+bracketIndexRate) each drawdown year (like the real IRS/state schedules);
+    // reassigned per year below. bracketIndexRate=0 keeps the terminal-year params
+    // untouched (no allocations, prior behavior).
+    let fedT = fedParams, stT = stateParams, idx = 1;
     // State tax on a drawdown-year ordinary-income base (fp-review F2). Reads the
-    // COLA-grown `ss` from the enclosing scope, so it's recomputed per year like the
-    // federal side.
+    // COLA-grown `ss` and year-indexed `stT` from the enclosing scope, so it's
+    // recomputed per year like the federal side.
     const stateTaxOn = (ordinary: number): number => {
-        if (!stateParams) return 0;
+        if (!stT) return 0;
         let base = ordinary;
-        if (ss > 0 && stateParams.socialSecurityTreatment === 'taxable') {
+        if (ss > 0 && stT.socialSecurityTreatment === 'taxable') {
             base += TaxService.getTaxableSocialSecurityBenefits(ss, ordinary, 0, filing);
         }
-        return TaxService.calculateTax(base, 0, stateParams);
+        return TaxService.calculateTax(base, 0, stT);
     };
     while (bal > 100 && t < 45) {
         const div = Math.max(2, getDistributionPeriod(Math.min(age, 115)));
         const w = Math.min(bal, bal / div);
         // The residual withdrawal bears only the MARGINAL tax above the persisting
         // income base (so SS/fixed income aren't taxed to the residual). Recomputed per
-        // year because the base grows with COLA.
-        const baseTax = TaxService.calculateTotalFederalTax(fixed, ss, 0, 0, 0, filing, fedParams).totalTax
+        // year because the base grows with COLA (and the brackets index, #157).
+        const baseTax = TaxService.calculateTotalFederalTax(fixed, ss, 0, 0, 0, filing, fedT).totalTax
             + stateTaxOn(fixed);
-        const taxWith = TaxService.calculateTotalFederalTax(fixed + w, ss, 0, 0, 0, filing, fedParams).totalTax
+        const taxWith = TaxService.calculateTotalFederalTax(fixed + w, ss, 0, 0, 0, filing, fedT).totalTax
             + stateTaxOn(fixed + w);
         const tax = Math.max(0, taxWith - baseTax); // marginal tax attributable to the withdrawal
         pv += (w - tax) / Math.pow(1 + g, t);
         grossW += w; totalTax += tax;
         bal = (bal - w) * (1 + g);
         ss *= (1 + cola); fixed *= (1 + cola); // COLA growth of persisting income (#10)
+        if (bracketIndexRate !== 0) { // bracket indexation (#157)
+            idx *= 1 + bracketIndexRate;
+            fedT = indexTaxParams(fedParams, idx);
+            stT = stateParams ? indexTaxParams(stateParams, idx) : null;
+        }
         age++; t++;
     }
     // Tail remainder (only when the residual outran its RMD fraction over the 45-yr
@@ -1510,6 +1552,17 @@ export interface DPObjectiveOptions {
      */
     terminalCola?: number;
     /**
+     * Annual inflation-indexation of the terminal drawdown's tax brackets/std-deduction
+     * (#157). DEFAULTS TO `terminalCola` — when the sim runs nominal, the exit valuation
+     * indexes its brackets at the same household inflation rate the income COLAs at, so
+     * the long post-horizon drawdown no longer manufactures bracket creep (which
+     * overstated the exit tax → over-conversion bias). Pass 0 explicitly to reproduce
+     * the legacy frozen-bracket terminal — RETAINED ONLY for regression tests that A/B
+     * the old behavior (same contract as `objectiveMode: 'min-tax'`); no production
+     * caller overrides it.
+     */
+    terminalBracketIndexation?: number;
+    /**
      * STOCHASTIC solve (#98). When set, the backward transition integrates a
      * return distribution into the V-table (expectation over Gauss-Hermite nodes)
      * and the solve emits a closed-loop `DPPolicy`. The model is a COMMON
@@ -1546,6 +1599,7 @@ export function planConversionsViaDP(
     const terminalValuation = opts?.terminalValuation ?? 'flat';
     const userSituation = opts?.userSituation ?? 'self-liquidate';
     const terminalCola = opts?.terminalCola ?? 0;
+    const terminalBracketIndexation = opts?.terminalBracketIndexation ?? terminalCola;
 
     // Stochastic solve (#98). When a return distribution is supplied, the
     // backward transition grows the pre-growth balances by each node's per-account
@@ -1617,13 +1671,15 @@ export function planConversionsViaDP(
     // excl. RMD/conversion). Bequeath ignores these (heir drains it standalone).
     // State tax rides the drawdown too (fp-review F2), using the last context's
     // event-resolved stateParams — the same residency/status the in-horizon side
-    // prices conversions with.
+    // prices conversions with. Brackets/std-deduction index at the household
+    // inflation rate across the drawdown (#157) so the frozen-terminal-threshold
+    // bracket creep no longer overstates the exit tax.
     const tradTerminalAt = (tradBal: number): number =>
         terminalValuation === 'bracket-aware'
             ? bracketAwareTradExitValue(
                 tradBal, terminalAge, lastCtx.growthRate, lastCtx.fedParams, lastCtx.filingStatus,
                 userSituation, lastCtx.ssBenefits, lastCtx.nonSSOrdinaryIncomeExclRMD, terminalCola,
-                lastCtx.stateParams)
+                lastCtx.stateParams, terminalBracketIndexation)
             : tradBal * (1 - tau);
     // Terminal wealth = Roth + residual-Trad exit value ONLY (#7). Brokerage and savings
     // are NOT terminal state variables here — the DP's state is (trad, roth), keeping the
