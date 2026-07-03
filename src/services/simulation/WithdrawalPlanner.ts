@@ -7,7 +7,8 @@
  * 1. Single code path - both basic and tax-optimized modes use this
  * 2. Algebraic gross-up - solves single-source withdrawals in 1 pass
  * 3. Account drain - withdraws entire balance when insufficient
- * 4. Savings preservation - savings moved to end of non-penalized accounts
+ * 4. Cash first - savings leads the non-penalized tier on the optimizer-owned
+ *    (tax-opt) path, per WITHDRAWAL_TAX_RANK (#161); penalized accounts stay last
  *
  * CRITICAL: Uses BASE deficit (expenses + ordinaryTax + FICA - income - RMD).
  * LTCG tax is NOT included in the deficit before grossing up - that causes double-counting.
@@ -288,13 +289,15 @@ export function createAccountSnapshot(account: AnyAccount, snapshotDate?: Date):
 /**
  * Snapshot each account in `accounts` and bucket the results into three
  * categories using the standard withdrawal-order rules:
- *   - savings:       SavedAccount instances (penalty-free, moved after non-penalized)
+ *   - savings:       SavedAccount instances (penalty-free)
  *   - penalized:     accounts that incur an early withdrawal penalty at `currentAge`
  *   - nonPenalized:  everything else (brokerage, Roth, Traditional past penalty age, etc.)
  *
- * Input order is preserved within each bucket. Callers flatten as
- * `[...nonPenalized, ...savings, ...penalized]` to produce the canonical
- * non-penalized → savings → penalized sequence.
+ * Input order is preserved within each bucket. How callers flatten differs by tier:
+ * the optimizer-owned ordered tier taps cash FIRST (`[...savings, ...nonPenalized,
+ * ...penalized]`, #161 — matches WITHDRAWAL_TAX_RANK: $0 tax, $0 MAGI); the #111
+ * fallback tier keeps its legacy non-penalized → savings → penalized sequence.
+ * Penalized accounts are last either way.
  */
 function categorizeSnapshots(
     accounts: AnyAccount[],
@@ -319,7 +322,8 @@ function categorizeSnapshots(
 
 /**
  * Create snapshots for all accounts in withdrawal order.
- * Savings is moved to end of non-penalized accounts.
+ * On the optimizer-owned path (honorLiteralOrder=false) savings leads the
+ * non-penalized tier (#161); penalized accounts always come last.
  */
 export function createOrderedSnapshots(
     accounts: AnyAccount[],
@@ -366,12 +370,25 @@ export function createOrderedSnapshots(
     }
 
     // honorLiteralOrder: keep the user's exact sequence; else penalty-aware buckets.
+    //
+    // #161: on the optimizer-owned path (Tax Opt ON ⇒ honorLiteralOrder=false), cash
+    // leads the non-penalized tier — matching Auto-sort's WITHDRAWAL_TAX_RANK
+    // (savings=0: $0 tax, $0 MAGI, nothing cheaper exists) and the joint optimizer's
+    // candidate sequences, which all spend cash first. The engine used to demote
+    // savings BEHIND every non-penalized account (a legacy "emergency fund
+    // preservation" principle from the Feb-2026 rewrite); since no engine mechanism
+    // ever deploys an existing cash balance otherwise, cash idled for the whole
+    // horizon until a big-tax year (e.g. an ACA-cliff-crossing conversion) capped
+    // brokerage sales and forced the cascade to finally spend it — a funding-path
+    // windfall mis-credited to whichever conversion plan caused it. Savings within
+    // the tier keeps input order; penalized accounts stay last (penalty avoidance
+    // still dominates — cash over a 10% penalty).
     const orderedResult = honorLiteralOrder
         ? orderedAccounts.map(a => createAccountSnapshot(a, snapshotDate))
         : (() => {
               const { nonPenalized, savings, penalized } = categorizeSnapshots(orderedAccounts, snapshotDate, currentAge);
-              // Final order: non-penalized → savings → penalized
-              return [...nonPenalized, ...savings, ...penalized];
+              // Final order: savings → non-penalized → penalized (#161)
+              return [...savings, ...nonPenalized, ...penalized];
           })();
     if (!includeUnorderedSellable) return orderedResult;
 

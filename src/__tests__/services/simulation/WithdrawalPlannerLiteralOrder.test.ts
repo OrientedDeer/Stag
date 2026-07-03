@@ -25,12 +25,15 @@ describe('createOrderedSnapshots — honorLiteralOrder (#154)', () => {
         expect(snaps.map(s => s.accountId)).toEqual(['savings-1', 'trad-1', 'brokerage-1']);
     });
 
-    it('LEGACY (flag off) re-buckets non-penalized → savings → penalized', () => {
-        // Documents the old behavior the flag fixes: brokerage (non-penalized) jumps
-        // ahead of savings, and the penalized Traditional is forced to the end — the
-        // user's "4th before 2nd" symptom.
+    it('optimizer-owned (flag off) re-buckets savings → non-penalized → penalized (#161)', () => {
+        // The flag-off path is the TAX-OPT execution: penalty-aware bucketing with
+        // cash FIRST among the penalty-free accounts (WITHDRAWAL_TAX_RANK: $0 tax,
+        // $0 MAGI) and the penalized Traditional forced to the end. Before #161
+        // savings was demoted BEHIND brokerage ("emergency fund preservation"),
+        // which let idle cash sit for the whole horizon and produced a funding-path
+        // windfall in big-tax years.
         const snaps = createOrderedSnapshots(makeAccounts(), order, AGE, 2030, false, false);
-        expect(snaps.map(s => s.accountId)).toEqual(['brokerage-1', 'savings-1', 'trad-1']);
+        expect(snaps.map(s => s.accountId)).toEqual(['savings-1', 'brokerage-1', 'trad-1']);
     });
 
     it('literal order still appends the #111 fallback tier for omitted sellable accounts', () => {
