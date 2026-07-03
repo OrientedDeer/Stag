@@ -15,6 +15,10 @@
  * recalcs; terminating the worker (supersede/error) drops it, and the next run
  * recomputes.
  */
+// MUST stay the first import — see workerWindowShim doc (dev react-refresh
+// preamble references `window`; without the shim this worker dies at load and
+// every recalc silently falls back to the main-thread sync path).
+import './workerWindowShim';
 import { runSimulationWithOptimization } from '../components/Objects/Assumptions/useSimulation';
 import { reconstituteExpense } from '../components/Objects/Expense/models';
 // Engine-faithful reconstitution (persistence reconstitutors + the fidelity

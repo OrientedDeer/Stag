@@ -19,7 +19,8 @@ import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
 import { computeEOYBudgetContributions } from '../../services/eoyContributionProjection';
 import { toLocalDateString } from '../Budget/transactions/utils';
 import { WorkIncome, PassiveIncome, FERSPensionIncome, CSRSPensionIncome, getIncomeActiveMultiplier, isSocialSecurity } from '../../components/Objects/Income/models';
-import { buildProjection } from '../Future/buildProjection';
+import { buildProjectionAsync } from '../Future/buildProjection';
+import { JointSearchSupersededError } from '../../services/jointSearchRunner';
 import { getSimulationInputHash } from '../../services/simulationHash';
 import {
     getTaxParameters,
@@ -784,21 +785,29 @@ function SimulationDebugTab() {
         return storedInputHash !== currentInputHash;
     }, [storedInputHash, currentInputHash, simulation.length]);
 
+    // #158: async — with Tax Optimization ON the projection is the multi-second
+    // joint conversion/order search; buildProjectionAsync routes it through the
+    // jointSearch Web Worker (sync fallback when unavailable) so this debug tab
+    // never freezes the whole UI on mount/staleness.
     const executeSimulation = useCallback(
-        () => buildProjection(assumptions, accounts, incomes, expenses, taxState, budgetMonths, simulation),
+        () => buildProjectionAsync(assumptions, accounts, incomes, expenses, taxState, budgetMonths, simulation),
         [assumptions, accounts, incomes, expenses, taxState, budgetMonths, simulation],
     );
 
     const handleRecalculate = useCallback(() => {
         setIsLoading(true);
-        setTimeout(() => {
-            const newSimulation = executeSimulation();
+        executeSimulation().then(newSimulation => {
             dispatchSimulation({
                 type: 'SET_SIMULATION_WITH_HASH',
                 payload: { simulation: newSimulation, inputHash: currentInputHash }
             });
             setIsLoading(false);
-        }, 50);
+        }).catch(err => {
+            // Superseded → a newer request owns the loading state; anything else —
+            // release it so the tab can't hang on a failed run.
+            if (err instanceof JointSearchSupersededError) return;
+            setIsLoading(false);
+        });
     }, [executeSimulation, dispatchSimulation, currentInputHash]);
 
     // Auto-recalculate on mount if data exists but no simulation

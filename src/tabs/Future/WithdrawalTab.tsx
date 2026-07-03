@@ -9,7 +9,8 @@ import { SimulationContext } from '../../components/Objects/Assumptions/Simulati
 import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
 import { AnyAccount, ESPPAccount, RSUAccount, SavedAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
 import { formatCompactCurrency } from './tabs/FutureUtils';
-import { buildProjection } from './buildProjection';
+import { buildProjectionAsync } from './buildProjection';
+import { JointSearchSupersededError } from '../../services/jointSearchRunner';
 import { getRMDStartAge } from '../../data/RMDData';
 import { SimulationYear } from '../../services/simulation/types';
 import { Phase } from '../../services/simulation/TaxOptimizedWithdrawal';
@@ -82,10 +83,15 @@ export default function WithdrawalTab() {
     const simulationRef = useRef(simulation);
     useEffect(() => { simulationRef.current = simulation; }, [simulation]);
 
-    // Pure builder: run the full sim for a given assumptions object and return the
+    // Builder: run the full sim for a given assumptions object and return the
     // timeline + its input hash. Shared by the recalc path and the Auto-sort button.
-    const buildSimulation = useCallback((assumptionsOverride: AssumptionsState): { sim: SimulationYear[]; hash: string } => {
-        const sim = buildProjection(assumptionsOverride, accounts, incomes, expenses, taxState, budgetMonths, simulationRef.current);
+    // #158: async — with Tax Optimization ON this is the multi-second joint
+    // conversion/order search, which used to run synchronously here and freeze
+    // the whole UI (tab navigation included). buildProjectionAsync routes it
+    // through the jointSearch Web Worker (sync fallback when unavailable), and
+    // a rapid follow-up call supersedes the in-flight one.
+    const buildSimulation = useCallback(async (assumptionsOverride: AssumptionsState): Promise<{ sim: SimulationYear[]; hash: string }> => {
+        const sim = await buildProjectionAsync(assumptionsOverride, accounts, incomes, expenses, taxState, budgetMonths, simulationRef.current);
         const hash = getSimulationInputHash(accounts, incomes, expenses, assumptionsOverride, taxState);
         return { sim, hash };
     }, [accounts, incomes, expenses, taxState, budgetMonths]);
@@ -95,18 +101,18 @@ export default function WithdrawalTab() {
     // updated assumptions), so we don't need `state` in the dep array.
     const recalculateSimulation = useCallback((assumptionsOverride: AssumptionsState) => {
         setIsRecalculating(true);
-        // Yield to the event loop so the "recalculating" spinner can paint
-        // before the synchronous simulation (~50-200ms) blocks the main
-        // thread. Without this, React batches setIsRecalculating(true) with
-        // the dispatch below and the spinner never appears.
-        setTimeout(() => {
-            const { sim, hash } = buildSimulation(assumptionsOverride);
+        buildSimulation(assumptionsOverride).then(({ sim, hash }) => {
             dispatchSimulation({
                 type: 'SET_SIMULATION_WITH_HASH',
                 payload: { simulation: sim, inputHash: hash }
             });
             setIsRecalculating(false);
-        }, 50);
+        }).catch(err => {
+            // Superseded → a newer recalc owns the spinner; anything else —
+            // release the spinner so the UI can't hang on a failed run.
+            if (err instanceof JointSearchSupersededError) return;
+            setIsRecalculating(false);
+        });
     }, [buildSimulation, dispatchSimulation]);
 
     // #154 "Auto sort": apply the engine's tax-efficient withdrawal ORDER for the user's
@@ -116,40 +122,44 @@ export default function WithdrawalTab() {
     // "Roth before brokerage" gets the taxable brokerage pulled ahead of the tax-free
     // Roth. Then the literal-order execution (Tax Opt off) runs exactly what's now shown.
     const onAutoSort = useCallback(() => {
+        const current = stateRef.current;
+        let reordered: WithdrawalBucket[];
+        try {
+            const currentAge = new Date().getFullYear() - getBirthYear(current.milestones);
+
+            // Findings [5]/[6]: seed the ranker from the user's CURRENT strategy order
+            // (so equal-rank accounts keep their visible sequence) and group buckets by
+            // accountId (so duplicate buckets survive). Extracted to a pure function so
+            // the test pins the REAL algorithm rather than a hand-maintained copy.
+            reordered = reorderWithdrawalStrategyTaxOptimal(
+                current.withdrawalStrategy,
+                accounts,
+                currentAge,
+            );
+        } catch {
+            showReceipt({ message: 'Could not reorder the withdrawal order — please try again.' });
+            return;
+        }
+
+        const changed = reordered.some((w, i) => w.accountId !== current.withdrawalStrategy[i]?.accountId);
+        if (!changed) {
+            showReceipt({ message: 'Already in the tax-optimized withdrawal order.' });
+            return;
+        }
         setIsRecalculating(true);
-        setTimeout(() => {
-            try {
-                const current = stateRef.current;
-                const currentAge = new Date().getFullYear() - getBirthYear(current.milestones);
-
-                // Findings [5]/[6]: seed the ranker from the user's CURRENT strategy order
-                // (so equal-rank accounts keep their visible sequence) and group buckets by
-                // accountId (so duplicate buckets survive). Extracted to a pure function so
-                // the test pins the REAL algorithm rather than a hand-maintained copy.
-                const reordered = reorderWithdrawalStrategyTaxOptimal(
-                    current.withdrawalStrategy,
-                    accounts,
-                    currentAge,
-                );
-
-                const changed = reordered.some((w, i) => w.accountId !== current.withdrawalStrategy[i]?.accountId);
-                if (!changed) {
-                    showReceipt({ message: 'Already in the tax-optimized withdrawal order.' });
-                    return;
-                }
-                // Build the projection BEFORE committing the order: if buildSimulation throws,
-                // the existing order + simulation stay intact rather than leaving the new order
-                // showing against stale numbers.
-                const { sim, hash } = buildSimulation({ ...current, withdrawalStrategy: reordered });
-                dispatch({ type: 'SET_WITHDRAWAL_STRATEGY', payload: reordered });
-                dispatchSimulation({ type: 'SET_SIMULATION_WITH_HASH', payload: { simulation: sim, inputHash: hash } });
-                showReceipt({ message: 'Reordered to the tax-optimized withdrawal order.' });
-            } catch {
-                showReceipt({ message: 'Could not reorder the withdrawal order — please try again.' });
-            } finally {
-                setIsRecalculating(false);
-            }
-        }, 50);
+        // Build the projection BEFORE committing the order: if buildSimulation rejects,
+        // the existing order + simulation stay intact rather than leaving the new order
+        // showing against stale numbers. (#158: async — see buildSimulation.)
+        buildSimulation({ ...current, withdrawalStrategy: reordered }).then(({ sim, hash }) => {
+            dispatch({ type: 'SET_WITHDRAWAL_STRATEGY', payload: reordered });
+            dispatchSimulation({ type: 'SET_SIMULATION_WITH_HASH', payload: { simulation: sim, inputHash: hash } });
+            showReceipt({ message: 'Reordered to the tax-optimized withdrawal order.' });
+            setIsRecalculating(false);
+        }).catch(err => {
+            if (err instanceof JointSearchSupersededError) return;
+            showReceipt({ message: 'Could not reorder the withdrawal order — please try again.' });
+            setIsRecalculating(false);
+        });
     }, [accounts, dispatch, dispatchSimulation, buildSimulation, showReceipt]);
 
     const onUpdateInvestments = useCallback((payload: Partial<AssumptionsState['investments']>) => {
