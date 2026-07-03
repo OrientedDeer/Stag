@@ -27,17 +27,21 @@
  * so draining it past the peak loses). The real-SS control isolates SS as the driver.
  */
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
+import {
+    AssumptionsState, defaultAssumptions, createBuiltinMilestones,
+    getBirthYear, getRetirementAge, getLifeExpectancy,
+} from '../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { AnyAccount, InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
 import { FutureSocialSecurityIncome } from '../../components/Objects/Income/models';
 import { FoodExpense } from '../../components/Objects/Expense/models';
 import { EarningsRecord } from '../../services/SocialSecurityCalculator';
-import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
+import { runSimulation, runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
 import { SimulationYear } from '../../services/simulation/types';
 import {
-    Scenario, feasibilityFloor, scalingSweep, flatGapYearPlan,
-    executedConversionsByYear, makeSSHeavyScenario, makeLowBracketBrokerageScenario,
+    Scenario, ConversionPlan, PlanScore, feasibilityFloor, scalingSweep, flatGapYearPlan,
+    scorePlan, stdDedOnlyPlan, executedConversionsByYear,
+    makeSSHeavyScenario, makeLowBracketBrokerageScenario,
 } from '../roth-cookbook/harness';
 
 const TIMEOUT = { timeout: 300_000 };
@@ -261,6 +265,165 @@ describe('wiring + readout', TIMEOUT, () => {
         for (const p of PANEL) {
             const { engine } = fixture(p.name, p.build);
             expect(engine[0].strategyTerminalAfterTaxNW! - engine[0].stdDedBaselineTerminalAfterTaxNW!).toBeGreaterThanOrEqual(-1);
+        }
+    });
+});
+
+// ===========================================================================
+// 7. WIDENED CERTIFICATE (fp-review F6). Blocks 1-4 certify the shipped plan at ONE
+//    horizon (the profile's configured LE) and only along the uniform-scaling ray —
+//    a plan could be horizon-fragile or shape-wrong (right total, wrong YEARS) without
+//    any of them failing. The three probes below bound that:
+//      7a. HORIZON BAND    — re-score the shipped plan at LE−8 / LE+8; it must still
+//                            clear the std-ded floor (not by construction there: the
+//                            search optimized at the original LE only).
+//      7b. PER-YEAR ±$10k  — first-order-condition check on representative conversion
+//                            years (first / peak / last nonzero): no single-year nudge
+//                            beats the shipped plan. Certifies optimality along per-year
+//                            axes OUTSIDE the fill-to-h family.
+//      7c. TWO-SCALAR      — pre-SS vs post-SS conversions scaled independently; the
+//                            flat-h winner isn't materially beaten by a split-h shape.
+//    Slack everywhere matches block 4's scaling-sweep convention: max($5k, 0.5%).
+//    IF A PROFILE FAILS HERE, THAT IS A REAL DISCOVERY (foregone upside or horizon
+//    fragility the certificate previously couldn't see) — investigate and report it;
+//    do NOT widen the slack to make it pass.
+// ===========================================================================
+
+/** Block-4 slack convention (scaling-sweep peak check): max($5k, 0.5%). */
+const peakSlack = (v: number) => Math.max(5_000, Math.abs(v) * 5e-3);
+
+/** Clone `sc` with the End-of-Plan milestone moved to `le` and the horizon run out to it. */
+function atLifeExpectancy(sc: Scenario, le: number): Scenario {
+    const birthYear = getBirthYear(sc.assumptions.milestones);
+    const retireAge = getRetirementAge(sc.assumptions.milestones);
+    return {
+        ...sc,
+        assumptions: { ...sc.assumptions, milestones: createBuiltinMilestones(birthYear, retireAge, le) },
+        yearsToRun: le - retireAge,
+    };
+}
+
+/**
+ * Re-order `sc`'s stored withdrawalStrategy to the order the optimizer actually shipped
+ * under (engine[0].chosenWithdrawalOrder) — same reasoning as the scaling-sweep fixture:
+ * re-scoring a Traditional-preserving plan under a trad-first order would spuriously
+ * look mis-converted.
+ */
+function underChosenOrder(sc: Scenario, engine: SimulationYear[]): Scenario {
+    const chosen = engine[0].chosenWithdrawalOrder;
+    if (!chosen) return sc;
+    return {
+        ...sc,
+        assumptions: {
+            ...sc.assumptions,
+            withdrawalStrategy: chosen
+                .map(c => sc.assumptions.withdrawalStrategy.find(w => w.accountId === c.accountId)!)
+                .filter(Boolean),
+        },
+    };
+}
+
+describe('widened certificate (F6a) — shipped plan clears the std-ded floor at LE −8 and +8', TIMEOUT, () => {
+    for (const p of PANEL) {
+        for (const delta of [-8, +8]) {
+            it(`${p.name} @ LE${delta > 0 ? '+' : ''}${delta}`, () => {
+                const { sc, engine } = fixture(p.name, p.build);
+                const plan = executedConversionsByYear(engine);
+                const le = getLifeExpectancy(sc.assumptions.milestones) + delta;
+                // Re-score the SHIPPED plan (unchanged) in the same household living to a
+                // different age, against the std-ded floor recomputed AT that horizon with
+                // the ruler rebuilt from that horizon's baseline. All conversion years in
+                // the shipped plans end before RMD start (73/75) < LE−8, so no plan year
+                // falls off the shorter horizon.
+                const scH = underChosenOrder(atLifeExpectancy(sc, le), engine);
+                const fl = feasibilityFloor(scH, plan);
+                // A plan that only wins at exactly the optimized LE is horizon-fragile.
+                // Slack (vs the floor test's near-exact eps) because off-horizon the
+                // floor is NOT guaranteed by construction — we certify "doesn't lose
+                // materially", the block-4 convention.
+                expect(fl.gap, `gap vs floor at LE=${le}`).toBeGreaterThanOrEqual(-peakSlack(fl.floorScore));
+            });
+        }
+    }
+});
+
+// Per-profile perturbation fixture: ONE shared ruler (std-ded baseline at the profile's
+// own horizon, under the chosen order) + the shipped plan's base score. Memoized so 7b
+// and 7c reuse it (3 sims to build, then 1 sim per probe).
+interface PerturbFixture { scOrdered: Scenario; ruler: SimulationYear[]; plan: ConversionPlan; base: PlanScore; }
+const perturbCache = new Map<string, PerturbFixture>();
+function perturbFixture(name: string, build: () => Scenario): PerturbFixture {
+    let f = perturbCache.get(name);
+    if (!f) {
+        const { sc, engine } = fixture(name, build);
+        const scOrdered = underChosenOrder(sc, engine);
+        const plan = executedConversionsByYear(engine);
+        const floorPlan = stdDedOnlyPlan(scOrdered);
+        const ruler = runSimulation(
+            scOrdered.yearsToRun, scOrdered.accounts, scOrdered.incomes, scOrdered.expenses,
+            scOrdered.assumptions, scOrdered.taxState, undefined, { dpConversionPlan: floorPlan },
+        );
+        const base = scorePlan(scOrdered, plan, ruler);
+        f = { scOrdered, ruler, plan, base };
+        perturbCache.set(name, f);
+    }
+    return f;
+}
+
+/** First, peak (largest), and last nonzero conversion years of a plan (deduped). */
+function representativeYears(plan: ConversionPlan): number[] {
+    const nz = [...plan.entries()].filter(([, v]) => v > 0.5).sort((a, b) => a[0] - b[0]);
+    if (nz.length === 0) return [];
+    let peak = nz[0];
+    for (const e of nz) if (e[1] > peak[1]) peak = e;
+    return [...new Set([nz[0][0], peak[0], nz[nz.length - 1][0]])];
+}
+
+describe('widened certificate (F6b) — no single-year ±$10k perturbation beats the shipped plan', TIMEOUT, () => {
+    for (const p of PANEL) {
+        it(`first-order condition holds on: ${p.name}`, () => {
+            const f = perturbFixture(p.name, p.build);
+            const years = representativeYears(f.plan);
+            if (years.length === 0) return; // nothing converted → nothing to perturb
+            for (const year of years) {
+                for (const d of [-10_000, +10_000]) {
+                    const original = f.plan.get(year) ?? 0;
+                    const amt = Math.max(0, original + d);
+                    if (amt === original) continue; // fully clamped nudge is a no-op
+                    const perturbed = new Map(f.plan);
+                    perturbed.set(year, amt);
+                    const s = scorePlan(f.scOrdered, perturbed, f.ruler);
+                    // If moving ONE year by $10k beats the shipped plan by more than the
+                    // block-4 slack, the optimum has per-year structure the fill-to-h
+                    // family (and the uniform-scaling sweep) cannot see.
+                    expect(s.terminalAfterTaxNW, `year ${year} ${d > 0 ? '+' : ''}${d}`)
+                        .toBeLessThanOrEqual(f.base.terminalAfterTaxNW + peakSlack(f.base.terminalAfterTaxNW));
+                }
+            }
+        });
+    }
+});
+
+describe('widened certificate (F6c) — independent pre/post-SS scaling does not beat the flat-h winner', TIMEOUT, () => {
+    // Only the real-SS profile has a live SS start (age 67) splitting its conversion years —
+    // the one household where a split-h shape (higher h before the torpedo arrives, lower
+    // after) could plausibly beat the flat-h family. 4 extra sims.
+    it('real-SS large Trad: pre-SS × post-SS ∈ {0.9, 1.1}² never wins materially', () => {
+        const p = PANEL[1];
+        const f = perturbFixture(p.name, p.build);
+        const ssStartYear = getBirthYear(f.scOrdered.assumptions.milestones) + 67; // claim age fixed at 67 in the fixture
+        const pre = [...f.plan.keys()].filter(y => y < ssStartYear);
+        const post = [...f.plan.keys()].filter(y => y >= ssStartYear && (f.plan.get(y) ?? 0) > 0.5);
+        expect(pre.length, 'fixture must convert before SS starts').toBeGreaterThan(0);
+        expect(post.length, 'fixture must convert after SS starts').toBeGreaterThan(0);
+        for (const preF of [0.9, 1.1]) {
+            for (const postF of [0.9, 1.1]) {
+                const scaled: ConversionPlan = new Map();
+                for (const [y, v] of f.plan) scaled.set(y, v * (y < ssStartYear ? preF : postF));
+                const s = scorePlan(f.scOrdered, scaled, f.ruler);
+                expect(s.terminalAfterTaxNW, `pre×${preF} post×${postF}`)
+                    .toBeLessThanOrEqual(f.base.terminalAfterTaxNW + peakSlack(f.base.terminalAfterTaxNW));
+            }
         }
     });
 });
