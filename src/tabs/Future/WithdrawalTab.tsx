@@ -19,6 +19,7 @@ import { HelpSection } from './withdrawal/HelpSection';
 import { TaxOptimizationControls } from './withdrawal/TaxOptimizationControls';
 import { OptimizationSummaryCard, OptimizationSummary, ComparisonResult } from './withdrawal/OptimizationSummaryCard';
 import { WithdrawalBucketList, BucketDetail } from './withdrawal/WithdrawalBucketList';
+import { HorizonTriptychCard } from './withdrawal/HorizonTriptychCard';
 import { buildAccountTimeline } from './withdrawal/accountTimeline';
 import { reorderWithdrawalStrategyTaxOptimal } from './withdrawal/reorderWithdrawalStrategy';
 
@@ -366,6 +367,19 @@ export default function WithdrawalTab() {
                     onAutoSort={onAutoSort}
                     isBusy={isRecalculating}
                     formatMoney={formatMoney}
+                />
+
+                {/* Horizon triptych (#162): deterministic 75/85/95 end-of-plan re-scores,
+                    relocated from the Monte Carlo tab — it isn't Monte Carlo, it belongs
+                    next to the deterministic after-tax comparison this tab already shows. */}
+                <HorizonTriptychCard
+                    accounts={accounts}
+                    incomes={incomes}
+                    expenses={expenses}
+                    assumptions={state}
+                    taxState={taxState}
+                    chosenWithdrawalOrder={simulation[0]?.chosenWithdrawalOrder}
+                    forceExact={forceExact}
                 />
             </div>
         </div>

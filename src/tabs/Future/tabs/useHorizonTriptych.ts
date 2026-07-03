@@ -19,11 +19,11 @@ import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
  * same way the MC run does, so all three columns re-score the SAME plan the
  * user is looking at.
  *
- * Currently consumed by MonteCarloTab; FutureTab can adopt the same hook later
- * if the triptych should also appear next to the deterministic projection.
+ * Currently consumed by the Withdrawal tab's HorizonTriptychCard (#162 moved
+ * it off the Monte Carlo tab — these are deterministic re-scores, not MC).
  *
- * Pass `enabled: false` while the block is hidden (e.g. other sub-tab active)
- * to skip the sims entirely.
+ * Pass `enabled: false` while the block is hidden to skip the sims entirely;
+ * a route-mounted host that unmounts when not visible can pass `true`.
  */
 export function useHorizonTriptych(
     enabled: boolean,

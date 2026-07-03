@@ -17,7 +17,6 @@ import { PercentageInput } from '../../../components/Layout/InputFields/Percenta
 import { NumberInput } from '../../../components/Layout/InputFields/NumberInput';
 import { ToggleInput } from '../../../components/Layout/InputFields/ToggleInput';
 import { Tooltip } from '../../../components/Layout/InputFields/Tooltip';
-import { useHorizonTriptych } from './useHorizonTriptych';
 
 interface MonteCarloTabProps {
     simulationData: SimulationYear[];
@@ -130,15 +129,6 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
     const deterministicLine = useMemo(() => {
         return extractDeterministicLine(simulationData);
     }, [simulationData]);
-
-    // Horizon triptych (F13/#160): three deterministic re-scores at death 75/85/95.
-    // Computed OUTSIDE the MC run (no MC results needed), gated on the sub-tab so
-    // the Historical view never pays for the sims.
-    const triptych = useHorizonTriptych(
-        activeSubTab === 'monte-carlo',
-        accounts, incomes, expenses, assumptions, taxState,
-        simulationData[0]?.chosenWithdrawalOrder,
-    );
 
     // Near-tie tiebreak note (#160 task 3): when the baseline comparison ran and
     // both the success rate and the median after-tax outcome are essentially
@@ -520,36 +510,6 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                             </span>
                         </div>
                     )}
-                </div>
-            )}
-
-            {/* Horizon triptych (fp-review F13 / #160): deterministic re-scores of the
-                current plan ended at 75/85/95. Independent of the MC run. */}
-            {triptych && triptych.some(h => h.afterTaxNetWorth !== null) && (
-                <div className="bg-surface-overlay/50 rounded-xl p-4 border border-border-default">
-                    <h4 className="text-content-default font-medium mb-1">If the Plan Ends at 75 / 85 / 95</h4>
-                    <p className="text-content-muted text-xs mb-3">
-                        Deterministic re-scores of your current plan ended at each age on the
-                        expected-return path — not Monte Carlo percentiles. Values are after-tax
-                        terminal net worth, on the same valuation as the after-tax row.
-                    </p>
-                    <div className="grid grid-cols-3 gap-4">
-                        {triptych.map(h => (
-                            <div key={h.age}>
-                                <div className="text-content-muted text-xs uppercase tracking-wider mb-1">
-                                    Ends at {h.age}
-                                </div>
-                                <div className="text-lg lg:text-xl font-bold text-content-default truncate">
-                                    {h.afterTaxNetWorth !== null
-                                        ? formatCompactCurrency(h.afterTaxNetWorth, { forceExact })
-                                        : '—'}
-                                </div>
-                                {h.afterTaxNetWorth === null && (
-                                    <div className="text-content-muted text-xs mt-1">Already past this age</div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
                 </div>
             )}
 
