@@ -57,7 +57,10 @@ const legacyDp = (sc: Scenario): SimulationYear[] =>
 // A real-SS large-Traditional fixture (NOT in the harness): $1.5M Trad, MFJ, realistic SS via a
 // 35-year earnings history, standard trad-before-roth drawdown, ~5% growth. The control that
 // isolates SS — same shape as the over-converter EXCEPT it has real Social Security.
-function makeRealSSLargeTradScenario(): Scenario {
+// `stateResidency` defaults to no-tax Texas; the DC variant below puts a TAXED state on the
+// panel (fp-review F2) so state-related ruler defects stay certifiable — before it, every
+// profile was Texas and the fed-only exit valuation was untestable.
+function makeRealSSLargeTradScenario(stateResidency: string = 'Texas'): Scenario {
     const NOW = new Date().getFullYear();
     const BY = NOW - 62, RA = 62, LE = 92, ROR = 5;
     const priorEarnings: EarningsRecord[] = [];
@@ -80,7 +83,7 @@ function makeRealSSLargeTradScenario(): Scenario {
             { id: 'ws-roth', name: 'Roth IRA', accountId: 'acc-roth' },
         ],
     };
-    const taxState: TaxState = { filingStatus: 'Married Filing Jointly', stateResidency: 'Texas', deductionMethod: 'Standard', fedOverride: null, ficaOverride: null, stateOverride: null, year: NOW };
+    const taxState: TaxState = { filingStatus: 'Married Filing Jointly', stateResidency, deductionMethod: 'Standard', fedOverride: null, ficaOverride: null, stateOverride: null, year: NOW };
     const accounts: AnyAccount[] = [
         new InvestedAccount('acc-traditional', 'Traditional IRA', 1_500_000, 0, 10, 0, 'Traditional IRA', true, 0.2, 1_500_000),
         new InvestedAccount('acc-roth', 'Roth IRA', 100_000, 0, 10, 0, 'Roth IRA', true, 0.2, 100_000),
@@ -99,6 +102,10 @@ const PANEL: { name: string; build: () => Scenario; dpMisconverts: boolean }[] =
     { name: 'over-converter ($1.5M Trad, $0 SS, trad-first)', build: makeSSHeavyScenario, dpMisconverts: true },
     { name: 'real-SS large Trad ($1.5M Trad, ~$60k SS)', build: makeRealSSLargeTradScenario, dpMisconverts: false },
     { name: 'low-bracket / big brokerage', build: makeLowBracketBrokerageScenario, dpMisconverts: false },
+    // Taxed-state profile (fp-review F2): same real-SS household resident in DC, so the
+    // certification (floor / no-op backstop / DP dominance / scaling-sweep peak) also runs
+    // where state tax prices both the conversions AND the residual's exit.
+    { name: 'real-SS large Trad, DC resident (taxed state)', build: () => makeRealSSLargeTradScenario('DC'), dpMisconverts: false },
 ];
 
 // Heavy per-profile computation (engine-search + legacy DP + scaling sweep), memoized so the
