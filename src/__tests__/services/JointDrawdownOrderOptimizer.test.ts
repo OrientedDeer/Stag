@@ -133,17 +133,24 @@ describe('joint optimizer wires through runSimulationWithOptimization', { timeou
 });
 
 // ===========================================================================
-// PAYOFF (not just wiring): on an order-sensitive scenario the optimizer switches to a
-// Traditional-preserving order AND that order adds material after-tax wealth. A regression that
-// silently kept the user's order would still pass the wiring tests above — but fails these.
+// PAYOFF (not just wiring): on an order-sensitive scenario the optimizer actively SWITCHES away
+// from a stored order to a materially better one. A regression that silently kept the user's
+// order would still pass the wiring tests above — but fails these.
+//
+// HISTORY (fp-review 2026-07-02, F9): this block originally asserted a switch trad-first →
+// Traditional-preserving worth ~$62k. That gain was substantially a SEARCH-MISS artifact: the
+// pre-F9 golden refinement missed the user-order conversion peak at h≈$320k, which the F9
+// IRMAA-probe grid now brackets correctly. With the better search, BOTH storages co-optimize to
+// the SAME conventional-order plan (measured nw $5,221,766 — strictly above the old ~$4.78M
+// winner), the discriminating direction reverses (stored Traditional-preserving → conventional,
+// measured gain ~$442,700), and the co-optimized result becomes storage-invariant. The tests pin
+// those two (stronger) properties: an exercised material switch, and storage invariance.
 // ===========================================================================
 describe('joint optimizer payoff — material order gain on an order-sensitive scenario', { timeout: 240_000 }, () => {
-    // MFJ, large Traditional, strong SS, modest liquid buffer, high living, long horizon. Under the
-    // conventional (trad-first) order the Traditional is SPENT for living at torpedo-stacked rates;
-    // Traditional-preserving (Roth before Traditional) instead converts it cheaply in the gap years
-    // and funds living from Roth — so the order is worth real money here. SS via CurrentSocialSecurity
-    // so it actually delivers ($60k+); a hand-set Future* PIA would be recomputed from empty earnings
-    // to ~$0 (see harness.ts makeSSHeavyScenario).
+    // MFJ, large Traditional, strong SS, modest liquid buffer, high living, long horizon — the
+    // conversion-heavy regime where the drawdown order interacts with the conversion plan. SS via
+    // CurrentSocialSecurity so it actually delivers ($60k+); a hand-set Future* PIA would be
+    // recomputed from empty earnings to ~$0 (see harness.ts makeSSHeavyScenario).
     const NOW = new Date().getFullYear();
     const RETIRE = 58, LE = 92, BY = NOW - RETIRE, YEARS = LE - RETIRE;
     const osAccts = (): AnyAccount[] => [
@@ -178,16 +185,46 @@ describe('joint optimizer payoff — material order gain on an order-sensitive s
     const osExpenses = () => [new FoodExpense('exp-living', 'Living', 160_000, 'Annually', new Date(`${NOW}-01-01`))];
     const idx = (order: { accountId: string }[], id: string) => order.findIndex(o => o.accountId === id);
 
-    it('switches to a Traditional-preserving order whose co-optimized gain is material', () => {
-        const res = runSimulationWithOptimization(YEARS, osAccts(), osIncomes(), osExpenses(), osAssumptions, osTaxState);
+    // Both joint runs are shared across the assertions below (each is ~13-14 engine sims per order).
+    const run = (() => {
+        const cache = new Map<string, ReturnType<typeof runSimulationWithOptimization>>();
+        return (name: string, order: WithdrawalOrderItem[]) => {
+            let r = cache.get(name);
+            if (!r) {
+                r = runSimulationWithOptimization(YEARS, osAccts(), osIncomes(), osExpenses(),
+                    { ...osAssumptions, withdrawalStrategy: order }, osTaxState);
+                cache.set(name, r);
+            }
+            return r;
+        };
+    })();
+
+    it('switches AWAY from a stored Traditional-preserving order to the conventional co-optimum (material gain)', () => {
+        const res = run('stored-trad-preserving', tradPreserving);
         const chosen = res[0].chosenWithdrawalOrder!;
         expect(chosen).toBeDefined();
-        // Picked Traditional-preserving (Roth drawn before Traditional), switching from the trad-first stored order.
-        expect(idx(chosen, 'acc-roth')).toBeLessThan(idx(chosen, 'acc-trad'));
-        // PAYOFF: the chosen order beats the user's stored order by a material margin at FULL
+        // Picked the conventional order (Traditional drawn before Roth), switching from the stored
+        // Traditional-preserving order — the switching machinery is exercised, not just enumerated.
+        expect(idx(chosen, 'acc-trad')).toBeLessThan(idx(chosen, 'acc-roth'));
+        // PAYOFF: the chosen order beats the stored order by a material margin at FULL
         // co-optimization (each order scored with its own optimal conversion plan). Threshold is
-        // conservative (measured ~$62k / ~1.3%); a regression that kept the user order → ~$0 → fails.
+        // conservative (measured ~$442.7k / ~9% after F8+F9, 2026-07-02 — the F9 probe grid finds
+        // the h≈$320k peak the old search missed); a regression that kept the stored order → $0 → fails.
         expect(res[0].orderOptimizationGain!).toBeGreaterThan(20_000);
+    });
+
+    it('the co-optimized result is storage-invariant: both stored orders converge to the same order and value', () => {
+        const a = run('stored-trad-first', tradFirst);
+        const b = run('stored-trad-preserving', tradPreserving);
+        // Same chosen order from either starting point (the conventional co-optimum wins from both;
+        // the trad-first storage keeps its own order as the incumbent, gain $0).
+        expect(a[0].chosenWithdrawalOrder!.map(o => o.accountId)).toEqual(b[0].chosenWithdrawalOrder!.map(o => o.accountId));
+        expect(a[0].orderOptimizationGain!).toBe(0);
+        // Same co-optimized after-tax value (measured byte-equal at $5,221,766; small tolerance
+        // because each storage builds its ruler from its OWN stored-order std-ded baseline).
+        const nwA = a[0].strategyTerminalAfterTaxNW!;
+        const nwB = b[0].strategyTerminalAfterTaxNW!;
+        expect(Math.abs(nwA - nwB)).toBeLessThan(Math.max(5_000, Math.abs(nwA) * 1e-3));
     });
 
     it('a std-ded conversion proxy MIS-RANKS the order (why a full per-order search is required)', () => {
