@@ -1802,6 +1802,97 @@ describe('ScenarioContext', () => {
                 expect(state!.isLoading).toBe(false);
             });
 
+            // #166: with tax optimization enabled the scenario sim goes through the
+            // ephemeral joint-search worker. jsdom has no Worker, so these pin the
+            // sync-fallback leg: it must still complete, and a genuine engine
+            // failure must surface as an error with the busy state cleared (not a
+            // hung isLoading).
+            const createTaxOptScenario = (id: string, name: string): SavedScenario => {
+                const scenario = createMockScenario(id, name);
+                scenario.inputs.assumptions = {
+                    ...defaultAssumptions,
+                    investments: { ...defaultAssumptions.investments, taxOptimizationEnabled: true },
+                };
+                return scenario;
+            };
+
+            it('should complete a tax-opt scenario comparison via the sync fallback when Workers are unavailable (#166)', async () => {
+                const savedScenario = createTaxOptScenario('taxopt-1', 'TaxOpt');
+                (loadScenariosFromStorage as Mock).mockReturnValue([savedScenario]);
+
+                const currentLoaded = createMockLoadedScenario('current', 'Current Plan');
+                const savedLoaded = createMockLoadedScenario('taxopt-1', 'TaxOpt');
+                const mockResult = createMockComparison(currentLoaded, savedLoaded);
+
+                (createLoadedScenarioFromSimulation as Mock).mockReturnValue(currentLoaded);
+                (runSimulationWithOptimization as Mock).mockReturnValue([]);
+                (calculateMilestones as Mock).mockReturnValue(createMockMilestones());
+                (compareScenarios as Mock).mockReturnValue(mockResult);
+
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
+                const capture = (ctx: typeof captured): void => {
+                    Object.assign(captured, ctx);
+                };
+                const TestComponent = () => {
+                    capture(useContext(ScenarioContext));
+                    return null;
+                };
+
+                render(
+                    <ScenarioProvider>
+                        <TestComponent />
+                    </ScenarioProvider>
+                );
+
+                await act(async () => {
+                    await captured.runComparison('current', 'taxopt-1', [], defaultAssumptions, savedScenario.inputs.taxSettings);
+                });
+
+                // The worker path rejected (no Worker in jsdom) and the sync
+                // fallback produced the result — the comparison never silently dies.
+                expect(runSimulationWithOptimization).toHaveBeenCalled();
+                expect(captured.state.comparisonResult).toBe(mockResult);
+                expect(captured.state.isLoading).toBe(false);
+                expect(captured.state.error).toBeNull();
+            });
+
+            it('should surface an engine failure on a tax-opt comparison and clear the busy state (#166)', async () => {
+                const savedScenario = createTaxOptScenario('taxopt-2', 'TaxOpt Broken');
+                (loadScenariosFromStorage as Mock).mockReturnValue([savedScenario]);
+
+                (createLoadedScenarioFromSimulation as Mock).mockReturnValue(
+                    createMockLoadedScenario('current', 'Current Plan')
+                );
+                // Worker path is unavailable (jsdom) and the sync fallback throws:
+                // the rejection must reach runComparison's catch, not hang.
+                (runSimulationWithOptimization as Mock).mockImplementation(() => {
+                    throw new Error('engine exploded');
+                });
+
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
+                const capture = (ctx: typeof captured): void => {
+                    Object.assign(captured, ctx);
+                };
+                const TestComponent = () => {
+                    capture(useContext(ScenarioContext));
+                    return null;
+                };
+
+                render(
+                    <ScenarioProvider>
+                        <TestComponent />
+                    </ScenarioProvider>
+                );
+
+                await act(async () => {
+                    await captured.runComparison('current', 'taxopt-2', [], defaultAssumptions, savedScenario.inputs.taxSettings);
+                });
+
+                expect(captured.state.error).toBe('engine exploded');
+                expect(captured.state.isLoading).toBe(false);
+                expect(captured.state.comparisonResult).toBeNull();
+            });
+
             it('should set loading state during comparison', async () => {
                 const savedScenario = createMockScenario('saved-1', 'Saved');
                 (loadScenariosFromStorage as Mock).mockReturnValue([savedScenario]);
