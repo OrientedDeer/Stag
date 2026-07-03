@@ -155,7 +155,7 @@ describe('Scenario 5: Level 1 - Unit Tests', () => {
     });
 
     describe('Withdrawal Planning - Low Balance', () => {
-        it('should withdraw from brokerage for deficit', () => {
+        it('should withdraw savings then brokerage for deficit', () => {
             const assumptions = createScenarioAssumptions();
             const taxState = createScenarioTaxState();
 
@@ -182,7 +182,10 @@ describe('Scenario 5: Level 1 - Unit Tests', () => {
             );
 
             expect(result.withdrawals.length).toBeGreaterThan(0);
-            expect(result.withdrawals[0].source).toBe('brokerage');
+            // #161: the $5k savings (cheapest: $0 tax, $0 MAGI) is drained first on
+            // the re-bucket (tax-opt) path; brokerage covers the remaining ~$12k.
+            expect(result.withdrawals[0].source).toBe('savings');
+            expect(result.withdrawals[1]?.source).toBe('brokerage');
         });
 
         it('should calculate LTCG at low rate for low income scenario', () => {

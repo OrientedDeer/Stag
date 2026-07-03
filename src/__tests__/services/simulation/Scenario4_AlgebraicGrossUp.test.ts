@@ -189,7 +189,7 @@ describe('Scenario 4: Level 1 - Unit Tests', () => {
             expect(snapshot.gainRatio).toBeCloseTo(0.625, 3);
         });
 
-        it('should order accounts correctly (savings at end of non-penalized)', () => {
+        it('should order accounts correctly (savings leads the non-penalized tier, #161)', () => {
             const allAccounts = [accounts.brokerage, accounts.traditional, accounts.roth, accounts.savings];
             const withdrawalOrder = [
                 { accountId: 'brokerage-1' },
@@ -201,10 +201,11 @@ describe('Scenario 4: Level 1 - Unit Tests', () => {
             const snapshots = createOrderedSnapshots(allAccounts, withdrawalOrder, 62);
 
             // At age 62 (> 59.5), Traditional is not penalized
-            // Order should be: Brokerage → Roth → Traditional → Savings
-            // (savings moved to end of non-penalized, but Traditional isn't penalized at 62)
+            // Order should be: Savings → Brokerage → Traditional → Roth
+            // (#161: savings leads the non-penalized tier on the re-bucket path)
             expect(snapshots.map(s => s.accountType)).toContain('brokerage');
             expect(snapshots.map(s => s.accountType)).toContain('savings');
+            expect(snapshots[0].accountType).toBe('savings');
         });
     });
 
@@ -301,7 +302,7 @@ describe('Scenario 4: Level 2 - Solver Tests', () => {
         }
     });
 
-    it('should withdraw from brokerage first (before Traditional)', () => {
+    it('should withdraw from savings then brokerage (before Traditional)', () => {
         const yearPlan = solveRetirementYear(solverInput);
 
         // Find non-RMD withdrawals
@@ -310,8 +311,11 @@ describe('Scenario 4: Level 2 - Solver Tests', () => {
         );
 
         if (deficitWithdrawals.length > 0) {
-            // Brokerage should be tapped first
-            expect(deficitWithdrawals[0].source).toBe('brokerage');
+            // #161: under tax-opt, savings leads the non-penalized tier ($0 tax,
+            // $0 MAGI — cheapest source); brokerage follows, still ahead of any
+            // Traditional dollars beyond the conversion-capped tier.
+            expect(deficitWithdrawals[0].source).toBe('savings');
+            expect(deficitWithdrawals[1]?.source).toBe('brokerage');
         }
     });
 
