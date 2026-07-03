@@ -292,6 +292,13 @@ export function extractConversionPlan(timeline: SimulationYear[]): Map<number, n
  * first context. This matches the realized non-SS ordinary income YearSolver applies the MC cap
  * against, so an on-track path reduces to the deterministic optimum h* rather than to a
  * one-year-of-growth mis-estimate of the RMD (which used this year's END balance before).
+ *
+ * #159: contexts may include PRE-retirement income-GAP years (sabbatical/layoff), making the
+ * sequence non-contiguous (gap years, then retirement). Gap years have rmdDivisor = 0, so the
+ * RMD basis never reads across the discontinuity in practice — the only exposure is a household
+ * retiring AT/after RMD age with earlier gap years, where the first RMD-age context would use a
+ * years-old prior balance; that mis-sizes one candidate's fill (the engine score stays exact).
+ * A normal full-income career builds no gap contexts, so this family is unchanged there.
  */
 function fillToHeadroomPlan(contexts: DPYearContext[], headroom: number, startingTradBalance: number): Map<number, number> {
     const plan = new Map<number, number>();

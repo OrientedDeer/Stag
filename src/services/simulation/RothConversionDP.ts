@@ -160,6 +160,17 @@ const INFEASIBILITY_PENALTY_PER_DOLLAR = 10;
  */
 const MAX_WEALTH_INFEASIBILITY_PENALTY = 1e6;
 const MAX_WEALTH_UNMET_THRESHOLD = 1; // dollars; below this = feasible (FP residue)
+
+/**
+ * #159: minimum standard-deduction headroom (dollars) for a PRE-retirement year
+ * to qualify as a conversion-window "gap year" and receive a DP context. Work
+ * income counts against the headroom, so any normal full-income working year is
+ * far below the standard deduction's edge and builds NO context — a normal
+ * career's contexts (and every plan derived from them) are unchanged. The $100
+ * floor just keeps noise-level headrooms from growing the DP horizon for a
+ * conversion worth less than the extra solve time.
+ */
+const GAP_YEAR_MIN_HEADROOM = 100;
 /** Max-wealth ruin penalty: dominating above the $1 threshold, zero below it. */
 const maxWealthUnmetPenalty = (unmet: number): number =>
     unmet > MAX_WEALTH_UNMET_THRESHOLD ? unmet * MAX_WEALTH_INFEASIBILITY_PENALTY : 0;
@@ -491,7 +502,28 @@ function getRothGrowthRate(simYear: SimulationYear, assumptions: AssumptionsStat
  *
  * The baseline should be a std-ded-only, no-extra-conversion full-horizon sim
  * (so its `nonSSOrdinaryIncome` does not include the conversion the DP is
- * deciding). Out-of-retirement years (before retirementAge) are skipped.
+ * deciding).
+ *
+ * Horizon (#159): retirement years always get contexts. Pre-retirement years are
+ * skipped UNLESS they are income-GAP years — a modeled sabbatical / layoff /
+ * income end-date leaving real standard-deduction headroom (work income is
+ * included in `nonSSOrdinaryIncomeExclRMD`, so a normal full-income career
+ * clears no headroom and builds EXACTLY the contexts it did before; the new
+ * capability only activates when a gap exists). Gap years let the optimizer see
+ * (and fill) the canonical pre-retirement conversion window; solveWorkingYear
+ * executes the resulting plan entries.
+ *
+ * Gap-year approximations (all bounded by the engine-direct search scoring every
+ * candidate plan on the REAL engine):
+ *   • The context sequence can be NON-CONTIGUOUS (gap years, then retirement).
+ *     The DP's forward sweep compounds one year of growth per context and models
+ *     no working-year contributions, so its own seed plan mis-prices the span
+ *     between a gap and retirement; it remains just one scored candidate.
+ *   • Gap-year contexts carry NO acaOptions (the engine's working-year path
+ *     assumes employer coverage and charges no ACA repayment) and NO
+ *     irmaaSurchargeForMAGI (the #76 head/lookback seeding is keyed to
+ *     retirement-controlled years; a 63/64 gap-year conversion's IRMAA effect is
+ *     priced only by the engine score, not the candidate generators).
  */
 export function buildDPYearContexts(
     baseline: SimulationYear[],
@@ -569,24 +601,10 @@ export function buildDPYearContexts(
     let prevSimYear: SimulationYear | undefined = preRetirementSimYear;
 
     for (const simYear of baseline) {
-        if (simYear.year < retirementYear) {
-            prevSimYear = simYear;
-            continue;
-        }
         const age = simYear.year - birthYear;
 
         const ssBenefits = TaxService.getSocialSecurityBenefits(simYear.incomes, simYear.year);
         const grossIncome = TaxService.getGrossIncome(simYear.incomes, simYear.year);
-
-        // Traditional non-RMD withdrawals are taxed as ordinary income but aren't
-        // tracked as Income objects. Phase 2: trad-spending becomes endogenous in
-        // the 3D solver (Phase 3's evaluateCell rewrite); we no longer add
-        // baseline trad-spending into nonSSOrdinaryIncomeExclRMD. Still computed
-        // to populate `baselineTradWithdrawal`, which the in-flight 2D solver
-        // uses until Phase 3 lands.
-        // withdrawalDetail no longer includes RMD (RMD is surfaced as income), so the
-        // trad withdrawal sum is already RMD-free — no subtraction needed.
-        const tradNonRMDWithdrawals = sumTraditionalWithdrawals(simYear);
 
         // The stored `simYear.incomes` already EXCLUDES RMD-sourced PassiveIncome
         // (SimulationEngine filters it out of the returned year), so
@@ -600,11 +618,15 @@ export function buildDPYearContexts(
         // in trad-spending years). NOTE: do NOT subtract rmdDetails.totalRMD here
         // — that would remove RMD a second time and wrongly zero out ordinary
         // income in post-RMD years where RMD > wages/pension.
+        //
+        // #159: for a PRE-retirement year this includes WORK income, which is
+        // exactly what makes a normal working year's headroom zero (no gap
+        // context, no conversion candidates) while a modeled income gap leaves
+        // real standard-deduction headroom.
         const nonSSOrdinaryIncomeExclRMD = Math.max(
             0,
             grossIncome - ssBenefits,
         );
-        const ltcgIncome = simYear.taxDetails.longTermCapitalGains ?? 0;
 
         // Apply scheduled tax life events (state move / filing-status change)
         // that have fired by this year, so the DP sees the same per-year filing
@@ -617,14 +639,45 @@ export function buildDPYearContexts(
         const fedParams = TaxService.getTaxParameters(
             simYear.year, effTax.filingStatus, 'federal', undefined, assumptions
         );
+
+        // #159: pre-retirement years get a context ONLY when they are income-GAP
+        // years with material standard-deduction headroom. Year 0 is excluded
+        // (the engine never re-simulates it, so a plan entry there could never
+        // execute — the bound also covers the synthetic EOY-projection row).
+        const isGapYear = simYear.year < retirementYear;
+        if (isGapYear) {
+            const stdDedHeadroom = fedParams
+                ? fedParams.standardDeduction - nonSSOrdinaryIncomeExclRMD
+                : 0;
+            if (simYear.year <= baseline[0].year || stdDedHeadroom < GAP_YEAR_MIN_HEADROOM) {
+                prevSimYear = simYear;
+                continue;
+            }
+        }
         if (!fedParams) continue;
+
+        // Traditional non-RMD withdrawals are taxed as ordinary income but aren't
+        // tracked as Income objects. Phase 2: trad-spending becomes endogenous in
+        // the 3D solver (Phase 3's evaluateCell rewrite); we no longer add
+        // baseline trad-spending into nonSSOrdinaryIncomeExclRMD. Still computed
+        // to populate `baselineTradWithdrawal`, which the in-flight 2D solver
+        // uses until Phase 3 lands.
+        // withdrawalDetail no longer includes RMD (RMD is surfaced as income), so the
+        // trad withdrawal sum is already RMD-free — no subtraction needed.
+        const tradNonRMDWithdrawals = sumTraditionalWithdrawals(simYear);
+
+        const ltcgIncome = simYear.taxDetails.longTermCapitalGains ?? 0;
         const stateParams = TaxService.getTaxParameters(
             simYear.year, effTax.filingStatus, 'state', effTax.stateResidency, assumptions
         );
 
         // ACA cliff applies pre-65 only (Medicare eligibility starts at 65).
+        // #159: never on gap-year contexts — the engine's working-year path
+        // assumes employer coverage and charges no ACA repayment (YearSolver
+        // sets tax.aca = 0 pre-retirement), so pricing the cliff here would
+        // steer candidates away from a cost the engine never bills.
         let acaOptions: ACAOptions | undefined;
-        if (assumptions.investments.acaAware !== false && age < 65) {
+        if (!isGapYear && assumptions.investments.acaAware !== false && age < 65) {
             const acaFiling: 'single' | 'married_filing_jointly' =
                 effTax.filingStatus === 'Married Filing Jointly' ? 'married_filing_jointly' : 'single';
             acaOptions = {
@@ -640,7 +693,12 @@ export function buildDPYearContexts(
         // Medicare IRMAA applies at 65+ (mutually exclusive with the ACA cliff above).
         // Resolve the schedule once per year and close over it: computeYearTax calls
         // this once per grid cell, all at the same (filingStatus, year, multiplier).
-        const irmaaSchedule = age >= MEDICARE_ELIGIBILITY_AGE
+        // #159: gap-year contexts skip IRMAA pricing entirely (both branches below) —
+        // the #76 head/lookback seeding is keyed to retirement-controlled years, and
+        // attaching a conversion-sensitive lookback surcharge to a pre-retirement
+        // gap year would double-bill against the head-year baseline seed. The engine
+        // score still prices any real IRMAA cash exactly.
+        const irmaaSchedule = !isGapYear && age >= MEDICARE_ELIGIBILITY_AGE
             ? getIRMAASchedule(effTax.filingStatus, simYear.year, assumptions)
             : undefined;
         let irmaaSurchargeForMAGI: ((magi: number) => number) | undefined;
@@ -679,9 +737,9 @@ export function buildDPYearContexts(
             } else {
                 irmaaSurchargeForMAGI = (magi: number) => irmaaSchedule.annualSurcharge(magi);
             }
-        } else if (age >= MEDICARE_ELIGIBILITY_AGE - IRMAA_LOOKBACK_YEARS) {
+        } else if (!isGapYear && age >= MEDICARE_ELIGIBILITY_AGE - IRMAA_LOOKBACK_YEARS) {
             // Pre-Medicare IRMAA LOOKBACK year (ages 63-64) that is in-horizon
-            // (the build loop only reaches post-retirement years). The premium the
+            // (post-retirement — #159 gap years are gated out above). The premium the
             // engine charges at age 65-66 is set by THIS year's MAGI — including
             // the DP's conversion here — so price the (year + lookback) Medicare
             // schedule on this year's conversion-sensitive MAGI. Without this the

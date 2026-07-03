@@ -890,21 +890,29 @@ export function buildDpSolveInputs(
         baselineTimeline, dpAssumptions, dpTaxState, retirementYear, startingBrokerageBalance,
     );
 
-    // Critical: the DP only solves retirement years onward, so its forward
-    // sweep needs the trad balance AT RETIREMENT, not today. Pulling
+    // Critical: the DP solves from its FIRST context year onward, so its forward
+    // sweep needs the trad balance ENTERING that year, not today. Pulling
     // accounts.vestedAmount here would feed today's balance into year 0
-    // of the contexts (= retirement year), missing pre-retirement growth
-    // and 401k contributions. Pull from the baseline timeline instead —
-    // that's already simulated through the full pre-retirement period.
+    // of the contexts, missing intervening growth and 401k contributions.
+    // Pull from the baseline timeline instead — that's already simulated
+    // through the full pre-horizon period.
+    //
+    // #159: the first context is normally the retirement year, but when a
+    // pre-retirement income GAP year qualifies for a context (see
+    // buildDPYearContexts), the horizon starts THERE and the starting
+    // balances must too — anchor on contexts[0].year rather than
+    // retirementYear. With no gap years the two are the same lookup,
+    // byte-for-byte.
     //
     // SimulationYear records END-of-year state, so we look up
-    // (retirementYear - 1) to get end-of-(year-before-retirement), which
-    // equals start-of-retirement-year — the correct t=0 state for the DP
-    // forward sweep. Looking up retirementYear directly produces an
-    // off-by-one (DP starts from end-of-retirement-year, double-counts
-    // year 0's flows). If the user retires in the very first sim year
-    // (no pre-retirement records), fall back to today's account balances.
-    const preRetirementSimYear = baselineTimeline.find(y => y.year === retirementYear - 1);
+    // (firstContextYear - 1) to get end-of-prior-year, which equals
+    // start-of-first-context-year — the correct t=0 state for the DP
+    // forward sweep. Looking up firstContextYear directly produces an
+    // off-by-one (DP starts from end-of-first-year, double-counts
+    // year 0's flows). If the horizon starts in the very first sim year
+    // (no prior records), fall back to today's account balances.
+    const firstContextYear = contexts.length > 0 ? contexts[0].year : retirementYear;
+    const preRetirementSimYear = baselineTimeline.find(y => y.year === firstContextYear - 1);
     // Pull from the pre-retirement baseline row when it exists (captures
     // pre-retirement growth + 401k contributions); otherwise fall back to today's
     // actual balances (already retired / retiring in year 0). Same tax-type filters

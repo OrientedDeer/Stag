@@ -1200,7 +1200,19 @@ function planConversionDP(
     };
 
     if (!input.taxOptimizationEnabled || !input.isRetired) {
-        return skipReturn('NOT_RETIRED');
+        // #159: never skip a SCHEDULED conversion silently — when the plan carries
+        // an amount for this year, leave a decision-log entry saying why it was
+        // not honored. (Working years normally route to solveWorkingYear, which
+        // executes plan entries itself; this gate fires for tax-opt-off runs and
+        // direct not-retired solves.)
+        const scheduled = input.dpConversionPlan?.get(input.year) ?? 0;
+        return skipReturn(
+            !input.isRetired ? 'NOT_RETIRED' : 'OPTIMIZATION_DISABLED',
+            scheduled > 0
+                ? `Skipped scheduled Roth conversion of $${Math.round(scheduled).toLocaleString()}: ` +
+                    (!input.isRetired ? 'not retired this year.' : 'tax optimization is disabled.')
+                : undefined,
+        );
     }
     if (traditionalBalance <= 0) {
         return skipReturn('TRADITIONAL_DEPLETED', 'Skipped Roth conversion: no Traditional balance available.');
@@ -2262,8 +2274,69 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
     // Include reinvested income in tax base - it's taxable even though it's not spendable
     const taxableOrdinaryBase = incomeClassification.classified.spendable + incomeClassification.classified.reinvested;
 
+    // -------------------------------------------------------------------------
+    // #159: DP-planned Roth conversion in a WORKING year.
+    //
+    // Pre-retirement years used to be a hard no-conversion zone: the DP contexts
+    // skipped them and this solver had no conversion plumbing at all, so a modeled
+    // income gap (sabbatical / layoff / income end-date) silently got $0
+    // conversions even when free standard-deduction bracket space existed. Now the
+    // optimizer emits plan entries for pre-retirement GAP years (see
+    // buildDPYearContexts) and this solver executes them: the conversion joins the
+    // year's ordinary income (federal + state tax, SS taxability, MAGI),
+    // executeYearPlan moves the balances, and the extra tax flows through the SAME
+    // deficit/surplus cash math as every other tax — covered by surplus first,
+    // else it raises the deficit that withdrawals fund (the retirement path's
+    // surplus-then-brokerage-then-withhold economics without new plumbing).
+    //
+    // SIMPLIFICATION (deliberate): a Traditional 401k generally can't be converted
+    // in-service while employed. The app doesn't model employment↔account linkage
+    // at that grain, and the target use case is scenario exploration of income-GAP
+    // years (not employed), so no employment gating is applied.
+    //
+    // #114 note: the conversion tax joins `totalTax` BEFORE the RSU-withholding
+    // netting below — the same point every other tax comes out — so the known
+    // working-year withholding-vs-deficit ordering surface is unchanged.
+    const scheduledConversion = input.forceZeroConversion
+        ? 0
+        : (input.dpConversionPlan?.get(input.year) ?? 0);
+    let conversionAmount = 0;
+    let conversionSourceAccount: InvestedAccount | null = null;
+    let conversionTargetAccount: InvestedAccount | null = null;
+    if (scheduledConversion > 0) {
+        const traditionalBalance = getTotalTraditionalBalance(input.accounts);
+        conversionSourceAccount = getFirstTraditionalAccount(input.accounts);
+        conversionTargetAccount = getFirstRothAccount(input.accounts);
+        if (!input.taxOptimizationEnabled) {
+            // #159: never skip a scheduled conversion silently — say why.
+            decisions.push({
+                category: 'conversion',
+                amount: scheduledConversion,
+                description: `Skipped scheduled Roth conversion of $${Math.round(scheduledConversion).toLocaleString()}: tax optimization is disabled.`,
+            });
+        } else if (traditionalBalance <= 0 || !conversionSourceAccount || !conversionTargetAccount) {
+            decisions.push({
+                category: 'conversion',
+                amount: scheduledConversion,
+                description: `Skipped scheduled Roth conversion of $${Math.round(scheduledConversion).toLocaleString()}: ` +
+                    (traditionalBalance <= 0 || !conversionSourceAccount
+                        ? 'no Traditional balance available.'
+                        : 'no Roth account to receive the conversion.'),
+            });
+        } else {
+            conversionAmount = Math.min(scheduledConversion, traditionalBalance);
+            if (conversionAmount < scheduledConversion - 0.5) {
+                decisions.push({
+                    category: 'conversion',
+                    amount: conversionAmount,
+                    description: `Scheduled Roth conversion of $${Math.round(scheduledConversion).toLocaleString()} clamped to the available Traditional balance ($${Math.round(conversionAmount).toLocaleString()}).`,
+                });
+            }
+        }
+    }
+
     const taxResult = TaxService.calculateTotalFederalTax(
-        taxableOrdinaryBase - socialSecurityBenefits,
+        taxableOrdinaryBase - socialSecurityBenefits + conversionAmount,
         socialSecurityBenefits,
         0,
         0,
@@ -2283,8 +2356,9 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         ? TaxService.calculateTax(
             // Exclude Social Security (DC and all modeled states exempt it),
             // mirroring the retirement path. Reinvested income is already folded
-            // into taxableOrdinaryBase and stays in the state base.
-            taxableOrdinaryBase - socialSecurityBenefits,
+            // into taxableOrdinaryBase and stays in the state base. A #159
+            // working-year conversion is state-taxable ordinary income too.
+            taxableOrdinaryBase - socialSecurityBenefits + conversionAmount,
             preTaxDeductions,
             stateParams
         )
@@ -2292,12 +2366,60 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
 
     const totalTax = taxResult.totalTax + stateTax + ficaTax;
 
+    // #159: the conversion's own tax cost — the finite difference between this
+    // year's fed+state tax with and without the conversion income (the same
+    // finite-difference truth #164 established for the retirement display).
+    // Zero-conversion years never take this branch (byte-identical to before).
+    let conversion: PlannedConversion | null = null;
+    if (conversionAmount > 0 && conversionSourceAccount && conversionTargetAccount) {
+        const fedNoConv = TaxService.calculateTotalFederalTax(
+            taxableOrdinaryBase - socialSecurityBenefits,
+            socialSecurityBenefits,
+            0, 0, preTaxDeductions, input.taxState.filingStatus, fedParams,
+        ).totalTax;
+        const stateNoConv = stateParams
+            ? TaxService.calculateTax(taxableOrdinaryBase - socialSecurityBenefits, preTaxDeductions, stateParams)
+            : 0;
+        const conversionFedTax = Math.max(0, taxResult.totalTax - fedNoConv);
+        const conversionStateTax = Math.max(0, stateTax - stateNoConv);
+        const conversionTax = conversionFedTax + conversionStateTax;
+
+        // Tax-payment source, mirroring computeConversionTaxAndSource's preference
+        // order (surplus → brokerage → withhold). Advisory/display only — the cash
+        // itself flows through the year's deficit/surplus math either way.
+        const surplusEstimate = Math.max(0,
+            incomeClassification.classified.spendable - preTaxDeductions - postTaxDeductions - input.totalLivingExpenses);
+        const taxSource: ConversionTaxSource =
+            surplusEstimate >= conversionTax ? 'SURPLUS'
+                : getTotalBrokerageBalance(input.accounts) >= conversionTax ? 'BROKERAGE'
+                    : 'WITHHOLD';
+
+        conversion = {
+            amount: conversionAmount,
+            fromAccountId: conversionSourceAccount.id,
+            toAccountId: conversionTargetAccount.id,
+            taxSource,
+            taxAmount: conversionTax,
+            federalTaxCost: conversionFedTax,
+            stateTaxCost: conversionStateTax,
+            netToRoth: conversionAmount,
+            reason: `DP-planned working-year (income-gap) conversion of $${Math.round(conversionAmount).toLocaleString()}. Tax paid from ${taxSource.toLowerCase()}.`,
+        };
+        decisions.push({
+            category: 'conversion',
+            account: conversionSourceAccount.name,
+            amount: conversionAmount,
+            description: `DP-planned (working year): $${Math.round(conversionAmount).toLocaleString()} from ${conversionSourceAccount.name} to Roth. Tax: $${Math.round(conversionTax).toLocaleString()} (${taxSource.toLowerCase()}).`,
+        });
+    }
+
     // Medicare IRMAA surcharge (2-year lookback). Applies to anyone on Medicare
     // (age 65+) — including those still working — based on year N-2's MAGI. It's a
     // known cash cost, so fold it into the deficit and the year's total tax. The
     // income-side MAGI (non-SS ordinary + taxable SS) is the self-proxy for the
-    // very first simulated year, when no prior-year MAGI exists.
-    const incomeSideMAGI = (taxableOrdinaryBase - socialSecurityBenefits) + taxResult.taxableSS;
+    // very first simulated year, when no prior-year MAGI exists. A #159
+    // working-year conversion is ordinary income and belongs in it.
+    const incomeSideMAGI = (taxableOrdinaryBase - socialSecurityBenefits + conversionAmount) + taxResult.taxableSS;
     const irmaaSurcharge = computeIrmaaForYear(input, incomeSideMAGI, decisions);
 
     // RSU sell-to-cover withholding is an estimated-tax PREPAYMENT the employer
@@ -2355,7 +2477,9 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
             input.currentAge,
             input.year,
             input.taxState,
-            taxableOrdinaryBase, // ordinary income for LTCG bracket determination
+            // ordinary income for LTCG bracket determination — includes the #159
+            // working-year conversion, which stacks under any realized gains.
+            taxableOrdinaryBase + conversionAmount,
             input.assumptions,
             'Spending deficit'
         );
@@ -2388,7 +2512,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
             // inflated ordinary tax (charged separately via withdrawalOrdinaryTax)
             // is discarded.
             niitTax = TaxService.calculateTotalFederalTax(
-                (taxableOrdinaryBase - socialSecurityBenefits) + withdrawalOrdinaryIncome,
+                (taxableOrdinaryBase - socialSecurityBenefits) + conversionAmount + withdrawalOrdinaryIncome,
                 socialSecurityBenefits,
                 realizedSTCG,
                 realizedLTCG,
@@ -2406,9 +2530,10 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
     const finalTotalTax = totalTax + ltcgTax + withdrawalOrdinaryTax + niitTax + totalPenalties + irmaaSurcharge;
 
     // The year's MAGI (≈ AGI) — stored for the year N+2 IRMAA lookback. Non-SS
-    // ordinary income + taxable SS + deficit-funding withdrawal income + realized gains.
+    // ordinary income (+ any #159 working-year conversion) + taxable SS +
+    // deficit-funding withdrawal income + realized gains.
     const yearMAGI = Math.max(0,
-        (taxableOrdinaryBase - socialSecurityBenefits) + taxResult.taxableSS
+        (taxableOrdinaryBase - socialSecurityBenefits + conversionAmount) + taxResult.taxableSS
         + withdrawalOrdinaryIncome + realizedLTCG + realizedSTCG);
 
     // Re-derive the withholding netting against the FINAL tax (deficit withdrawals
@@ -2484,12 +2609,19 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         decisions.push(...surplusResult.decisions);
     }
 
+    // #159: report the conversion as taxable-but-not-spendable income (mirrors
+    // the retirement path's post-conversion re-classification). Zero-conversion
+    // years reuse the original classification object untouched.
+    const finalIncomeClassification = conversionAmount > 0
+        ? classifyIncome(input.incomes, 0, conversionAmount, input.year)
+        : incomeClassification;
+
     return {
         year: input.year,
         isRetired: false,
-        income: incomeClassification.classified,
+        income: finalIncomeClassification.classified,
         withdrawals,
-        conversion: null,
+        conversion,
         contributions: [], // Will be filled by contribution planning
         surplusAllocations,
         deficitDebtPayment: surplusDeficitDebtPayment,
