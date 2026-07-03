@@ -12,7 +12,8 @@ import { AnyAccount } from '../components/Objects/Accounts/models';
 import { DPPolicy } from './simulation/RothConversionDP';
 import { AnyIncome } from '../components/Objects/Income/models';
 import { AnyExpense } from '../components/Objects/Expense/models';
-import { AssumptionsState, getLifeExpectancy, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, getLifeExpectancy, getBirthYear, BUILTIN_MILESTONE_IDS } from '../components/Objects/Assumptions/AssumptionsContext';
+import { CustomMilestone } from './simulation/types';
 import { TaxState } from '../components/Objects/Taxes/TaxContext';
 
 /**
@@ -136,6 +137,70 @@ function runBaselinePath(
         yearOfDepletion: analyzed.yearOfDepletion,
         terminalAfterTaxNW: terminalAfterTaxNetWorth(timeline, ruler),
     };
+}
+
+/** Horizon (death) ages the triptych re-scores the plan at (F13 / #160). */
+export const TRIPTYCH_AGES = [75, 85, 95] as const;
+
+/** One column of the horizon triptych. */
+export interface HorizonScore {
+    /** End-of-plan age this column re-scores the plan at. */
+    age: number;
+    /**
+     * Terminal after-tax net worth of the DETERMINISTIC run ended at this age
+     * (expected-return path, not an MC percentile). Null when the horizon was
+     * skipped because it is ≤ current age + 1 (no meaningful run).
+     */
+    afterTaxNetWorth: number | null;
+}
+
+/** The End-of-Plan milestone with its AGE condition retargeted to `age`. */
+function withEndOfPlanAge(milestones: CustomMilestone[], age: number): CustomMilestone[] {
+    return milestones.map(m => m.id === BUILTIN_MILESTONE_IDS.END_OF_PLAN
+        ? { ...m, conditions: m.conditions.map(c => c.type === 'AGE' ? { ...c, value: age } : c) }
+        : m);
+}
+
+/**
+ * Horizon triptych (fp-review F13 / #160): three DETERMINISTIC re-scores of
+ * the CURRENT strategy with the plan ended at ages 75 / 85 / 95, each reported
+ * as terminal after-tax net worth. Answers "what does this plan leave if I die
+ * early / on schedule / late?" without touching MC execution — these are plain
+ * `runSimulation` calls on the expected-return path (~tens of ms each), meant
+ * to be computed OUTSIDE the MC run.
+ *
+ * The horizons are fixed at 75/85/95 regardless of the household's configured
+ * life expectancy — running PAST a shorter LE is the point of the stress. Only
+ * horizons ≤ current age + 1 are skipped (null column). The after-tax RULER is
+ * rebuilt per horizon: buildTradValuation resolves the TERMINAL year's
+ * age/SS/brackets from the timeline it is given, and that context differs at
+ * 75 vs 95, so the one-ruler-per-MC-run rule does not apply across horizons.
+ */
+export function computeHorizonTriptych(
+    accounts: AnyAccount[],
+    incomes: AnyIncome[],
+    expenses: AnyExpense[],
+    assumptions: AssumptionsState,
+    taxState: TaxState,
+): HorizonScore[] {
+    const currentAge = new Date().getFullYear() - getBirthYear(assumptions.milestones);
+    return TRIPTYCH_AGES.map(age => {
+        if (age <= currentAge + 1) return { age, afterTaxNetWorth: null };
+        const horizonAssumptions: AssumptionsState = {
+            ...assumptions,
+            milestones: withEndOfPlanAge(assumptions.milestones, age),
+        };
+        const years = mcYearsToRun(horizonAssumptions);
+        // Deterministic run of the current strategy to this horizon (no
+        // yearlyReturns ⇒ the configured expected-return path).
+        const timeline = runSimulation(
+            years, accounts, incomes, expenses, horizonAssumptions, taxState, undefined, {},
+        );
+        const ruler = buildMcAfterTaxRuler(
+            years, accounts, incomes, expenses, horizonAssumptions, taxState,
+        );
+        return { age, afterTaxNetWorth: terminalAfterTaxNetWorth(timeline, ruler) };
+    });
 }
 
 /** Simulation horizon = life expectancy − current age (≥ 0). */

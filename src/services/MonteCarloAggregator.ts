@@ -6,6 +6,7 @@ import {
     TerminalPercentiles,
     ConversionMcStats,
     McBaselineComparison,
+    McCertaintyEquivalents,
 } from './MonteCarloTypes';
 import { calculateNetWorth, terminalAfterTaxNetWorth } from '../tabs/Future/tabs/FutureUtils';
 import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
@@ -255,6 +256,67 @@ export function computeConversionStats(scenarios: ScenarioResult[]): ConversionM
 }
 
 /**
+ * CRRA certainty equivalent of a set of STRICTLY POSITIVE wealth outcomes
+ * (fp-review F13 / #160):
+ *
+ *   CE_gamma = ((1/n) Σ w_i^(1-gamma))^(1/(1-gamma))   for gamma != 1
+ *   CE_1     = exp((1/n) Σ ln w_i)                      (log utility)
+ *
+ * Numerical approach: values are normalized by their MEDIAN before
+ * exponentiation. The CRRA CE is scale-invariant (CE(k·w) = k·CE(w)), so the
+ * normalization cancels exactly — but it keeps the powers near 1 instead of
+ * raising 6-7-figure wealth to the -3rd power (10^6^-3 = 1e-18) where a wide
+ * spread starts flirting with float underflow. After normalizing, even a $10
+ * vs $10M spread at gamma=4 stays within ~1e18 — comfortably inside float64.
+ *
+ * Throws on non-positive values: CRRA is undefined there, and the caller
+ * (computeCertaintyEquivalents) is responsible for the solvency filtering.
+ */
+export function crraCertaintyEquivalent(values: number[], gamma: number): number {
+    if (values.length === 0) return NaN;
+    if (values.some(v => v <= 0)) {
+        throw new Error('CRRA certainty equivalent requires strictly positive wealth values');
+    }
+    const median = getPercentileValue([...values].sort((a, b) => a - b), 50);
+    if (gamma === 1) {
+        const meanLog = values.reduce((s, v) => s + Math.log(v / median), 0) / values.length;
+        return median * Math.exp(meanLog);
+    }
+    const p = 1 - gamma;
+    const meanPow = values.reduce((s, v) => s + Math.pow(v / median, p), 0) / values.length;
+    return median * Math.pow(meanPow, 1 / p);
+}
+
+/**
+ * Certainty equivalents at gamma = 2 and 4 over the per-path terminal
+ * after-tax net worth (F13 / #160). DECIDED CONVENTION: CE among solvent paths
+ * only, always displayed alongside the failure rate — no epsilon floors, no
+ * fabricated tail utility.
+ *
+ * "Solvent" == the #111 `success` definition the summary already uses (no
+ * deficit-debt year anywhere on the path). A path can end with positive wealth
+ * after a mid-life deficit year — it is still excluded here, exactly as it is
+ * from `successRate`. CRRA is additionally undefined at w <= 0, so the rare
+ * success path whose terminal AFTER-TAX value is <= 0 is guarded out of the CE
+ * set with the same no-floor convention.
+ *
+ * Returns undefined when no path qualifies (the failure rate tells that story).
+ */
+export function computeCertaintyEquivalents(
+    afterTaxValues: number[],
+    successFlags: boolean[],
+): McCertaintyEquivalents | undefined {
+    const solvent = afterTaxValues.filter((v, i) => successFlags[i] && v > 0);
+    if (solvent.length === 0) return undefined;
+    return {
+        gamma2: crraCertaintyEquivalent(solvent, 2),
+        gamma4: crraCertaintyEquivalent(solvent, 4),
+        solventCount: solvent.length,
+        totalCount: afterTaxValues.length,
+    };
+}
+
+/**
  * Paired plan-vs-baseline comparison (fp-review F7). `activeAfterTax` and
  * `baselinePaths` are index-aligned by scenarioId (same seeds, same draws), so
  * the after-tax deltas are true per-path causal effects — unlike the
@@ -361,6 +423,10 @@ export function summarizeScenarios(
         averageFinalNetWorth,
         seed,
         afterTaxPercentiles: activeAfterTax ? terminalPercentiles(activeAfterTax) : undefined,
+        // F13/#160: CE over the SAME per-path after-tax values, solvent paths only.
+        certaintyEquivalents: activeAfterTax
+            ? computeCertaintyEquivalents(activeAfterTax, scenarios.map(s => s.success))
+            : undefined,
         conversionStats: computeConversionStats(scenarios),
         baselineComparison,
     };
