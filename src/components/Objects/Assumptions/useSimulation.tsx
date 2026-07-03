@@ -13,6 +13,7 @@ import { BaselineProjections } from '../../../services/simulation/types';
 import { getRMDStartAge } from '../../../data/RMDData';
 import { buildDPYearContexts, planConversionsViaDP, DPPlan, DPInputs, DPObjectiveOptions, DPPolicy, QuadratureNodes } from '../../../services/simulation/RothConversionDP';
 import { searchConversionPlanByEngine, extractConversionPlan, generateCandidateWithdrawalOrders, withAllSellableAccounts } from '../../../services/simulation/EngineDirectConversionSearch';
+import { getIRMAASchedule } from '../../../data/IRMAAData';
 import { getTotalBrokerageBalance, getTotalTraditionalBalance, getTotalRothBalance } from '../../../services/simulation/YearSolver';
 import { buildTradValuation, terminalAfterTaxNetWorth } from '../../../tabs/Future/tabs/FutureUtils';
 
@@ -1022,12 +1023,18 @@ export const buildMcConversionPolicy = (
         },
         seedPlans: [{ label: 'legacy-dp', plan: stochasticPlan.conversionsByYear }],
         startingTradBalance: dpInputs.currentTradBalance,
+        // F9: same IRMAA/ACA cliff probes as the deterministic search, so h* is derived
+        // from an identically-gridded search.
+        irmaaScheduleForYear: (year, fs) => getIRMAASchedule(fs, year, assumptions),
     });
     // h* = the optimum's taxable-income headroom above the standard deduction:
     //   • a fill-to-h grid point won → that headroom (cap at it);
     //   • the std-ded baseline won → 0 (tight cap — the over-conversion corner);
     //   • the DP (policy central) won → undefined ⇒ NO cap (policy already at/under the optimum,
     //     e.g. real-SS; capping would neuter the #98 bull-path adaptivity).
+    //   • a SCALED seed variant won (F8, label 'legacy-dp×k') → bestHeadroom is null ⇒ undefined
+    //     ⇒ no cap, matching the pre-F8 behavior on that class (the raw DP used to win there);
+    //     a DP-shaped winner has no h to cap against.
     const capHeadroom: number | undefined =
         search.diagnostics.bestLabel === 'legacy-dp' ? undefined
             : search.diagnostics.bestLabel === 'std-ded-baseline' ? 0
@@ -1204,6 +1211,8 @@ export const runSimulationWithOptimization = (
                     baseline: { afterTaxNW: terminalAfterTaxNetWorth(art.baselineO, tradValuationRuler), timeline: art.baselineO, plan: extractConversionPlan(art.baselineO) },
                     seedPlans: [{ label: 'legacy-dp', plan: art.dpPlan.conversionsByYear }],
                     startingTradBalance: art.dpInputs.currentTradBalance,
+                    // F9: lets the search append IRMAA-tier (and ACA-cliff) h-grid probes.
+                    irmaaScheduleForYear: (year, fs) => getIRMAASchedule(fs, year, assumptions),
                 });
                 return {
                     order: art.order, timeline: s.winningTimeline,
