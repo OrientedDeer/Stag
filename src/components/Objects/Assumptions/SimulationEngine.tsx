@@ -65,8 +65,9 @@ function executeYearPlan(
     accounts: AnyAccount[],
     withdrawalState: WithdrawalState,
     logs: string[]
-): { conversionDeposits: Record<string, number> } {
+): { conversionDeposits: Record<string, number>; conversionSources: Record<string, number> } {
     const conversionDeposits: Record<string, number> = {};
+    const conversionSources: Record<string, number> = {};
 
     // Execute withdrawals
     for (const withdrawal of plan.withdrawals) {
@@ -112,7 +113,15 @@ function executeYearPlan(
         }
     }
 
-    // Execute Roth conversion
+    // Execute Roth conversion. Conservation of money (fp-review F10): the
+    // planned conversionAmount is clamped to the TOTAL Traditional balance
+    // (YearSolver), but the designated source is a single account. With
+    // multiple Traditional accounts the plan can exceed the first account's
+    // balance — and InvestedAccount.increment floors an over-withdrawal at
+    // zero while the Roth would still receive the full net, materializing
+    // phantom net worth in transition years. Drain across Traditional
+    // accounts in list order (designated source first) and credit the Roth
+    // with exactly what was deducted, so total out always equals total in.
     if (plan.conversion) {
         const sourceAccount = accounts.find(a => a.id === plan.conversion!.fromAccountId);
         const targetAccount = accounts.find(a => a.id === plan.conversion!.toAccountId);
@@ -120,21 +129,46 @@ function executeYearPlan(
         if (sourceAccount && targetAccount &&
             sourceAccount instanceof InvestedAccount && targetAccount instanceof InvestedAccount) {
 
-            // Deduct from source (Traditional)
-            withdrawalState.userInflows[sourceAccount.id] =
-                (withdrawalState.userInflows[sourceAccount.id] || 0) - plan.conversion.amount;
+            const otherTraditionals = accounts.filter((a): a is InvestedAccount =>
+                a instanceof InvestedAccount &&
+                a.id !== sourceAccount.id &&
+                (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA'));
 
-            // Add to target (Roth) - userInflows drives the balance change,
-            // conversionDeposits tracks conversion history in increment()
-            withdrawalState.userInflows[targetAccount.id] =
-                (withdrawalState.userInflows[targetAccount.id] || 0) + plan.conversion.netToRoth;
-            conversionDeposits[targetAccount.id] = plan.conversion.netToRoth;
+            let remaining = plan.conversion.amount;
+            for (const source of [sourceAccount, ...otherTraditionals]) {
+                if (remaining <= 0.01) break;
+                // Available = vested balance net of withdrawals already queued
+                // this year (userInflows are negative for withdrawals; ignore
+                // positive inflows conservatively).
+                const available = Math.max(0,
+                    source.vestedAmount + Math.min(0, withdrawalState.userInflows[source.id] || 0));
+                const take = Math.min(remaining, available);
+                if (take <= 0) continue;
 
-            logs.push(`[V2] Roth conversion: $${plan.conversion.amount.toLocaleString()} from ${sourceAccount.name} → ${targetAccount.name}`);;
+                withdrawalState.userInflows[source.id] =
+                    (withdrawalState.userInflows[source.id] || 0) - take;
+                conversionSources[source.id] = (conversionSources[source.id] || 0) + take;
+                remaining -= take;
+            }
+
+            // Credit the Roth with the total actually deducted — userInflows
+            // drives the balance change, conversionDeposits tracks conversion
+            // history in increment().
+            const executed = plan.conversion.amount - Math.max(0, remaining);
+            if (executed > 0) {
+                withdrawalState.userInflows[targetAccount.id] =
+                    (withdrawalState.userInflows[targetAccount.id] || 0) + executed;
+                conversionDeposits[targetAccount.id] = executed;
+
+                const sourceNames = Object.keys(conversionSources)
+                    .map(id => accounts.find(a => a.id === id)?.name ?? id)
+                    .join(' + ');
+                logs.push(`[V2] Roth conversion: $${Math.round(executed).toLocaleString()} from ${sourceNames} → ${targetAccount.name}`);
+            }
         }
     }
 
-    return { conversionDeposits };
+    return { conversionDeposits, conversionSources };
 }
 
 /**
@@ -654,7 +688,7 @@ function simulateOneYearWithNewEngine(
     // ------------------------------------------------------------------
     // EXECUTE YEAR PLAN (Phase 3)
     // ------------------------------------------------------------------
-    const { conversionDeposits } = executeYearPlan(yearPlan, accounts, withdrawalState, logs);
+    const { conversionDeposits, conversionSources } = executeYearPlan(yearPlan, accounts, withdrawalState, logs);
     updateWithdrawalStateFromPlan(yearPlan, withdrawalState);
 
     // ------------------------------------------------------------------
@@ -829,20 +863,31 @@ function simulateOneYearWithNewEngine(
     // ------------------------------------------------------------------
     let rothConversionResult: SimulationYear['rothConversion'] = undefined;
     if (yearPlan.conversion) {
-        const sourceAccount = accounts.find(a => a.id === yearPlan.conversion!.fromAccountId);
         const targetAccount = accounts.find(a => a.id === yearPlan.conversion!.toAccountId);
+        // Report the EXECUTED conversion: executeYearPlan may have drained
+        // several Traditional accounts (F10 conservation fix), and the executed
+        // total can fall below the plan when same-year withdrawals emptied the
+        // Traditional balance first.
+        const executedTotal = Object.values(conversionSources).reduce((s, v) => s + v, 0);
 
-        if (sourceAccount && targetAccount) {
+        if (targetAccount && executedTotal > 0) {
+            const fromAccounts: Record<string, number> = {};
+            const fromAccountIds: Record<string, number> = {};
+            for (const [id, amt] of Object.entries(conversionSources)) {
+                const name = accounts.find(a => a.id === id)?.name ?? id;
+                fromAccounts[name] = (fromAccounts[name] || 0) + amt;
+                fromAccountIds[id] = amt;
+            }
             rothConversionResult = {
-                amount: yearPlan.conversion.amount,
+                amount: executedTotal,
                 taxCost: yearPlan.conversion.taxAmount,
                 federalTaxCost: yearPlan.conversion.federalTaxCost,
                 stateTaxCost: yearPlan.conversion.stateTaxCost,
                 taxAfter: yearPlan.tax.federal + yearPlan.conversion.taxAmount,
-                fromAccounts: { [sourceAccount.name]: yearPlan.conversion.amount },
-                toAccounts: { [targetAccount.name]: yearPlan.conversion.netToRoth },
-                fromAccountIds: { [sourceAccount.id]: yearPlan.conversion.amount },
-                toAccountIds: { [targetAccount.id]: yearPlan.conversion.netToRoth },
+                fromAccounts,
+                toAccounts: { [targetAccount.name]: executedTotal },
+                fromAccountIds,
+                toAccountIds: { [targetAccount.id]: executedTotal },
             };
         }
     }
@@ -999,6 +1044,7 @@ function simulateOneYearWithNewEngine(
             withdrawalOrdinaryTax: withdrawalState.withdrawalOrdinaryTaxTotal,
             niit: yearPlan.tax.niit,
             irmaa: yearPlan.tax.irmaa,
+            aca: yearPlan.tax.aca,
             earlyWithdrawalPenalty: withdrawalState.withdrawalPenalties,
             longTermCapitalGains: withdrawalState.longTermCapitalGains,
         },

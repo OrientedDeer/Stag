@@ -58,7 +58,7 @@ const KEY_MAP: Record<string, string> = {
     // Assumptions - Roth conversion / tax optimization flags
     rothConversionStrategy: 'rs', rothConversionMinRateGap: 'rg', rothConversionDPBackloadDelta: 'rd',
     rothConversionUserSituation: 'ru',
-    taxOptimizationEnabled: 'to', acaAware: 'aa',
+    taxOptimizationEnabled: 'to', acaAware: 'aa', acaAnnualSubsidyLoss: 'as',
     // Assumptions - top-level arrays (priorEarnings, milestones, and the Burn-Order
     // withdrawal-strategy array which is flattened under the synthetic `burnOrder` key
     // so it does not collide with the investments `withdrawalStrategy` string)
@@ -148,6 +148,7 @@ const ASSUMPTIONS_DEFAULTS: Record<string, unknown> = {
     rothConversionUserSituation: 'self-liquidate',
     taxOptimizationEnabled: false,
     acaAware: true,
+    acaAnnualSubsidyLoss: 12000,
     // Demographics
     retirementAge: 65,
     lifeExpectancy: 90,
@@ -367,6 +368,7 @@ export function expandAssumptions(flat: Record<string, unknown>): Record<string,
             rothConversionUserSituation: flat.rothConversionUserSituation ?? ASSUMPTIONS_DEFAULTS.rothConversionUserSituation,
             taxOptimizationEnabled: flat.taxOptimizationEnabled ?? ASSUMPTIONS_DEFAULTS.taxOptimizationEnabled,
             acaAware: flat.acaAware ?? ASSUMPTIONS_DEFAULTS.acaAware,
+            acaAnnualSubsidyLoss: flat.acaAnnualSubsidyLoss ?? ASSUMPTIONS_DEFAULTS.acaAnnualSubsidyLoss,
         },
         demographics,
         display: {

@@ -1,10 +1,11 @@
 import { useContext, useState, useMemo } from "react";
-import { AssumptionsContext, getBirthYear, defaultAssumptions } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { AssumptionsContext, getBirthYear, defaultAssumptions, ACA_SUBSIDY_LOSS_DEFAULT } from "../../components/Objects/Assumptions/AssumptionsContext";
 import { ExpenseContext } from "../../components/Objects/Expense/ExpenseContext";
 import { SimulationContext } from "../../components/Objects/Assumptions/SimulationContext";
 import { PercentageInput } from "../../components/Layout/InputFields/PercentageInput";
 import { DropdownInput } from "../../components/Layout/InputFields/DropdownInput";
 import { ToggleInput } from "../../components/Layout/InputFields/ToggleInput";
+import { CurrencyInput } from "../../components/Layout/InputFields/CurrencyInput";
 import MilestoneModal from "../../components/Objects/Assumptions/MilestoneModal";
 import { Panel } from "../../components/Layout/Primitives";
 import { AlertBanner } from "../../components/Layout/AlertBanner";
@@ -381,6 +382,20 @@ export default function AssumptionTab() {
                             setEnabled={(val) => dispatch({ type: 'UPDATE_INVESTMENTS', payload: { acaAware: val } })}
                             tooltip="Limit Roth conversions before age 65 to stay under the ACA subsidy cliff. Turn off to allow larger conversions if you have non-ACA health coverage."
                         />
+                        {(state.investments.acaAware ?? true) && (
+                            <div>
+                                <CurrencyInput
+                                    label="Est. Annual ACA Subsidy"
+                                    value={state.investments.acaAnnualSubsidyLoss ?? ACA_SUBSIDY_LOSS_DEFAULT}
+                                    onChange={(val) => dispatch({ type: 'UPDATE_INVESTMENTS', payload: { acaAnnualSubsidyLoss: val } })}
+                                    tooltip="Your estimated annual marketplace premium subsidy. Check your ACA exchange for your actual premium tax credit."
+                                />
+                                <p className="text-xs text-content-muted mt-1">
+                                    Charged as a real cost in any pre-65 retirement year whose income crosses
+                                    the 400% FPL cliff, so the plan weighs conversions against losing it.
+                                </p>
+                            </div>
+                        )}
 
                         <ToggleInput
                             label="Prior Year Mode"

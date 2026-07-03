@@ -177,6 +177,14 @@ describe('joint optimizer payoff — material order gain on an order-sensitive s
             ...defaultAssumptions.investments, returnRates: { ror: 6 }, withdrawalRate: 4.0,
             autoRothConversions: false, taxOptimizationEnabled: true,
             rothConversionStrategy: 'dp-precomputed', rothConversionUserSituation: 'self-liquidate',
+            // ACA off: this scenario retires at 58 with $160k/yr spending, so its MAGI crosses
+            // the MFJ 400%-FPL cliff in every pre-65 year under EVERY order. With the ACA
+            // subsidy loss now charged as real engine cash (fp-review F1, default on), the
+            // extra ~$12k/yr on the gap-year conversion strategy erases the order-switch gain
+            // this test exists to pin. Disable it to keep testing the order-sensitivity
+            // mechanics in isolation (an ACA-exposed household legitimately gets a different
+            // answer now — that's the F1 fix working, not a regression).
+            acaAware: false,
         },
         withdrawalStrategy: tradFirst,
     };

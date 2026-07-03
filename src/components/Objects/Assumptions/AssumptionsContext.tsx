@@ -77,6 +77,15 @@ export const getLifeExpectancy = (milestones: CustomMilestone[]): number => {
     return rawValue;
 };
 
+/**
+ * Default estimated annual ACA premium subsidy lost when a pre-65 year's MAGI
+ * reaches the 400%-FPL cliff. Single source for the engine's real cash charge
+ * (YearSolver), the DP seed's shadow penalty (RothConversionDP), and the
+ * `acaAnnualSubsidyLoss` assumption default — so seed, judge, and executed
+ * engine all price the same number unless the user overrides it.
+ */
+export const ACA_SUBSIDY_LOSS_DEFAULT = 12_000;
+
 export type CapType = 'MAX' | 'FIXED' | 'REMAINDER' | 'MULTIPLE_OF_EXPENSES';
 
 export interface PriorityBucket {
@@ -168,6 +177,11 @@ export interface AssumptionsState {
     // Tax Optimization Mode
     taxOptimizationEnabled: boolean; // When enabled, uses smart withdrawal order and auto-calculated Roth conversions
     acaAware: boolean; // When true, limit Roth conversions to stay under ACA subsidy cliff (pre-65)
+    // Estimated annual ACA premium subsidy lost when a pre-65 retirement year's
+    // MAGI reaches the 400%-FPL cliff. Charged as real cash by the engine in
+    // crossing years (and used as the DP seed's shadow penalty). Optional so
+    // older saves stay valid; readers fall back to ACA_SUBSIDY_LOSS_DEFAULT.
+    acaAnnualSubsidyLoss?: number;
     };
   demographics: {
     priorEarnings?: EarningsRecord[];  // SSA earnings history imported from XML
@@ -221,6 +235,7 @@ export const defaultAssumptions: AssumptionsState = {
     rothConversionDPBackloadDelta: 0.015, // 1.5%/yr default — legacy min-tax DP back-load preference
     taxOptimizationEnabled: false, // Disabled by default - use manual withdrawal order
     acaAware: true, // Limit Roth conversions to stay under ACA subsidy cliff (pre-65)
+    acaAnnualSubsidyLoss: ACA_SUBSIDY_LOSS_DEFAULT, // Estimated annual subsidy lost when MAGI crosses the 400%-FPL cliff (pre-65)
   },
   demographics: {
     priorYearMode: false, // Default to current year mode

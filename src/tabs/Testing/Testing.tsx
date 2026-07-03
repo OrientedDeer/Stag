@@ -183,9 +183,10 @@ function generateYearSummaryText(simYear: SimulationYear, age: number, accountsC
     const fedIncomeTax = Math.max(0, simYear.taxDetails.fed - penalty);
     lines.push(`  Federal Income: ${fmt(fedIncomeTax)} | State: ${fmt(simYear.taxDetails.state)} | FICA: ${fmt(simYear.taxDetails.fica)}`);
     const irmaa = simYear.taxDetails.irmaa ?? 0;
-    lines.push(`  Cap Gains Tax: ${fmt(simYear.taxDetails.capitalGains)} | Withdrawal Tax: ${fmt(simYear.taxDetails.withdrawalOrdinaryTax)} | NIIT: ${fmt(simYear.taxDetails.niit)} | IRMAA: ${fmt(irmaa)} | Early-Withdraw Penalty: ${fmt(penalty)}`);
+    const aca = simYear.taxDetails.aca ?? 0;
+    lines.push(`  Cap Gains Tax: ${fmt(simYear.taxDetails.capitalGains)} | Withdrawal Tax: ${fmt(simYear.taxDetails.withdrawalOrdinaryTax)} | NIIT: ${fmt(simYear.taxDetails.niit)} | IRMAA: ${fmt(irmaa)} | ACA Subsidy Loss: ${fmt(aca)} | Early-Withdraw Penalty: ${fmt(penalty)}`);
     const totalTax = simYear.taxDetails.fed + simYear.taxDetails.state + simYear.taxDetails.fica +
-        simYear.taxDetails.capitalGains + simYear.taxDetails.withdrawalOrdinaryTax + simYear.taxDetails.niit + irmaa;
+        simYear.taxDetails.capitalGains + simYear.taxDetails.withdrawalOrdinaryTax + simYear.taxDetails.niit + irmaa + aca;
     lines.push(`  Total: ${fmt(totalTax)}`);
     lines.push('');
 
@@ -635,6 +636,12 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
                                     <span className="font-mono">{toCurrencyShort(simYear.taxDetails.irmaa ?? 0)}</span>
                                 </div>
                             )}
+                            {(simYear.taxDetails.aca ?? 0) > 0 && (
+                                <div className="flex justify-between text-cat-orange">
+                                    <span>ACA Subsidy Loss (400% FPL cliff)</span>
+                                    <span className="font-mono">{toCurrencyShort(simYear.taxDetails.aca ?? 0)}</span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -839,7 +846,7 @@ function SimulationDebugTab() {
             interestIncome: Array<{ name: string; amount: number }>;
             withdrawalDetail: Record<string, number>;
             bucketDetail: Record<string, number>;
-            taxDetails: { fed: number; state: number; fica: number; capitalGains: number; withdrawalOrdinaryTax: number; irmaa?: number; earlyWithdrawalPenalty?: number };
+            taxDetails: { fed: number; state: number; fica: number; capitalGains: number; withdrawalOrdinaryTax: number; irmaa?: number; aca?: number; earlyWithdrawalPenalty?: number };
             logs: string[];
         }> = [];
 
@@ -995,6 +1002,7 @@ function SimulationDebugTab() {
                     capitalGains: simYear.taxDetails.capitalGains,
                     withdrawalOrdinaryTax: simYear.taxDetails.withdrawalOrdinaryTax || 0,
                     irmaa: simYear.taxDetails.irmaa ?? 0,
+                    aca: simYear.taxDetails.aca ?? 0,
                     earlyWithdrawalPenalty: simYear.taxDetails.earlyWithdrawalPenalty,
                 },
                 logs: simYear.logs || [],
@@ -1773,7 +1781,7 @@ function TaxDebugTab() {
     // early-withdrawal penalty; capitalGains, niit, and withdrawalOrdinaryTax are
     // separate line items that all add into total.
     const lifetimeTaxes = useMemo(() => {
-        const empty = { total: 0, federal: 0, state: 0, fica: 0, capitalGains: 0, withdrawalOrdinary: 0, niit: 0, irmaa: 0, penalty: 0 };
+        const empty = { total: 0, federal: 0, state: 0, fica: 0, capitalGains: 0, withdrawalOrdinary: 0, niit: 0, irmaa: 0, aca: 0, penalty: 0 };
         const years = simulation.filter(y => !y.isEndOfYearProjection);
         if (years.length === 0) return empty;
         return years.reduce((acc, s) => {
@@ -1784,9 +1792,10 @@ function TaxDebugTab() {
             const wot = s.taxDetails.withdrawalOrdinaryTax ?? 0;
             const niit = s.taxDetails.niit ?? 0;
             const irmaa = s.taxDetails.irmaa ?? 0;
+            const aca = s.taxDetails.aca ?? 0;
             const penalty = s.taxDetails.earlyWithdrawalPenalty ?? 0;
             return {
-                total: acc.total + fed + state + fica + cg + wot + niit + irmaa,
+                total: acc.total + fed + state + fica + cg + wot + niit + irmaa + aca,
                 federal: acc.federal + fed,
                 state: acc.state + state,
                 fica: acc.fica + fica,
@@ -1794,6 +1803,7 @@ function TaxDebugTab() {
                 withdrawalOrdinary: acc.withdrawalOrdinary + wot,
                 niit: acc.niit + niit,
                 irmaa: acc.irmaa + irmaa,
+                aca: acc.aca + aca,
                 penalty: acc.penalty + penalty,
             };
         }, empty);
@@ -1944,6 +1954,11 @@ function TaxDebugTab() {
                         <div className="text-xs text-content-muted">Medicare IRMAA</div>
                         <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.irmaa)}</div>
                         <div className="text-xs text-content-subtle">Part B/D surcharge, age 65+</div>
+                    </div>
+                    <div className="bg-surface-overlay/50 rounded-lg p-3">
+                        <div className="text-xs text-content-muted">ACA Subsidy Loss</div>
+                        <div className="text-sm text-white">{toCurrencyShort(lifetimeTaxes.aca)}</div>
+                        <div className="text-xs text-content-subtle">400% FPL cliff, pre-65</div>
                     </div>
                     <div className="bg-surface-overlay/50 rounded-lg p-3">
                         <div className="text-xs text-content-muted">Early-Withdraw Penalty</div>

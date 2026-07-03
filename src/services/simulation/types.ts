@@ -100,6 +100,7 @@ export interface SimulationYear {
         withdrawalOrdinaryTax: number; // Tax on Roth earnings (5-year rule), Traditional, HSA non-medical
         niit: number; // Net Investment Income Tax (3.8%)
         irmaa?: number; // Medicare Part B/D IRMAA surcharge (age 65+, from year N-2 MAGI). Separate line item; added into totals everywhere totals are summed.
+        aca?: number; // ACA subsidy repayment (pre-65 retirement year whose MAGI crossed the 400%-FPL cliff). Separate line item; added into totals everywhere totals are summed.
         earlyWithdrawalPenalty?: number; // 10% early-withdrawal penalty (Traditional pre-59.5, Roth conversion 5-year rule). Already included in `fed`; surfaced separately for diagnostics.
         longTermCapitalGains?: number; // LTCG amount realized this year (for AGI-equivalent denominator in effective-rate calcs). Surfaces WithdrawalState.longTermCapitalGains.
     };
@@ -485,6 +486,10 @@ export interface YearPlanTax {
     /** Medicare Part B/D IRMAA surcharge for the year (0 unless age 65+ with a
      *  qualifying year N-2 MAGI). Already folded into `total`. */
     irmaa: number;
+    /** ACA premium subsidy repayment for the year (0 unless acaAware, pre-65
+     *  retirement, and the year's ACA MAGI reaches the 400%-FPL cliff).
+     *  Already folded into `total`. */
+    aca: number;
     penalties: number;
     total: number;
 }
