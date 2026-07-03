@@ -269,15 +269,6 @@ export function getTaxParameters(
                     baseYearParams.ssExemptionThreshold * inflationMultiplier
                 ),
             }),
-            ...(baseYearParams.retirementIncomeExemption !== undefined && {
-                retirementIncomeExemption: {
-                    ...baseYearParams.retirementIncomeExemption,
-                    amount: Math.round(
-                        baseYearParams.retirementIncomeExemption.amount *
-                            inflationMultiplier
-                    ),
-                },
-            }),
         });
     }
 

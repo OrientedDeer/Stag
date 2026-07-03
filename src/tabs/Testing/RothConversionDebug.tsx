@@ -865,11 +865,11 @@ function DPInfoSection({ delta }: { delta: number }) {
             <p className="text-content-emphasis text-sm leading-relaxed mt-2">
                 The per-year discount factor is <span className="font-mono">1/(1+growthRate)</span>,
                 so dollars are compared at a consistent point in time as balances grow.
-                The user-facing knob on the Withdrawal tab is the
-                <span className="font-semibold text-white"> spend-it-down vs. leave-to-heirs</span>{' '}
-                choice (<span className="font-mono">self-liquidate</span> /
-                <span className="font-mono"> bequeath</span>), which sets how the
-                terminal Traditional balance is valued — not a back-load preference.
+                The terminal Traditional balance is always valued at its graduated
+                self-liquidation exit rate (the former{' '}
+                <span className="font-mono">bequeath</span> option was retired; any
+                persisted selection migrates to{' '}
+                <span className="font-mono">self-liquidate</span> on load).
             </p>
             <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
                 <div>

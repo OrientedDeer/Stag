@@ -11,14 +11,6 @@ export type SocialSecurityTreatment = 'exempt' | 'taxable' | 'income-based';
 // State-specific long-term capital gains treatment
 export type LTCGTreatment = 'ordinary' | 'preferential' | 'exempt';
 
-// Retirement income exemption configuration
-export interface RetirementIncomeExemption {
-  amount: number;
-  appliesTo: ('pension' | '401k' | 'ira' | 'all')[];
-  ageRequirement?: number;
-  perPerson: boolean;
-}
-
 // Social Security exemption phaseout thresholds
 export interface SSExemptionPhaseout {
   start: number;
@@ -44,7 +36,6 @@ export interface TaxParameters {
   ssExemptionThreshold?: number;
   ssExemptionPhaseout?: SSExemptionPhaseout;
   ltcgTreatment?: LTCGTreatment;
-  retirementIncomeExemption?: RetirementIncomeExemption;
   seniorDeduction?: number;
   seniorAge?: number;
   seniorDeductionPerPerson?: boolean;  // If true, MFJ gets double the deduction (assumes both spouses same age)
