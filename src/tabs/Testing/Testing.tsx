@@ -6057,7 +6057,7 @@ function EOYProjectionDebugTab() {
                     <ol className="list-decimal list-inside pl-2 space-y-1 text-content-muted">
                         <li>Compute <code className="bg-surface-overlay px-1 rounded text-xs">remainingFraction = (11 − currentMonth) / 12</code> — the share of the calendar year still ahead.</li>
                         <li>For each <code className="bg-surface-overlay px-1 rounded text-xs">WorkIncome</code> with a linked match account, add <code className="bg-surface-overlay px-1 rounded text-xs">(preTax401k + roth401k + employerMatch) × min(remainingFraction, activeMultiplier)</code> to that account's balance.</li>
-                        <li>For each non-payroll <code className="bg-surface-overlay px-1 rounded text-xs">priority</code> with an annual goal (Brokerage / IRA / HSA / Savings), add <code className="bg-surface-overlay px-1 rounded text-xs">max(0, annualGoal − ytdActual)</code> using YTD from the budget. MULTIPLE_OF_EXPENSES instead uses <code className="bg-surface-overlay px-1 rounded text-xs">max(0, target − currentBalance)</code>.</li>
+                        <li>For each non-payroll <code className="bg-surface-overlay px-1 rounded text-xs">priority</code> with an annual goal (Brokerage / IRA / HSA / Savings), add <code className="bg-surface-overlay px-1 rounded text-xs">max(0, annualGoal − ytdActual)</code> using YTD from the budget. Balance targets (TARGET / MULTIPLE_OF_EXPENSES) instead use <code className="bg-surface-overlay px-1 rounded text-xs">max(0, target − currentBalance)</code>.</li>
                         <li>For each debt liability (DebtAccount + LoanExpense, or MortgageExpense), subtract <code className="bg-surface-overlay px-1 rounded text-xs">annualPrincipal × remainingFraction</code> from the balance so loan / mortgage payoff through year-end shows up on the synthetic point.</li>
                         <li>Scale Year-0 cashflow and tax line items by <code className="bg-surface-overlay px-1 rounded text-xs">remainingFraction</code>.</li>
                         <li>Investment growth between today and Dec 31 is <span className="text-warning-bright">not</span> applied — Property / Debt balances are carried forward unchanged.</li>
@@ -6148,7 +6148,7 @@ function EOYProjectionDebugTab() {
                 <h3 className="text-lg font-bold text-white mb-1">Budget-Tracked Priority Contributions</h3>
                 <p className="text-xs text-content-subtle mb-3">
                     For each non-payroll priority with an annual goal: remaining = <span className="text-positive">max(0, annualGoal − ytdActual)</span>. YTD comes from budget transactions tagged with <code className="bg-surface-overlay px-1 rounded">targetAccountId</code> for the current year.
-                    {' '}<span className="text-cat-sky-bright">MULTIPLE_OF_EXPENSES</span> priorities are balance targets — the gap to the target is added, or skipped if already met.
+                    {' '}<span className="text-cat-sky-bright">TARGET / MULTIPLE_OF_EXPENSES</span> priorities are balance targets — the gap to the target is added, or skipped if already met.
                 </p>
                 {budgetProjection.rows.length === 0 ? (
                     <p className="text-sm text-content-subtle">No priorities configured.</p>

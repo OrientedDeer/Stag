@@ -5,7 +5,7 @@ import { AnyIncome, WorkIncome } from '../Objects/Income/models';
 import { AnyAccount } from '../Objects/Accounts/models';
 import { useChartTheme } from './useChartTheme';
 import { ChartFrame } from "./ChartFrame";
-import { PriorityBucket } from '../Objects/Assumptions/AssumptionsContext';
+import { PriorityBucket, getBucketTargetBalance } from '../Objects/Assumptions/AssumptionsContext';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 
 interface SpendingSunburstProps {
@@ -175,16 +175,23 @@ export const SpendingSunburst = ({
             case 'MAX':
               bucketCap = bucket.capValue ?? 0;
               break;
+            case 'TARGET':
             case 'MULTIPLE_OF_EXPENSES': {
-              const targetBalance = monthlyExpenses * (bucket.capValue ?? 0);
+              // Balance target: fund the gap to the desired end balance.
+              const targetBalance = getBucketTargetBalance(bucket, monthlyExpenses)!;
               const currentBalance = accounts.find(a => a.id === bucket.accountId)?.amount ?? 0;
               bucketCap = Math.max(0, targetBalance - currentBalance);
               break;
             }
             case 'REMAINDER':
-            default:
               bucketCap = Infinity;
               break;
+            default: {
+              // Exhaustiveness guard: a forgotten CapType would otherwise
+              // fail dangerous-open (Infinity cap swallows all surplus).
+              const _exhaustive: never = bucket.capType;
+              throw new Error(`Unhandled capType: ${_exhaustive as string}`);
+            }
           }
           const allocated = Math.min(remaining, bucketCap);
           if (allocated > 0) {

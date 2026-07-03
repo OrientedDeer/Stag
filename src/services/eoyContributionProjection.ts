@@ -1,4 +1,4 @@
-import { PriorityBucket, AssumptionsState, CapType, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
+import { PriorityBucket, AssumptionsState, CapType, getBirthYear, isBalanceTargetCap, getBucketTargetBalance } from '../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../components/Objects/Taxes/TaxContext';
 import { AnyAccount, InvestedAccount, DebtAccount, DeficitDebtAccount } from '../components/Objects/Accounts/models';
 import { AnyIncome, WorkIncome } from '../components/Objects/Income/models';
@@ -16,11 +16,11 @@ export interface EOYContributionRow {
     accountName: string;
     priorityName: string;
     capType: CapType;
-    /** For MAX/FIXED: annual contribution goal. For MULTIPLE_OF_EXPENSES: target balance. */
+    /** For MAX/FIXED: annual contribution goal. For balance targets (TARGET / MULTIPLE_OF_EXPENSES): target balance. */
     annualGoal: number;
     /** YTD contributions from budget transactions (informational; not used for balance-target priorities) */
     ytdActual: number;
-    /** Current account balance — populated only for balance-target priorities (MULTIPLE_OF_EXPENSES) */
+    /** Current account balance — populated only for balance-target priorities (TARGET / MULTIPLE_OF_EXPENSES) */
     currentBalance?: number;
     expectedRemaining: number;
     source: 'budget-ytd' | 'fraction-fallback' | 'balance-target';
@@ -99,10 +99,10 @@ function getAnnualGoalForPriority(
     if (priority.capType === 'FIXED') {
         return (priority.capValue || 0) * 12;
     }
-    if (priority.capType === 'MULTIPLE_OF_EXPENSES') {
+    if (isBalanceTargetCap(priority.capType)) {
         const activeToday = getActiveExpenses(expenses, today.getMonth() + 1, today.getFullYear());
         const monthlyExp = activeToday.reduce((s, e) => s + e.getMonthlyAmount(), 0);
-        return monthlyExp * (priority.capValue || 0);
+        return getBucketTargetBalance(priority, monthlyExp)!;
     }
     return 0;
 }
@@ -223,10 +223,11 @@ export function computeEOYBudgetContributions(
 
         const ytdActual = ytdByAccount[priority.accountId] || 0;
 
-        // MULTIPLE_OF_EXPENSES is a balance target (e.g. emergency fund = N×monthly expenses),
-        // not a recurring annual contribution. If the account is already at/above target, no
-        // contribution is needed; otherwise the gap to the target is what will be added.
-        if (priority.capType === 'MULTIPLE_OF_EXPENSES') {
+        // TARGET / MULTIPLE_OF_EXPENSES are balance targets (a dollar amount, or an
+        // emergency fund = N×monthly expenses), not recurring annual contributions. If the
+        // account is already at/above target, no contribution is needed; otherwise the gap
+        // to the target is what will be added.
+        if (isBalanceTargetCap(priority.capType)) {
             const currentBalance = account.amount;
             const gap = Math.max(0, annualGoal - currentBalance);
             if (gap === 0) {

@@ -86,7 +86,37 @@ export const getLifeExpectancy = (milestones: CustomMilestone[]): number => {
  */
 export const ACA_SUBSIDY_LOSS_DEFAULT = 12_000;
 
-export type CapType = 'MAX' | 'FIXED' | 'REMAINDER' | 'MULTIPLE_OF_EXPENSES';
+export type CapType = 'MAX' | 'FIXED' | 'REMAINDER' | 'MULTIPLE_OF_EXPENSES' | 'TARGET';
+
+/**
+ * Balance-target cap types fund the GAP to a desired end balance each year
+ * (max(0, target − balance)): $0 once full, self-replenishing after a
+ * draw-down. 'MULTIPLE_OF_EXPENSES' derives the target from monthly expenses
+ * (emergency fund); 'TARGET' is a plain nominal dollar amount.
+ */
+export const isBalanceTargetCap = (t: CapType): boolean =>
+    t === 'TARGET' || t === 'MULTIPLE_OF_EXPENSES';
+
+/**
+ * Desired END balance for a balance-target bucket:
+ * - 'TARGET' → capValue (nominal dollars, not inflation-indexed)
+ * - 'MULTIPLE_OF_EXPENSES' → monthlyExpenses × capValue (months)
+ * - anything else → undefined (contribution caps have no balance target)
+ * Single source for every consumer so the two flavors can't drift apart.
+ */
+export const getBucketTargetBalance = (
+    bucket: { capType: CapType; capValue?: number },
+    monthlyExpenses: number,
+): number | undefined => {
+    switch (bucket.capType) {
+        case 'TARGET':
+            return bucket.capValue ?? 0;
+        case 'MULTIPLE_OF_EXPENSES':
+            return monthlyExpenses * (bucket.capValue ?? 0);
+        default:
+            return undefined;
+    }
+};
 
 export interface PriorityBucket {
   id: string;

@@ -11,7 +11,7 @@ import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { WorkIncome } from '../../components/Objects/Income/models';
 import { InvestedAccount, SavedAccount, AnyAccount } from '../../components/Objects/Accounts/models';
 import { isLongTermGoal, getGoalFundAnnualSetAside, mergeGoalFundBuckets } from '../../components/Objects/Expense/models';
-import { useAssumptions, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { useAssumptions, getBirthYear, isBalanceTargetCap, getBucketTargetBalance } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
 import { get401kLimit, getIRALimit, getHSALimit } from '../../data/ContributionLimits';
@@ -131,9 +131,10 @@ export default function SpendingTab() {
             }
         } else if (priority.capType === 'FIXED') {
             return (priority.capValue || 0) * 12; // capValue is monthly
-        } else if (priority.capType === 'MULTIPLE_OF_EXPENSES') {
-            // Emergency-fund target = months × current monthly expenses (today's active set).
-            return currentMonthlyExpenses * (priority.capValue || 0);
+        } else if (isBalanceTargetCap(priority.capType)) {
+            // Balance target: TARGET = capValue dollars; MULTIPLE_OF_EXPENSES =
+            // months × current monthly expenses (today's active set).
+            return getBucketTargetBalance(priority, currentMonthlyExpenses) ?? 0;
         } else if (priority.capType === 'REMAINDER') {
             // REMAINDER: Use simulation's projected allocation for this account
             return simulatedBucketAllocations[priority.accountId!] || 0;
@@ -325,7 +326,7 @@ export default function SpendingTab() {
                 ?? historicBalance(accountId, selectedMonthEnd)
                 ?? account?.amount ?? 0;
 
-            if (p.capType === 'MULTIPLE_OF_EXPENSES') {
+            if (isBalanceTargetCap(p.capType)) {
                 // Balance target (e.g. emergency fund). Status is a strict comparison:
                 // you are either funded or in-progress; "overfunded" only kicks in at >=110%.
                 const progressPercent = annualTarget > 0
@@ -595,7 +596,7 @@ export default function SpendingTab() {
                     <div className="p-4 border-b border-border-default">
                         <h3 className="text-lg font-semibold text-white">Savings Targets</h3>
                         <p className="text-sm text-content-muted mt-1">
-                            Reach-this-balance goals (e.g. emergency fund). Target uses your current monthly expenses ({formatCurrency(currentMonthlyExpenses)}/mo this month).
+                            Reach-this-balance goals (emergency fund, dollar targets). Emergency-fund targets use your current monthly expenses ({formatCurrency(currentMonthlyExpenses)}/mo this month).
                         </p>
                     </div>
                     <div className="overflow-x-auto">

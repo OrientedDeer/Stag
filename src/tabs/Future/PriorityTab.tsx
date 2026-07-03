@@ -1,6 +1,6 @@
 import { useState, useContext, useMemo, useCallback, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { AssumptionsContext, PriorityBucket, CapType, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsContext, PriorityBucket, CapType, getBirthYear, getBucketTargetBalance } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
 import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
@@ -377,7 +377,8 @@ export default function PriorityTab() {
                     'MAX': 'Max Out',
                     'FIXED': 'Fixed',
                     'REMAINDER': 'Remainder',
-                    'MULTIPLE_OF_EXPENSES': 'Emergency Fund'
+                    'MULTIPLE_OF_EXPENSES': 'Emergency Fund',
+                    'TARGET': 'Target Balance'
                 };
                 finalName = `${newAccount.name} (${capTypeLabels[newCapType]})`;
             }
@@ -566,7 +567,7 @@ export default function PriorityTab() {
                     break;
                 case 'MULTIPLE_OF_EXPENSES': {
                     const targetAccount = item.accountId ? accountById.get(item.accountId) : undefined; // [7]
-                    const targetAmount = (item.capValue || 0) * totalMonthlyFixedExpenses;
+                    const targetAmount = getBucketTargetBalance(item, totalMonthlyFixedExpenses)!;
 
                     if (targetAccount) {
                         const currentBalance = targetAccount.amount;
@@ -576,6 +577,23 @@ export default function PriorityTab() {
                     } else {
                         cost = 0;
                         label = `Emergency fund (${item.capValue}× expenses)`;
+                        wantedNote = 'No account linked — nothing funded';
+                    }
+                    break;
+                }
+                case 'TARGET': {
+                    const targetAccount = item.accountId ? accountById.get(item.accountId) : undefined; // [7]
+                    const targetAmount = getBucketTargetBalance(item, totalMonthlyFixedExpenses)!;
+                    label = `Fund to target (${formatMoney(targetAmount)})`;
+
+                    if (targetAccount) {
+                        const currentBalance = targetAccount.amount;
+                        cost = Math.max(0, targetAmount - currentBalance);
+                        wantedNote = cost > 0
+                            ? `Target balance ${formatMoney(targetAmount)}. Balance ${formatMoney(currentBalance)}, so ${formatMoney(cost)} still needed`
+                            : `Target met — fully funded (balance ${formatMoney(currentBalance)} ≥ target ${formatMoney(targetAmount)})`;
+                    } else {
+                        cost = 0;
                         wantedNote = 'No account linked — nothing funded';
                     }
                     break;
@@ -869,7 +887,8 @@ export default function PriorityTab() {
                                                                             options={[
                                                                                 { value: 'MAX', label: 'Max Out (Annual)' },
                                                                                 { value: 'FIXED', label: 'Fixed (Monthly)' },
-                                                                                { value: 'MULTIPLE_OF_EXPENSES', label: 'Emergency Fund' },
+                                                                                { value: 'MULTIPLE_OF_EXPENSES', label: 'Emergency Fund (Months of Expenses)' },
+                                                                                { value: 'TARGET', label: 'Fund to Target (Balance)' },
                                                                                 { value: 'REMAINDER', label: 'Everything Remaining' }
                                                                             ]}
                                                                         />
@@ -894,6 +913,14 @@ export default function PriorityTab() {
                                                                             <NumberInput
                                                                                 id={`edit-value-${item.id}`}
                                                                                 label="Months"
+                                                                                value={editCapValue}
+                                                                                onChange={setEditCapValue}
+                                                                            />
+                                                                        )}
+                                                                        {editCapType === 'TARGET' && (
+                                                                            <CurrencyInput
+                                                                                id={`edit-value-${item.id}`}
+                                                                                label="Target Balance"
                                                                                 value={editCapValue}
                                                                                 onChange={setEditCapValue}
                                                                             />
@@ -1051,7 +1078,8 @@ export default function PriorityTab() {
                                         options={[
                                             { value: 'MAX', label: 'Max Out (Annual)' },
                                             { value: 'FIXED', label: 'Fixed (Monthly)' },
-                                            { value: 'MULTIPLE_OF_EXPENSES', label: 'Emergency Fund' },
+                                            { value: 'MULTIPLE_OF_EXPENSES', label: 'Emergency Fund (Months of Expenses)' },
+                                            { value: 'TARGET', label: 'Fund to Target (Balance)' },
                                             { value: 'REMAINDER', label: 'Everything Remaining' }
                                         ]}
                                     />
@@ -1083,6 +1111,14 @@ export default function PriorityTab() {
                                         <NumberInput
                                             id="new-cap-val-mult"
                                             label="Months of Expenses"
+                                            value={newCapValue}
+                                            onChange={setNewCapValue}
+                                        />
+                                    )}
+                                    {newCapType === 'TARGET' && (
+                                        <CurrencyInput
+                                            id="new-cap-val-target"
+                                            label="Target Balance"
                                             value={newCapValue}
                                             onChange={setNewCapValue}
                                         />

@@ -16,7 +16,7 @@
 
 import { AnyAccount, SavedAccount, InvestedAccount, DeficitDebtAccount, DebtAccount } from "../../components/Objects/Accounts/models";
 import { PlannedSurplusAllocation, DecisionLogEntry } from "./types";
-import { CapType } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { CapType, getBucketTargetBalance } from "../../components/Objects/Assumptions/AssumptionsContext";
 
 // =============================================================================
 // DEBT-PAYDOWN ELIGIBILITY (#60 C) — single source of truth
@@ -91,7 +91,7 @@ export interface SurplusAllocationSettings {
     rothIRALimit: number;
     /** Amount already contributed to Roth IRA this year */
     rothIRAContributedThisYear: number;
-    /** Monthly expenses (used for MULTIPLE_OF_EXPENSES cap type) */
+    /** Monthly expenses (used for the MULTIPLE_OF_EXPENSES balance-target cap type; TARGET doesn't need it) */
     monthlyExpenses?: number;
     /**
      * Accounts reserved for a dedicated purpose (goal sinking funds) that the
@@ -323,28 +323,40 @@ export function allocateSurplus(
                 // capValue is max annual allocation
                 bucketCap = capValue;
                 break;
+            case 'TARGET':
             case 'MULTIPLE_OF_EXPENSES': {
-                // capValue is number of months of expenses → desired END balance.
+                // Balance target → fund the gap to the desired END balance
+                // (TARGET: capValue dollars; MULTIPLE_OF_EXPENSES: months ×
+                // expenses — see getBucketTargetBalance).
                 // Subtract not just the start-of-year balance but also surplus
                 // already routed to this account earlier in this pass, so we
                 // don't overshoot the target balance.
                 // NOTE: payroll/other same-year contributions applied elsewhere
                 // are NOT visible here; fully closing that gap would require the
                 // caller to pass a projected-contributions figure per account.
+                const targetBalance = getBucketTargetBalance(
+                    { capType, capValue },
+                    settings.monthlyExpenses ?? 0
+                )!;
                 const alreadyAllocatedThisAccount = allocations
                     .filter(a => a.accountId === account.id)
                     .reduce((sum, a) => sum + a.amount, 0);
                 bucketCap = Math.max(0,
-                    (settings.monthlyExpenses ?? 0) * capValue
+                    targetBalance
                     - account.amount
                     - alreadyAllocatedThisAccount
                 );
                 break;
             }
             case 'REMAINDER':
-            default:
                 bucketCap = Infinity;
                 break;
+            default: {
+                // Exhaustiveness guard: a forgotten CapType would otherwise
+                // fail dangerous-open (Infinity cap swallows all surplus).
+                const _exhaustive: never = capType;
+                throw new Error(`Unhandled capType: ${_exhaustive as string}`);
+            }
         }
 
         // Apply cap to what we can allocate from remaining surplus
