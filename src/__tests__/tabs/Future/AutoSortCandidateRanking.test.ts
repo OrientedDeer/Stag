@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { InvestedAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
+import { InvestedAccount, SavedAccount, ESPPAccount, RSUAccount, ESPPLot, RSULot } from '../../../components/Objects/Accounts/models';
 import { taxOptimalWithdrawalOrder } from '../../../services/simulation/WithdrawalPlanner';
 import { WithdrawalBucket } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { reorderWithdrawalStrategyTaxOptimal } from '../../../tabs/Future/withdrawal/reorderWithdrawalStrategy';
@@ -45,6 +45,60 @@ describe('taxOptimalWithdrawalOrder (#154 Auto sort)', () => {
         // And the reverse input order is likewise preserved (proves it is the INPUT order
         // that decides, not a fixed id sort).
         expect(taxOptimalWithdrawalOrder([brokA, brokB], 50).map(a => a.id)).toEqual(['brok-A', 'brok-B']);
+    });
+});
+
+/**
+ * #156: Auto sort ranks ESPP/RSU by their lots' GAIN CHARACTER at the sale date
+ * (taxableTierRank), not the flat "taxable" category: favourable accounts (qualifying-heavy
+ * ESPP, long-term-heavy or freshly-vested near-zero-gain RSU) tie with brokerage at tier 1;
+ * unfavourable ones defer to tier 1.5 — after brokerage but BEFORE tax-deferred.
+ * All numbers invented.
+ */
+describe('taxOptimalWithdrawalOrder — ESPP/RSU gain-character tier (#156)', () => {
+    const SALE_DATE = new Date(2032, 5, 15);
+    const yearsBefore = (y: number) => new Date(2032 - y, 5, 15);
+    const monthsBefore = (m: number) => new Date(2032, 5 - m, 15);
+
+    const esppLot = (purchaseDate: Date, shares: number): ESPPLot => {
+        const grantDate = new Date(purchaseDate);
+        grantDate.setMonth(grantDate.getMonth() - 6);
+        return {
+            id: 'lot', grantDate, purchaseDate,
+            fmvAtGrant: 80, fmvAtPurchase: 85, purchasePrice: 72.25,
+            shares, totalCost: 72.25 * shares, discountAmount: 12.75,
+        };
+    };
+    const rsuLot = (vestDate: Date, fmvAtVest: number, shares: number): RSULot => ({
+        id: 'lot', grantDate: yearsBefore(4), vestDate, fmvAtVest, shares, costBasis: fmvAtVest * shares,
+    });
+
+    const brokerage = () => new InvestedAccount('brok-1', 'Brokerage', 300000, 0, 10, 0.05, 'Brokerage', true, 0.2, 200000);
+    const traditional = () => new InvestedAccount('trad-1', 'Traditional IRA', 500000, 0, 10, 0.05, 'Traditional IRA');
+
+    it('disqualifying-heavy ESPP defers AFTER brokerage but BEFORE tax-deferred (tier 1.5)', () => {
+        // ESPP bought 3 months ago — disqualifying → 1.5. Fed first so only the rank moves it.
+        const espp = new ESPPAccount('espp-1', 'ESPP', 50000, [esppLot(monthsBefore(3), 500)], null, undefined, 'TICK', 100);
+        const ids = taxOptimalWithdrawalOrder([espp, brokerage(), traditional()], 65, SALE_DATE).map(a => a.id);
+        expect(ids).toEqual(['brok-1', 'espp-1', 'trad-1']);
+    });
+
+    it('qualifying-heavy ESPP TIES with brokerage (tier 1) and keeps the input order', () => {
+        const espp = new ESPPAccount('espp-1', 'ESPP', 50000, [esppLot(yearsBefore(3), 500)], null, undefined, 'TICK', 100);
+        // ESPP fed first → the stable tie-break keeps it ahead of the equal-rank brokerage.
+        const ids = taxOptimalWithdrawalOrder([espp, brokerage(), traditional()], 65, SALE_DATE).map(a => a.id);
+        expect(ids).toEqual(['espp-1', 'brok-1', 'trad-1']);
+    });
+
+    it('short-term-gain-heavy RSU defers behind brokerage; freshly-vested near-zero-gain RSU ties with it', () => {
+        // Vested 6 months ago at $50, price $100 → big short-term gain → 1.5.
+        const stRsu = new RSUAccount('rsu-st', 'RSU ST', 30000, [rsuLot(monthsBefore(6), 50, 300)], null, undefined, 'TICK', 100);
+        // Vested 2 months ago at $98, price $100 → gain 2% of value < 5% de minimis → 1.
+        const freshRsu = new RSUAccount('rsu-fresh', 'RSU fresh', 50000, [rsuLot(monthsBefore(2), 98, 500)], null, undefined, 'TICK', 100);
+        const ids = taxOptimalWithdrawalOrder([stRsu, freshRsu, brokerage(), traditional()], 65, SALE_DATE).map(a => a.id);
+        // De-minimis RSU ties at tier 1 (input order keeps it ahead of brokerage);
+        // the short-term-heavy RSU sits between brokerage and Traditional.
+        expect(ids).toEqual(['rsu-fresh', 'brok-1', 'rsu-st', 'trad-1']);
     });
 });
 

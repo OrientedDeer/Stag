@@ -9,7 +9,7 @@
  * committed suite guards the gain, not just the wiring).
  */
 import { describe, it, expect } from 'vitest';
-import { AnyAccount, InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
+import { AnyAccount, InvestedAccount, SavedAccount, ESPPAccount, RSUAccount } from '../../components/Objects/Accounts/models';
 import { generateCandidateWithdrawalOrders, WithdrawalOrderItem } from '../../services/simulation/EngineDirectConversionSearch';
 import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../components/Objects/Taxes/TaxContext';
@@ -86,6 +86,57 @@ describe('generateCandidateWithdrawalOrders', () => {
             expect(pos('brk')).toBeLessThan(pos('roth'));
             expect(pos('brk')).toBeLessThan(pos('trad'));
         }
+    });
+
+    // #156: ESPP/RSU used to bucket as 'other' and sort dead-LAST (after Roth) in both
+    // tax-aware candidates. They now land in the taxable band — 'brokerage' (favourable
+    // gain character) or the new 'taxable-late' bucket (unfavourable), i.e. adjacent to
+    // brokerage and always BEFORE both tax-advantaged buckets. All numbers invented.
+    describe('ESPP/RSU taxable-band placement (#156)', () => {
+        const SALE_DATE = new Date(2032, 5, 15);
+        const yearsBefore = (y: number) => new Date(2032 - y, 5, 15);
+        const monthsBefore = (m: number) => new Date(2032, 5 - m, 15);
+        // Disqualifying ESPP (bought 3 months ago) → tier 1.5 → 'taxable-late'.
+        const espp = () => new ESPPAccount('espp', 'ESPP', 40_000, [{
+            id: 'l1', grantDate: monthsBefore(9), purchaseDate: monthsBefore(3),
+            fmvAtGrant: 80, fmvAtPurchase: 85, purchasePrice: 72.25,
+            shares: 400, totalCost: 28_900, discountAmount: 12.75,
+        }], null, undefined, 'TICK', 100);
+        // Long-term-gain RSU (vested 2 years ago, $40 basis, $100 price) → tier 1 → 'brokerage'.
+        const rsu = () => new RSUAccount('rsu', 'RSU', 30_000, [{
+            id: 'l1', grantDate: yearsBefore(3), vestDate: yearsBefore(2),
+            fmvAtVest: 40, shares: 300, costBasis: 12_000,
+        }], null, undefined, 'TICK', 100);
+        // User's stored order deliberately puts ESPP/RSU dead-last, AFTER Roth.
+        const eqAccts = (): AnyAccount[] => [...accts(), espp(), rsu()];
+        const eqUserOrder: WithdrawalOrderItem[] = [
+            ...userOrder,
+            { id: 'w5', name: 'ESPP', accountId: 'espp' },
+            { id: 'w6', name: 'RSU', accountId: 'rsu' },
+        ];
+
+        it('places ESPP/RSU in the taxable band — after cash, never after Roth/Traditional — in both tax-aware candidates', () => {
+            const cands = generateCandidateWithdrawalOrders(eqAccts(), eqUserOrder, SALE_DATE);
+            expect(cands.length).toBeGreaterThan(2);
+            for (const c of cands.slice(1)) { // tax-aware candidates only (candidate #0 is the user's order)
+                const pos = (id: string) => c.findIndex(x => x.accountId === id);
+                // Long-term RSU joins the brokerage bucket (tier 1, stable tie-break keeps 'brk' first).
+                expect(pos('rsu')).toBe(pos('brk') + 1);
+                // Disqualifying ESPP lands in 'taxable-late': after ALL tier-1 taxable, before tax-advantaged.
+                expect(pos('espp')).toBe(pos('rsu') + 1);
+                for (const equityComp of ['espp', 'rsu']) {
+                    expect(pos(equityComp)).toBeGreaterThan(pos('cash'));
+                    expect(pos(equityComp)).toBeLessThan(pos('trad'));
+                    expect(pos(equityComp)).toBeLessThan(pos('roth'));
+                }
+            }
+        });
+
+        it('candidate #0 (the user\'s stored order) is untouched — same items, same sequence', () => {
+            const cands = generateCandidateWithdrawalOrders(eqAccts(), eqUserOrder, SALE_DATE);
+            expect(cands[0]).toBe(eqUserOrder); // same reference: never rewritten
+            expect(cands[0].map(x => x.accountId)).toEqual(['cash', 'brk', 'trad', 'roth', 'espp', 'rsu']);
+        });
     });
 });
 
