@@ -349,9 +349,10 @@ export function createOrderedSnapshots(
      * #154: tap the ORDERED tier in the user's EXACT listed sequence — no penalty /
      * savings re-bucketing — so the withdrawal order shown in the UI (whether set by
      * hand or by "Auto sort") is precisely what the engine runs. When false (the
-     * legacy default for non-retirement-drawdown callers) the ordered tier is
-     * re-sorted non-penalized → savings → penalized. The fallback tier (#111) and
-     * RMD/goal reservations are unaffected either way.
+     * tax-opt / optimizer-owned execution, and the default for non-retirement-
+     * drawdown callers) the ordered tier is re-sorted savings → non-penalized →
+     * penalized (#161). The fallback tier (#111) and RMD/goal reservations are
+     * unaffected either way.
      */
     honorLiteralOrder: boolean = false,
 ): AccountBalanceSnapshot[] {
