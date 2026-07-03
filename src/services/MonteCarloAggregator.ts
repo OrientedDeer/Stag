@@ -3,10 +3,39 @@ import {
     MonteCarloSummary,
     YearlyPercentile,
     PercentileData,
+    TerminalPercentiles,
+    ConversionMcStats,
+    McBaselineComparison,
 } from './MonteCarloTypes';
-import { calculateNetWorth } from '../tabs/Future/tabs/FutureUtils';
+import { calculateNetWorth, terminalAfterTaxNetWorth } from '../tabs/Future/tabs/FutureUtils';
 import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
 import { DeficitDebtAccount } from '../components/Objects/Accounts/models';
+
+/**
+ * The situation-based Traditional valuation ruler (buildTradValuation's return
+ * shape). Built ONCE per MC run from the deterministic std-ded baseline and
+ * applied to every path's terminal year — never rebuilt per path.
+ */
+export type TradValuationRuler = Parameters<typeof terminalAfterTaxNetWorth>[1];
+
+/**
+ * Lightweight per-path result of the OPTIONAL std-ded-only baseline arm (F7).
+ * The engine folds each baseline timeline down to this immediately so the arm
+ * never holds a second full set of timelines in memory.
+ */
+export interface BaselinePathResult {
+    success: boolean;
+    yearOfDepletion: number | null;
+    terminalAfterTaxNW: number;
+}
+
+/** Optional reporting inputs for {@link summarizeScenarios}. */
+export interface SummarizeExtras {
+    /** After-tax ruler (F4). When present, after-tax percentiles are computed. */
+    ruler?: TradValuationRuler;
+    /** Same-seed baseline arm results, index-aligned with `scenarios` (F7). */
+    baselinePaths?: BaselinePathResult[];
+}
 
 /**
  * Calculate success rate from scenario results
@@ -140,7 +169,7 @@ export function analyzeScenario(
     for (let i = 0; i < timeline.length; i++) {
         const hasDeficitDebt = timeline[i].accounts.some(
             acc => acc instanceof DeficitDebtAccount ||
-                   (acc as any).className === 'DeficitDebtAccount'
+                   (acc as { className?: string }).className === 'DeficitDebtAccount'
         );
         if (hasDeficitDebt) {
             yearOfDepletion = timeline[i].year;
@@ -158,15 +187,123 @@ export function analyzeScenario(
     };
 }
 
+/** p10/p50/p90 of an (unsorted) array of terminal values. */
+function terminalPercentiles(values: number[]): TerminalPercentiles {
+    const sorted = [...values].sort((a, b) => a - b);
+    return {
+        p10: getPercentileValue(sorted, 10),
+        p50: getPercentileValue(sorted, 50),
+        p90: getPercentileValue(sorted, 90),
+    };
+}
+
+/** Median of an (unsorted) numeric array; null when empty. */
+function medianOrNull(values: number[]): number | null {
+    if (values.length === 0) return null;
+    return getPercentileValue([...values].sort((a, b) => a - b), 50);
+}
+
+/** Total $ converted across a timeline's real (non-EOY-projection) years. */
+export function totalConvertedInTimeline(timeline: SimulationYear[]): number {
+    return timeline.reduce(
+        (s, y) => s + (y.isEndOfYearProjection ? 0 : (y.rothConversion?.amount ?? 0)),
+        0,
+    );
+}
+
+/**
+ * Conversion-facing MC stats (fp-review F11): pure folds over the per-path
+ * timelines. The buy-the-dip slice classifies each converting-window year by
+ * the sign of the PREVIOUS year's realized return: real-year index j (j≥1)
+ * grows on `yearlyReturns[j-1]`, so "the year after a down year" is j with
+ * `yearlyReturns[j-2] < 0` (j≥2). Sampling is restricted to each path's own
+ * converting window (first..last year with a conversion) so decades of
+ * structurally-zero years (working years, post-conversion RMD era) don't drag
+ * both medians to $0.
+ */
+export function computeConversionStats(scenarios: ScenarioResult[]): ConversionMcStats {
+    const totals = scenarios.map(s => totalConvertedInTimeline(s.timeline));
+    const converting = totals.filter(t => t > 0).length;
+
+    const afterDown: number[] = [];
+    const afterOther: number[] = [];
+    for (const s of scenarios) {
+        const real = s.timeline.filter(y => !y.isEndOfYearProjection);
+        let first = -1;
+        let last = -1;
+        for (let j = 1; j < real.length; j++) {
+            if ((real[j].rothConversion?.amount ?? 0) > 0) {
+                if (first < 0) first = j;
+                last = j;
+            }
+        }
+        if (first < 0) continue;
+        for (let j = Math.max(first, 2); j <= last; j++) {
+            const prevReturn = s.yearlyReturns[j - 2];
+            if (prevReturn === undefined) continue;
+            const conv = real[j].rothConversion?.amount ?? 0;
+            (prevReturn < 0 ? afterDown : afterOther).push(conv);
+        }
+    }
+
+    return {
+        totalConverted: terminalPercentiles(totals),
+        fractionOfPathsConverting: scenarios.length > 0 ? converting / scenarios.length : 0,
+        medianConvertedAfterDownYear: medianOrNull(afterDown),
+        medianConvertedAfterOtherYears: medianOrNull(afterOther),
+    };
+}
+
+/**
+ * Paired plan-vs-baseline comparison (fp-review F7). `activeAfterTax` and
+ * `baselinePaths` are index-aligned by scenarioId (same seeds, same draws), so
+ * the after-tax deltas are true per-path causal effects — unlike the
+ * cross-sectional percentile bands.
+ */
+function computeBaselineComparison(
+    scenarios: ScenarioResult[],
+    activeAfterTax: number[],
+    baselinePaths: BaselinePathResult[],
+): McBaselineComparison {
+    const n = scenarios.length;
+    const activeFailures = scenarios.filter(s => !s.success).length;
+    const baselineFailures = baselinePaths.filter(p => !p.success).length;
+    const baselineSuccessRate = ((n - baselineFailures) / n) * 100;
+    const activeSuccessRate = ((n - activeFailures) / n) * 100;
+
+    const deltas = activeAfterTax.map((v, i) => v - baselinePaths[i].terminalAfterTaxNW);
+    const behind = deltas.filter(d => d < 0).length;
+
+    return {
+        baselineSuccessRate,
+        deltaSuccessRate: activeSuccessRate - baselineSuccessRate,
+        activeFailures,
+        baselineFailures,
+        medianDepletionYearActive: medianOrNull(
+            scenarios.filter(s => s.yearOfDepletion !== null).map(s => s.yearOfDepletion as number),
+        ),
+        medianDepletionYearBaseline: medianOrNull(
+            baselinePaths.filter(p => p.yearOfDepletion !== null).map(p => p.yearOfDepletion as number),
+        ),
+        fractionBehindBaseline: behind / n,
+        afterTaxDelta: terminalPercentiles(deltas),
+        baselineAfterTax: terminalPercentiles(baselinePaths.map(p => p.terminalAfterTaxNW)),
+    };
+}
+
 /**
  * Summarize all Monte Carlo scenarios into aggregate statistics
  * @param scenarios - Array of all scenario results
  * @param seed - Random seed used for reproducibility
+ * @param extras - Optional reporting inputs: the after-tax ruler (F4) and the
+ *   same-seed baseline arm's per-path results (F7). Reporting-only — nothing
+ *   here feeds back into conversion execution.
  * @returns Comprehensive summary of results
  */
 export function summarizeScenarios(
     scenarios: ScenarioResult[],
-    seed: number
+    seed: number,
+    extras?: SummarizeExtras,
 ): MonteCarloSummary {
     if (scenarios.length === 0) {
         throw new Error('No scenarios to summarize');
@@ -198,6 +335,21 @@ export function summarizeScenarios(
         ? trimmedTotal / trimmedScenarios.length
         : sortedByNetWorth[Math.floor(sortedByNetWorth.length / 2)].finalNetWorth;
 
+    // F4: terminal after-tax percentiles — each path's terminal year valued with
+    // the ONE prebuilt situation-based ruler (never rebuilt per path).
+    const ruler = extras?.ruler;
+    const activeAfterTax = ruler
+        ? scenarios.map(s => terminalAfterTaxNetWorth(s.timeline, ruler))
+        : undefined;
+
+    // F7: paired baseline comparison — requires the ruler (deltas are after-tax)
+    // and an index-aligned baseline arm.
+    const baselinePaths = extras?.baselinePaths;
+    const baselineComparison =
+        activeAfterTax && baselinePaths && baselinePaths.length === scenarios.length
+            ? computeBaselineComparison(scenarios, activeAfterTax, baselinePaths)
+            : undefined;
+
     return {
         successRate,
         percentiles,
@@ -208,6 +360,9 @@ export function summarizeScenarios(
         successfulScenarios,
         averageFinalNetWorth,
         seed,
+        afterTaxPercentiles: activeAfterTax ? terminalPercentiles(activeAfterTax) : undefined,
+        conversionStats: computeConversionStats(scenarios),
+        baselineComparison,
     };
 }
 

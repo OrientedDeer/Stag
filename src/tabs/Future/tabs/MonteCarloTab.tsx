@@ -15,6 +15,7 @@ import { HistoricalBacktestPanel } from './HistoricalBacktestPanel';
 import { DropdownInput } from '../../../components/Layout/InputFields/DropdownInput';
 import { PercentageInput } from '../../../components/Layout/InputFields/PercentageInput';
 import { NumberInput } from '../../../components/Layout/InputFields/NumberInput';
+import { ToggleInput } from '../../../components/Layout/InputFields/ToggleInput';
 
 interface MonteCarloTabProps {
     simulationData: SimulationYear[];
@@ -307,6 +308,18 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                     </div>
                 </div>
 
+                {/* Baseline-comparison arm (fp-review F7): defaults OFF — it re-runs
+                    every path a second time on the same draws. */}
+                <div className="mt-4 sm:w-96">
+                    <ToggleInput
+                        id="mc-compare-baseline"
+                        label="Baseline Comparison"
+                        enabled={config.compareToBaseline ?? false}
+                        setEnabled={(v) => updateConfig({ compareToBaseline: v })}
+                        tooltip="Also run every path on the SAME market draws with Roth conversions limited to the standard deduction, and report the paired plan-vs-baseline difference. Roughly doubles run time."
+                    />
+                </div>
+
                 {/* Run Button */}
                 <div className="mt-4 flex items-center gap-4">
                     <button
@@ -428,17 +441,150 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                 </div>
             )}
 
+            {/* After-tax terminal percentiles (fp-review F4). The headline tiles above
+                are GROSS net worth — residual Traditional priced at 100 cents. These
+                value each path's terminal balances through the same situation-based
+                Traditional valuation the conversion optimizer is scored with, so
+                strategies with different Trad/Roth mixes are comparable here. */}
+            {summary?.afterTaxPercentiles && (
+                <div className="bg-surface-overlay/50 rounded-xl p-4 border border-border-default">
+                    <h4 className="text-content-default font-medium mb-1">After-Tax Terminal Net Worth</h4>
+                    <p className="text-content-muted text-xs mb-3">
+                        Each path&apos;s ending balances minus the taxes still owed to access them
+                        (deferred ordinary tax on Traditional balances, capital gains on unrealized
+                        growth). The headline figures above are gross — use this row when comparing
+                        conversion strategies.
+                    </p>
+                    <div className="grid grid-cols-3 gap-4">
+                        <div>
+                            <div className="text-content-muted text-xs uppercase tracking-wider mb-1">10th Percentile</div>
+                            <div className="text-lg lg:text-xl font-bold text-negative truncate">
+                                {formatCompactCurrency(summary.afterTaxPercentiles.p10, { forceExact })}
+                            </div>
+                        </div>
+                        <div>
+                            <div className="text-content-muted text-xs uppercase tracking-wider mb-1">Median</div>
+                            <div className="text-lg lg:text-xl font-bold text-positive truncate">
+                                {formatCompactCurrency(summary.afterTaxPercentiles.p50, { forceExact })}
+                            </div>
+                        </div>
+                        <div>
+                            <div className="text-content-muted text-xs uppercase tracking-wider mb-1">90th Percentile</div>
+                            <div className="text-lg lg:text-xl font-bold text-info truncate">
+                                {formatCompactCurrency(summary.afterTaxPercentiles.p90, { forceExact })}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Conversion-facing stats (fp-review F11): shown only when any path converted. */}
+            {summary?.conversionStats && summary.conversionStats.totalConverted.p90 > 0 && (
+                <div className="bg-surface-overlay/50 rounded-xl p-4 border border-border-default">
+                    <h4 className="text-content-default font-medium mb-1">Roth Conversions Across Paths</h4>
+                    <p className="text-content-muted text-xs mb-3">
+                        Conversions are re-decided on each path from its realized balances, so the
+                        totals vary path to path.
+                    </p>
+                    <div className="text-content-muted text-sm space-y-1">
+                        <div>
+                            Total converted per path:{' '}
+                            <span className="text-content-default font-medium tabular-nums">
+                                {formatCompactCurrency(summary.conversionStats.totalConverted.p10, { forceExact })} (p10)
+                                {' / '}{formatCompactCurrency(summary.conversionStats.totalConverted.p50, { forceExact })} (median)
+                                {' / '}{formatCompactCurrency(summary.conversionStats.totalConverted.p90, { forceExact })} (p90)
+                            </span>
+                        </div>
+                        <div>
+                            Paths converting anything:{' '}
+                            <span className="text-content-default font-medium tabular-nums">
+                                {(summary.conversionStats.fractionOfPathsConverting * 100).toFixed(0)}%
+                            </span>
+                        </div>
+                        {summary.conversionStats.medianConvertedAfterDownYear !== null
+                            && summary.conversionStats.medianConvertedAfterOtherYears !== null && (
+                            <div>
+                                Median converted the year after a market loss vs other years:{' '}
+                                <span className="text-content-default font-medium tabular-nums">
+                                    {formatCompactCurrency(summary.conversionStats.medianConvertedAfterDownYear, { forceExact })}
+                                    {' vs '}
+                                    {formatCompactCurrency(summary.conversionStats.medianConvertedAfterOtherYears, { forceExact })}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Paired plan-vs-baseline comparison (fp-review F7): only when the arm ran. */}
+            {summary?.baselineComparison && (
+                <div className="bg-surface-overlay/50 rounded-xl p-4 border border-border-default">
+                    <h4 className="text-content-default font-medium mb-1">vs. No-Conversion Baseline</h4>
+                    <p className="text-content-muted text-xs mb-3">
+                        Every path re-run on the SAME market draws with Roth conversions limited to
+                        the standard deduction. Per-path figures below are paired (causal) —
+                        unlike the cross-sectional percentile bands above.
+                    </p>
+                    <div className="text-content-muted text-sm space-y-1">
+                        <div>
+                            Success rate:{' '}
+                            <span className="text-content-default font-medium tabular-nums">
+                                {summary.successRate.toFixed(1)}% with plan vs {summary.baselineComparison.baselineSuccessRate.toFixed(1)}% baseline
+                                {' '}({summary.baselineComparison.deltaSuccessRate >= 0 ? '+' : ''}{summary.baselineComparison.deltaSuccessRate.toFixed(1)} pts)
+                            </span>
+                        </div>
+                        <div>
+                            Failed paths:{' '}
+                            <span className="text-content-default font-medium tabular-nums">
+                                {summary.baselineComparison.activeFailures} with plan vs {summary.baselineComparison.baselineFailures} baseline
+                                {summary.baselineComparison.medianDepletionYearActive !== null
+                                    && ` (median depletion ${summary.baselineComparison.medianDepletionYearActive}`}
+                                {summary.baselineComparison.medianDepletionYearActive !== null
+                                    && (summary.baselineComparison.medianDepletionYearBaseline !== null
+                                        ? ` vs ${summary.baselineComparison.medianDepletionYearBaseline})`
+                                        : ')')}
+                            </span>
+                        </div>
+                        <div>
+                            After-tax gain per path (plan − baseline):{' '}
+                            <span className="text-content-default font-medium tabular-nums">
+                                {summary.baselineComparison.afterTaxDelta.p10 >= 0 ? '+' : ''}{formatCompactCurrency(summary.baselineComparison.afterTaxDelta.p10, { forceExact })} (p10)
+                                {' / '}{summary.baselineComparison.afterTaxDelta.p50 >= 0 ? '+' : ''}{formatCompactCurrency(summary.baselineComparison.afterTaxDelta.p50, { forceExact })} (median)
+                                {' / '}{summary.baselineComparison.afterTaxDelta.p90 >= 0 ? '+' : ''}{formatCompactCurrency(summary.baselineComparison.afterTaxDelta.p90, { forceExact })} (p90)
+                            </span>
+                        </div>
+                        <div>
+                            Paths ending behind the baseline:{' '}
+                            <span className="text-content-default font-medium tabular-nums">
+                                {(summary.baselineComparison.fractionBehindBaseline * 100).toFixed(0)}%
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Fan Chart */}
             <div className="bg-surface-overlay/50 rounded-xl p-4 border border-border-default flex-1">
                 <h3 className="text-white font-semibold mb-4">Probability Distribution</h3>
                 {summary ? (
-                    <FanChart
-                        percentiles={summary.percentiles}
-                        deterministicLine={deterministicLine}
-                        bestCase={summary.bestCase}
-                        worstCase={summary.worstCase}
-                        height={400}
-                    />
+                    <>
+                        <FanChart
+                            percentiles={summary.percentiles}
+                            deterministicLine={deterministicLine}
+                            bestCase={summary.bestCase}
+                            worstCase={summary.worstCase}
+                            height={400}
+                        />
+                        {/* fp-review F11: the overlay and the bands run different conversion
+                            machinery, so off-centering isn't only a volatility artifact. */}
+                        <p className="text-content-muted text-xs mt-3">
+                            The orange line replays your deterministic plan — including its fixed
+                            Roth-conversion schedule — while each simulated path re-decides
+                            conversions from its own realized balances, so the line can sit
+                            off-center of the median band for conversion-strategy reasons as well
+                            as market volatility.
+                        </p>
+                    </>
                 ) : (
                     <div className="flex flex-col items-center justify-center h-96 text-center">
                         <div className="text-content-muted text-lg mb-2">No simulation data</div>
@@ -467,6 +613,15 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                         <li><strong>Blue Line:</strong> Best performing simulation run</li>
                         <li><strong>Red Line:</strong> Worst performing simulation run</li>
                     </ul>
+                    {/* fp-review F13: an honest statement of what stays deterministic. */}
+                    <p className="text-xs">
+                        <strong>What this simulation holds fixed:</strong> only investment returns are
+                        randomized. Inflation, salary growth, savings interest, and property
+                        appreciation follow your deterministic assumptions on every path; the plan
+                        always ends at your configured End of Plan age; and taxes use current-law
+                        brackets and your configured filing status on every path — future tax-law
+                        changes are not modeled.
+                    </p>
                 </div>
             </div>
             </>
