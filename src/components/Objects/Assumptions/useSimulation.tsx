@@ -9,6 +9,7 @@ import { CashflowDetail } from '../../../services/simulation/types';
 import { AssumptionsState, getLifeExpectancy, getBirthYear, getRetirementAge } from './AssumptionsContext';
 import { resolveRothConversionStrategy } from './rothConversionStrategy';
 import { TaxState, resolveTaxEventsForYear } from '../Taxes/TaxContext';
+import { activeSurvivorScenario, applySurvivorTransition } from '../../../services/simulation/SurvivorScenario';
 import { BaselineProjections } from '../../../services/simulation/types';
 import { getRMDStartAge } from '../../../data/RMDData';
 import { buildDPYearContexts, planConversionsViaDP, DPPlan, DPInputs, DPObjectiveOptions, DPPolicy, QuadratureNodes } from '../../../services/simulation/RothConversionDP';
@@ -367,6 +368,11 @@ function runSimulationLoop(args: {
     // running for the rest of the horizon (matters on the Monte Carlo hot path).
     let dormantCarryActive = currentIncomes.some(inc => inc.startMilestoneId);
 
+    // Survivor scenario (fp-review F3b): gate resolved once — same predicate the
+    // filing-status seam (resolveTaxEventsForYear) uses, so both halves of the
+    // composition fire under identical conditions.
+    const survivor = activeSurvivorScenario(taxState);
+
     for (let i = 1; i <= yearsToRun; i++) {
         const simulationYear = previousSimYear + i;
         const returnOverride = yearlyReturns ? yearlyReturns[i - 1] : undefined;
@@ -375,6 +381,21 @@ function runSimulationLoop(args: {
             simulationYear, currentAccounts, currentIncomes, currentExpenses,
             timeline, previousActiveMilestones, milestoneReachYears,
         );
+
+        // Survivor scenario: at the death year, apply the one-time non-tax
+        // transition to the carried-forward collections — drop all but the
+        // largest SS benefit, scale expenses. Fires exactly at `deathYear`
+        // (never `>=`): the loop feeds the transformed collections forward, so
+        // a `>=` would re-scale expenses every year. Runs AFTER the
+        // baselineProvider call on purpose — the rolling-baseline sub-sim
+        // starts its own loop at THIS simulationYear and applies its own
+        // transition to its (still untransformed) copies; transforming first
+        // would hand it inputs it then transforms a second time. The
+        // filing-status half rides resolveTaxEventsForYear below.
+        if (survivor && simulationYear === survivor.deathYear) {
+            ({ incomes: currentIncomes, expenses: currentExpenses } =
+                applySurvivorTransition(currentIncomes, currentExpenses, survivor.expenseFactor ?? 1));
+        }
 
         // Apply any scheduled tax life events (moving states, filing-status
         // change) that have fired by this year. milestoneReachYears holds the
