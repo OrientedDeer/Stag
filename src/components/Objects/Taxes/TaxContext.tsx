@@ -1,6 +1,7 @@
 import { createContext, ReactNode, useMemo } from 'react';
 import { FilingStatus, max_year } from '../../../data/TaxData';
 import { usePersistedReducer } from '../../../hooks/usePersistedReducer';
+import { activeSurvivorScenario, type SurvivorScenario } from '../../../services/simulation/SurvivorScenario';
 
 export type DeductionMethod = 'Standard' | 'Itemized' | 'Auto';
 
@@ -21,6 +22,14 @@ export interface TaxLifeEvent {
   year?: number;
   milestoneId?: string;
 }
+
+// Survivor ("first death at year N") scenario composer — fp-review F3b, the
+// widow's penalty. The config lives on TaxState (persisted with the rest of
+// the tax settings); the composer logic — the interface, the MFJ gate, and
+// the death-year income/expense transition — lives in
+// services/simulation/SurvivorScenario.ts. Re-exported here (type-only, so
+// react-refresh stays happy) since TaxState is where consumers meet it.
+export type { SurvivorScenario } from '../../../services/simulation/SurvivorScenario';
 
 export interface TaxState {
   filingStatus: FilingStatus;
@@ -47,6 +56,8 @@ export interface TaxState {
   calibrateFutureYears?: boolean;
   /** Scheduled state-residency / filing-status changes over the projection. */
   taxEvents?: TaxLifeEvent[];
+  /** "First death at year N" composer (fp-review F3b). See SurvivorScenario. */
+  survivorScenario?: SurvivorScenario;
   year: number;
 }
 
@@ -59,6 +70,7 @@ type Action =
   | { type: 'SET_STATE_OVERRIDE'; payload: number | null }
   | { type: 'SET_CALIBRATE_FUTURE'; payload: boolean }
   | { type: 'SET_TAX_EVENTS'; payload: TaxLifeEvent[] }
+  | { type: 'SET_SURVIVOR_SCENARIO'; payload: SurvivorScenario }
   | { type: 'SET_YEAR'; payload: number }
   | { type: 'SET_BULK_DATA'; payload: TaxState };
 
@@ -82,6 +94,7 @@ function taxReducer(state: TaxState, action: Action): TaxState {
     case 'SET_STATE_OVERRIDE': return { ...state, stateOverride: action.payload };
     case 'SET_CALIBRATE_FUTURE': return { ...state, calibrateFutureYears: action.payload };
     case 'SET_TAX_EVENTS': return { ...state, taxEvents: action.payload };
+    case 'SET_SURVIVOR_SCENARIO': return { ...state, survivorScenario: action.payload };
     case 'SET_YEAR': return { ...state, year: action.payload };
     case 'SET_BULK_DATA': return { ...action.payload };
     default: return state;
@@ -100,8 +113,14 @@ export function resolveTaxEventsForYear(
   year: number,
   milestoneReachYears: Map<string, number>,
 ): TaxState {
-  const events = base.taxEvents;
-  if (!events || events.length === 0) return base;
+  const events = base.taxEvents ?? [];
+  // Survivor scenario (fp-review F3b): the filing-status half of the composer.
+  // Behaves exactly like a scheduled `filingStatus → Single` event at
+  // `deathYear`, participating in the same latest-fires-wins resolution below —
+  // so every existing consumer of this function prices it for free.
+  const survivor = activeSurvivorScenario(base);
+  const survivorFired = survivor !== null && year >= survivor.deathYear;
+  if (events.length === 0 && !survivorFired) return base;
 
   let stateResidency = base.stateResidency;
   let filingStatus = base.filingStatus;
@@ -122,6 +141,10 @@ export function resolveTaxEventsForYear(
       filingStatus = ev.value as FilingStatus;
       bestFilingYear = firedYear;
     }
+  }
+
+  if (survivorFired && survivor.deathYear >= bestFilingYear) {
+    filingStatus = 'Single';
   }
 
   if (stateResidency === base.stateResidency && filingStatus === base.filingStatus) return base;

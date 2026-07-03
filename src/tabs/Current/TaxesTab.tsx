@@ -2,7 +2,7 @@ import { useContext, useMemo, useCallback, useState } from "react";
 import { IncomeContext } from "../../components/Objects/Income/IncomeContext";
 import { ExpenseContext } from "../../components/Objects/Expense/ExpenseContext";
 import { TaxContext } from "../../components/Objects/Taxes/TaxContext";
-import { AssumptionsContext, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { AssumptionsContext, getBirthYear, getLifeExpectancy } from "../../components/Objects/Assumptions/AssumptionsContext";
 import { TAX_DATABASE, FilingStatus, getClosestTaxYear } from "../../data/TaxData";
 import {
     calculateFicaTax,
@@ -207,6 +207,34 @@ export default function TaxesTab() {
         [dispatch]
     );
 
+    // Survivor scenario (fp-review F3b). Default death year on first enable:
+    // 10 years before end of plan (the convert-more-while-MFJ window the review
+    // prices), clamped to a future projection year.
+    const survivorScenario = state.survivorScenario;
+    const birthYear = getBirthYear(assumptions.milestones);
+    const endOfPlanYear = birthYear + getLifeExpectancy(assumptions.milestones);
+    const onSurvivorToggle = useCallback((enabled: boolean) => {
+        const defaultDeathYear = Math.max(nextYear, endOfPlanYear - 10);
+        dispatch({
+            type: 'SET_SURVIVOR_SCENARIO',
+            payload: { deathYear: defaultDeathYear, ...state.survivorScenario, enabled },
+        });
+    }, [dispatch, state.survivorScenario, nextYear, endOfPlanYear]);
+    const onSurvivorDeathYearChange = useCallback((deathYear: number) => {
+        dispatch({ type: 'SET_SURVIVOR_SCENARIO', payload: { enabled: true, ...state.survivorScenario, deathYear } });
+    }, [dispatch, state.survivorScenario]);
+    const onSurvivorExpensePctChange = useCallback((pct: number) => {
+        dispatch({
+            type: 'SET_SURVIVOR_SCENARIO',
+            payload: {
+                enabled: true,
+                deathYear: Math.max(nextYear, endOfPlanYear - 10),
+                ...state.survivorScenario,
+                expenseFactor: pct / 100,
+            },
+        });
+    }, [dispatch, state.survivorScenario, nextYear, endOfPlanYear]);
+
     const yearOptions = useMemo(
         () => Object.keys(TAX_DATABASE.federal).map(y => ({ value: y, label: y })).reverse(),
         []
@@ -346,6 +374,46 @@ export default function TaxesTab() {
                                         filingOptions={filingStatusOptions}
                                     />
                                 </div>
+
+                                {/* Survivor Scenario (fp-review F3b) — MFJ households only */}
+                                {filingStatus === 'Married Filing Jointly' && (
+                                    <div className="pt-6 border-t border-border-subtle space-y-3">
+                                        <h3 className="text-xs font-semibold text-content-muted uppercase tracking-wider">Survivor Scenario</h3>
+                                        <p className="text-xs text-content-subtle">
+                                            Model the first spouse's death (the "widow's penalty"). From the year
+                                            below, the projection files Single, keeps only the larger Social
+                                            Security benefit, and scales expenses. Pensions are NOT adjusted —
+                                            survivor elections are plan-specific, so model those with the
+                                            pension's end date.
+                                        </p>
+                                        <ToggleInput
+                                            label="Model survivor scenario"
+                                            enabled={survivorScenario?.enabled ?? false}
+                                            setEnabled={onSurvivorToggle}
+                                            tooltip="Single-filer brackets, deductions, IRMAA and Social Security thresholds are roughly half of MFJ, while the survivor keeps most of the income — one of the strongest reasons to convert more to Roth while still filing jointly. The conversion optimizer re-runs under this scenario."
+                                        />
+                                        {survivorScenario?.enabled && (
+                                            <>
+                                                <NumberInput
+                                                    label="First survivor year"
+                                                    value={survivorScenario.deathYear}
+                                                    onChange={onSurvivorDeathYearChange}
+                                                    min={nextYear}
+                                                    max={endOfPlanYear}
+                                                    tooltip="The first FULL year the survivor files Single (in reality the survivor still files jointly for the death year itself). Must be a future projection year."
+                                                />
+                                                <NumberInput
+                                                    label="Household expenses after (%)"
+                                                    value={Math.round((survivorScenario.expenseFactor ?? 1) * 100)}
+                                                    onChange={onSurvivorExpensePctChange}
+                                                    min={10}
+                                                    max={100}
+                                                    tooltip="Spending as a percent of the couple's, from the survivor year on. One-person households typically run 75–85%. 100 = unchanged. Loans and mortgages are never scaled — debt payments don't shrink."
+                                                />
+                                            </>
+                                        )}
+                                    </div>
+                                )}
 
                                 {/* Manual Overrides Section */}
                                 <div className="pt-6 border-t border-border-subtle space-y-4">
