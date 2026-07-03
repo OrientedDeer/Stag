@@ -555,6 +555,16 @@ export function makeSSHeavyScenario(): Scenario {
  * future RMD pressure and the Traditional exits cheaply, so aggressive conversion gives
  * back more tax now than it saves later. Long gap window (55→75) and no torpedo (no/low SS)
  * means the falling benefit curve is genuinely low — a correct plan converts little.
+ *
+ * DEAD-CASH CAVEAT (#161, scoped 2026-07-03): under tax-opt the planner demotes the
+ * SavedAccount behind all non-penalized tiers (honorLiteralOrder=false), and the $60k cash
+ * then idles for the whole horizon because the growing brokerage covers every deficit — until
+ * a big-tax year (e.g. an ACA-cliff-crossing conversion) caps brokerage sales and forces the
+ * cascade to finally deploy it. Any big-tax-year comparison on THIS fixture therefore
+ * includes a funding-path windfall of roughly +$460-530k that is NOT rate economics
+ * (measured: +$68k gap with the windfall vs -$459k with cash pre-invested). For clean
+ * rate-economics assertions use a fixture without an idle cash tier
+ * (see RothRulerInvariances.test.ts's purpose-built ABOVE-exit fixture).
  */
 export function makeLowBracketBrokerageScenario(): Scenario {
     const currentYear = new Date().getFullYear();
