@@ -406,6 +406,8 @@ export function createOrderedSnapshots(
 // Tax-efficiency rank for withdrawal ordering (lower = tap first): spend cash first
 // (no growth/tax to forfeit), then taxable cap-gains, then tax-deferred ordinary
 // income, then tax-free — preserving Roth/HSA tax-free growth the longest.
+// ESPP/RSU carry a lot-aware rank via taxableTierRank() (1 or 1.5); the flat espp/rsu
+// entries here are only the fallback for callers that don't thread a sale date.
 const WITHDRAWAL_TAX_RANK: Record<WithdrawalAccountType, number> = {
     savings: 0,
     brokerage: 1, espp: 1, rsu: 1,
@@ -413,6 +415,61 @@ const WITHDRAWAL_TAX_RANK: Record<WithdrawalAccountType, number> = {
     roth_401k: 3, roth_ira: 3,
     hsa: 4,
 };
+
+// #156 taxableTierRank thresholds. MAJORITY: the favourably-taxed share (qualifying
+// ESPP value / long-term RSU gain) must reach this fraction for the account to tie
+// with brokerage at tier 1; below it the account defers to tier 1.5. DE_MINIMIS:
+// an RSU account whose total embedded gain is under this fraction of its eligible
+// value is nearly tax-free to sell (RSU basis = fmvAtVest, so freshly-vested shares
+// have ~zero gain) — rank 1 regardless of the lots' short/long-term split.
+const TAXABLE_TIER_MAJORITY_SHARE = 0.5;
+const RSU_GAIN_DE_MINIMIS_SHARE = 0.05;
+
+/**
+ * Lot-aware taxable tier for an ESPP/RSU account (#156): 1 = tied with brokerage
+ * (favourable gain character — sell alongside taxable), 1.5 = after brokerage but
+ * before tax-deferred (unfavourable character today — give the lots time to season).
+ * Evaluated at `saleDate` over the CURRENTLY SELLABLE lots (getEligibleLots):
+ *  - ESPP: lots weighted by current market VALUE; qualifying-disposition share
+ *    ≥ 50% → 1, else 1.5.
+ *  - RSU: lots weighted by EMBEDDED GAIN (max(0, price − fmvAtVest) × shares);
+ *    long-term share of total gain ≥ 50% → 1, else 1.5. De minimis: total gain
+ *    < 5% of total eligible value → 1 regardless (selling is nearly tax-free).
+ *  - Zero eligible lots (or zero eligible value) → 1.5.
+ * Any other account type returns 1 (brokerage's tier, unchanged).
+ */
+export function taxableTierRank(account: AnyAccount, saleDate: Date): 1 | 1.5 {
+    if (account instanceof ESPPAccount) {
+        const lots = account.getEligibleLots(saleDate);
+        const sharePrice = account.currentSharePrice ?? (account.amount / Math.max(1, account.totalShares));
+        let totalValue = 0;
+        let qualifyingValue = 0;
+        for (const lot of lots) {
+            const value = sharePrice * lot.shares;
+            totalValue += value;
+            if (account.calculateDispositionType(lot, saleDate) === 'qualifying') qualifyingValue += value;
+        }
+        if (totalValue <= 0) return 1.5;
+        return qualifyingValue / totalValue >= TAXABLE_TIER_MAJORITY_SHARE ? 1 : 1.5;
+    }
+    if (account instanceof RSUAccount) {
+        const lots = account.getEligibleLots(saleDate);
+        const sharePrice = account.currentSharePrice ?? (account.amount / Math.max(1, account.totalShares));
+        let totalValue = 0;
+        let totalGain = 0;
+        let longTermGain = 0;
+        for (const lot of lots) {
+            totalValue += sharePrice * lot.shares;
+            const gain = Math.max(0, sharePrice - lot.fmvAtVest) * lot.shares;
+            totalGain += gain;
+            if (account.isLongTerm(lot, saleDate)) longTermGain += gain;
+        }
+        if (totalValue <= 0) return 1.5;
+        if (totalGain < RSU_GAIN_DE_MINIMIS_SHARE * totalValue) return 1;
+        return longTermGain / totalGain >= TAXABLE_TIER_MAJORITY_SHARE ? 1 : 1.5;
+    }
+    return 1;
+}
 
 /**
  * The tax-efficient withdrawal ORDER for a given age, used by the Withdrawal tab's
@@ -426,19 +483,25 @@ const WITHDRAWAL_TAX_RANK: Record<WithdrawalAccountType, number> = {
  * want preserved among equal-rank accounts. Evaluated at the CURRENT age — the optimal
  * order shifts as penalties lapse (Traditional at 59½), so it's a "right now" snapshot.
  *
- * Only `currentAge` (penalty lapse) and each account's tax TYPE drive the order — account
- * BALANCES are never read, so this is purely a rank-by-category sort, not a balance-aware
- * optimizer.
+ * For most account types only `currentAge` (penalty lapse) and the tax TYPE drive the
+ * order — a rank-by-category sort. ESPP/RSU are the exception (#156): their taxable tier
+ * comes from `taxableTierRank`, which reads the account's currently-sellable LOTS at
+ * `saleDate` (disposition type / holding period / embedded gain), so those two types are
+ * ranked by gain character, not just category. Like the age, it's a "right now" snapshot —
+ * re-run as lots season.
  */
 export function taxOptimalWithdrawalOrder(
     accounts: AnyAccount[],
     currentAge: number,
+    saleDate: Date = new Date(),
 ): AnyAccount[] {
     const rank = (a: AnyAccount) => {
         const type = classifyAccount(a);
         return {
             penalty: hasEarlyWithdrawalPenalty(type, currentAge) ? 1 : 0,
-            tax: WITHDRAWAL_TAX_RANK[type] ?? 1,
+            tax: (type === 'espp' || type === 'rsu')
+                ? taxableTierRank(a, saleDate)
+                : WITHDRAWAL_TAX_RANK[type] ?? 1,
         };
     };
     return accounts

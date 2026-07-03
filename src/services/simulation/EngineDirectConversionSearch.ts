@@ -32,10 +32,12 @@ import { DPYearContext } from './RothConversionDP';
 import { SimulationYear } from './types';
 import { FilingStatus } from '../../data/TaxData';
 import type { ResolvedIRMAASchedule } from '../../data/IRMAAData';
-import { AnyAccount, SavedAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
+import { AnyAccount, SavedAccount, InvestedAccount, ESPPAccount, RSUAccount } from '../../components/Objects/Accounts/models';
 // Single source of truth for "can the drawdown liquidate this?" — defined alongside the
 // #111 fallback tier so the tax-opt optimizer and the manual-order safety net can't diverge.
-import { isSellableAccount } from './WithdrawalPlanner';
+// taxableTierRank is likewise shared (#156) so the candidate-order generator and the manual
+// Auto sort rank ESPP/RSU by the same lot-level gain character.
+import { isSellableAccount, taxableTierRank } from './WithdrawalPlanner';
 
 export interface WithdrawalOrderItem { id: string; name: string; accountId: string; }
 
@@ -69,13 +71,25 @@ export function withAllSellableAccounts<T extends WithdrawalOrderItem>(
  *
  * NOT a duplicate of `classifyAccountTaxCategory` (helpers.ts): that one is a 3-way tax-treatment
  * split ('tax-deferred' | 'tax-free' | 'taxable') used for the conversion-cost math. Order
- * generation needs a finer 4-way bucketing — it must separate CASH from ROTH (both 'tax-free'
+ * generation needs a finer bucketing — it must separate CASH from ROTH (both 'tax-free'
  * there) and BROKERAGE from CASH, because the candidate sequences hinge on the relative drawdown
  * position of cash, taxable, Traditional, and Roth. The tax-category classifier can't express that,
  * so a dedicated bucketer is required here.
+ *
+ * ESPP/RSU (#156) are taxable but their tax cost is lot-dependent, so they're bucketed by
+ * `taxableTierRank` at `saleDate`: rank 1 (favourable gain character — qualifying-heavy ESPP,
+ * long-term-heavy or near-zero-gain RSU) joins the 'brokerage' bucket; rank 1.5 lands in
+ * 'taxable-late' — after brokerage but before the tax-advantaged buckets, so unseasoned lots
+ * are still spent ahead of Traditional/Roth, just not first among taxable assets.
  */
-function withdrawalBucketOf(account: AnyAccount | undefined): 'cash' | 'brokerage' | 'traditional' | 'roth' | 'other' {
+function withdrawalBucketOf(
+    account: AnyAccount | undefined,
+    saleDate: Date,
+): 'cash' | 'brokerage' | 'taxable-late' | 'traditional' | 'roth' | 'other' {
     if (account instanceof SavedAccount) return 'cash';
+    if (account instanceof ESPPAccount || account instanceof RSUAccount) {
+        return taxableTierRank(account, saleDate) === 1 ? 'brokerage' : 'taxable-late';
+    }
     if (account instanceof InvestedAccount) {
         if (account.taxType === 'Brokerage') return 'brokerage';
         if (account.taxType.startsWith('Traditional')) return 'traditional';
@@ -96,26 +110,33 @@ function withdrawalBucketOf(account: AnyAccount | undefined): 'cash' | 'brokerag
  * picks the best PER scenario — the optimum is scenario-specific (Roth-before-Traditional wins
  * for high-SS/large-Traditional/long-horizon profiles, the conventional order for others), so
  * nothing is hardcoded.
+ *
+ * ESPP/RSU accounts (#156) are placed by lot-level gain character at `saleDate` (defaults to
+ * now): favourable ones share the brokerage slot, unfavourable ones follow in 'taxable-late'.
+ * Scenarios without ESPP/RSU accounts are unaffected — the bucketer only reads lots for those
+ * two types.
  */
 export function generateCandidateWithdrawalOrders<T extends WithdrawalOrderItem>(
     accounts: AnyAccount[],
     baseStrategy: T[],
+    saleDate: Date = new Date(),
 ): T[][] {
     const byId = new Map(accounts.map(a => [a.id, a]));
     const rankIn = (accountId: string, seq: string[]): number => {
-        const i = seq.indexOf(withdrawalBucketOf(byId.get(accountId)));
+        const i = seq.indexOf(withdrawalBucketOf(byId.get(accountId), saleDate));
         return i < 0 ? seq.length : i; // unknown buckets sort to the end
     };
-    // Candidates always spend CASH first and TAXABLE (brokerage) before either tax-advantaged bucket —
-    // spending tax-free/deferred money ahead of taxable assets forfeits shielded growth and is
-    // essentially never optimal. The lever that matters for conversion optimization is the RELATIVE
-    // order of Roth vs Traditional: spending Roth first PRESERVES Traditional so it can be converted
-    // cheaply (e.g. the post-SS 0% band); the conventional order spends Traditional first. We do NOT
-    // emit a "Roth before brokerage" order — it isn't economically sound, and under aggressive
-    // conversions in a no-SS regime a brokerage-heavy terminal makes orders mis-compare on the ruler.
+    // Candidates always spend CASH first and TAXABLE (brokerage, then taxable-late ESPP/RSU) before
+    // either tax-advantaged bucket — spending tax-free/deferred money ahead of taxable assets forfeits
+    // shielded growth and is essentially never optimal. The lever that matters for conversion
+    // optimization is the RELATIVE order of Roth vs Traditional: spending Roth first PRESERVES
+    // Traditional so it can be converted cheaply (e.g. the post-SS 0% band); the conventional order
+    // spends Traditional first. We do NOT emit a "Roth before brokerage" order — it isn't economically
+    // sound, and under aggressive conversions in a no-SS regime a brokerage-heavy terminal makes
+    // orders mis-compare on the ruler.
     const TYPE_SEQUENCES: string[][] = [
-        ['cash', 'brokerage', 'traditional', 'roth'], // conventional: taxable → tax-deferred → tax-free
-        ['cash', 'brokerage', 'roth', 'traditional'], // Traditional-preserving: spend Roth before Trad to free the post-SS 0% conversion band
+        ['cash', 'brokerage', 'taxable-late', 'traditional', 'roth'], // conventional: taxable → tax-deferred → tax-free
+        ['cash', 'brokerage', 'taxable-late', 'roth', 'traditional'], // Traditional-preserving: spend Roth before Trad to free the post-SS 0% conversion band
     ];
     const candidates: T[][] = [baseStrategy]; // the user's own order — guarantees no regression
     for (const seq of TYPE_SEQUENCES) {
