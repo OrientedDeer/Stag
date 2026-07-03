@@ -161,6 +161,7 @@ export default function AssumptionTab() {
                             value={state.investments.returnRates.ror}
                             onChange={(val) => dispatch({ type: 'UPDATE_INVESTMENT_RATES', payload: { ror: val } })}
                             isAboveInflation={state.macro.inflationAdjusted}
+                            tooltip="With Inflation Adjusted ON, this is your REAL (after-inflation) return: investments grow at this rate PLUS inflation (e.g. 7% here + 2.5% inflation = 9.5% nominal growth), while expenses and tax brackets inflate too. With it OFF, everything runs in today's dollars and this rate applies directly."
                         />
                     </div>
 

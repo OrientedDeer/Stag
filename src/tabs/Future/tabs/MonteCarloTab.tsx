@@ -322,7 +322,7 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                         label="Mean Return"
                         value={config.returnMean}
                         onChange={handleReturnMeanChange}
-                        tooltip="Expected average annual return"
+                        tooltip="Average annual return the random paths are drawn around. With Inflation Adjusted ON this is a NOMINAL return — your real return plus your inflation assumption (e.g. 7% real + 2.5% inflation = 9.5% here) — because the simulation runs in nominal dollars. With it OFF it's a real return, applied directly in today's dollars."
                         max={50}
                     />
 
@@ -691,9 +691,11 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                         <strong>What this simulation holds fixed:</strong> only investment returns are
                         randomized. Inflation, salary growth, savings interest, and property
                         appreciation follow your deterministic assumptions on every path; the plan
-                        always ends at your configured End of Plan age; and taxes use current-law
-                        brackets and your configured filing status on every path — future tax-law
-                        changes are not modeled.
+                        always ends at your configured End of Plan age; and taxes use your
+                        configured filing status on every path. Tax brackets and deductions keep
+                        pace with your inflation assumption; what&apos;s held fixed is the LAW
+                        itself — today&apos;s rates, bracket structure, and rules, with no future
+                        legislation.
                     </p>
                 </div>
             </div>
