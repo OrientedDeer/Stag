@@ -68,6 +68,9 @@ export async function buildProjectionAsync(
     if (!assumptions.investments.taxOptimizationEnabled) {
         // No joint search → the sync run is fast (~50–200ms); a worker round
         // trip (spawn + clone + reconstitute) would only add latency and risk.
+        // Yield to the event loop first so the caller's spinner state paints
+        // before the synchronous block (the role the old setTimeout(50) played).
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
         return buildProjection(assumptions, accounts, incomes, expenses, taxState, budgetMonths, cachedSimulation);
     }
     // Same derivation as buildProjection (kept inline there so the sync path
