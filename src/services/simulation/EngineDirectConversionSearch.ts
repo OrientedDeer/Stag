@@ -217,6 +217,12 @@ export interface EngineSearchOptions {
      * (e.g. unit tests) → the bracket-top grid is unchanged.
      */
     irmaaScheduleForYear?: (year: number, filingStatus: FilingStatus) => ResolvedIRMAASchedule;
+    /**
+     * Observability hook: invoked once per scored candidate with its label, after-tax NW,
+     * and the exact plan scored. Purely observational (diagnostics / tests) — never affects
+     * the search. Production leaves it unset.
+     */
+    onCandidate?: (label: string, afterTaxNW: number, plan: Map<number, number>) => void;
 }
 
 export interface EngineSearchDiagnostics {
@@ -224,6 +230,15 @@ export interface EngineSearchDiagnostics {
     sims: number;
     bestHeadroom: number | null;
     bestLabel: string;
+    /**
+     * Set ONLY when a tail-trim composite wins (#165): the label/headroom of the ANCHOR the
+     * trim was built from (the pre-trim best). A trim keeps its anchor's plan through the
+     * cutover and shrinks only the tail, so scalar-summary consumers — the #89 MC
+     * capHeadroom derivation — should classify the winner by its anchor's family: a trim of
+     * a fill-to-h winner still wants the cap at h; a trim of the DP seed still wants no cap.
+     */
+    trimAnchorLabel?: string;
+    trimAnchorHeadroom?: number | null;
 }
 
 export interface EngineSearchResult {
@@ -342,15 +357,16 @@ export function searchConversionPlanByEngine(
     scorePlan: ConversionPlanScorer,
     opts: EngineSearchOptions,
 ): EngineSearchResult {
-    const { baseline, seedPlans = [], startingTradBalance, irmaaScheduleForYear } = opts;
+    const { baseline, seedPlans = [], startingTradBalance, irmaaScheduleForYear, onCandidate } = opts;
     // Fill-to-headroom with the engine's prior-year-end RMD basis baked in (#5).
     const fillPlan = (h: number): Map<number, number> => fillToHeadroomPlan(contexts, h, startingTradBalance);
 
     let sims = 0;
     // `kind` tags where the winner came from: 'baseline' (the pre-scored std-ded plan),
-    // 'seed' (a passed-in seed plan or a scaled variant of one), or 'grid' (fill-to-h).
+    // 'seed' (a passed-in seed plan or a scaled variant of one), 'grid' (fill-to-h), or
+    // 'trim' (a tail-trimmed composite of the winner, #165).
     // The golden-section refine keys off `headroom`; the seed-scaling pass keys off `kind`.
-    type CandidateKind = 'baseline' | 'seed' | 'grid';
+    type CandidateKind = 'baseline' | 'seed' | 'grid' | 'trim';
     // Seed with the pre-scored std-ded baseline (its TRUE score + timeline) — the result is
     // ≥ the baseline by construction, so the downstream feasibility floor never fires.
     let best: { headroom: number | null; plan: Map<number, number>; score: ConversionPlanScore; label: string; kind: CandidateKind } =
@@ -359,6 +375,7 @@ export function searchConversionPlanByEngine(
     const consider = (label: string, headroom: number | null, plan: Map<number, number>, kind: CandidateKind): ConversionPlanScore => {
         const score = scorePlan(plan);
         sims++;
+        onCandidate?.(label, score.afterTaxNW, plan);
         if (score.afterTaxNW > best.score.afterTaxNW) best = { headroom, plan, score, label, kind };
         return score;
     };
@@ -443,9 +460,79 @@ export function searchConversionPlanByEngine(
         if (best === anchor) break; // the anchor is a local scaling peak — certified, done
     }
 
+    // TAIL-TRIM PASS (#165): every family above moves ALL years together — flat-h fills,
+    // the DP seed, and PROPORTIONAL seed scaling can't keep a plan's early (cheap)
+    // conversions while shrinking only its tail. The DP is known to over-convert its final
+    // years on profiles where the after-tax ruler exits a modest residual Traditional at
+    // ~0% (post-plan RMDs fit under the standard deduction even torpedo-taxed): the last
+    // conversion dollars pay a real marginal rate to avoid a ~free exit, and ×0.8/×0.9
+    // scaling never corrects it because shrinking the early years loses more than the tail
+    // trim gains (measured +0.45% of terminal after-tax NW left on the table on a real
+    // profile — the recurring "it drained my Traditional early" report).
+    //
+    // Candidates: keep the winner's conversions strictly before a cutover year C, and from
+    // C on convert `frac × fill-to-headroom(0)` (the std-ded fill — frac spans the SS-torpedo
+    // shrinkage of the truly-free headroom empirically; the engine score prices the exact
+    // interaction). C sweeps the winner's last TRIM_TAIL_YEARS conversion years; frac=0 is
+    // pure truncation (hold the residual for the ruler exit). A short frac probe around the
+    // coarse winner then sharpens the level. Bounded: ≤ TRIM_TAIL_YEARS×2 + 2 extra sims.
+    let trimAnchor: typeof best | null = null;
+    if (best.plan.size > 0) {
+        const anchor = best;
+        trimAnchor = anchor;
+        // Trim against what the anchor ACTUALLY converted, not what it scheduled: a seed
+        // plan (the DP) keeps scheduling conversions past the year its own execution drains
+        // Traditional — those phantom tail years execute as $0, so cutting there changes
+        // nothing. The executed schedule's last conversion years are the real tail.
+        const executed = extractConversionPlan(anchor.score.timeline);
+        // Tail trickle: fill-to-std-ded WITHOUT the baseline-RMD term of fillToHeadroomPlan.
+        // The baseline world never trims, so its Traditional balloons and its RMDs swallow
+        // the whole deduction from RMD age on — computing the trickle against them silences
+        // it exactly where the trim holds a residual. The residual's true (small) RMDs and
+        // the SS torpedo are priced by the engine score; the frac axis absorbs overshoot.
+        const tailFill = new Map<number, number>();
+        for (const ctx of contexts) {
+            const room = ctx.fedParams.standardDeduction - ctx.nonSSOrdinaryIncomeExclRMD;
+            if (room > 0.5) tailFill.set(ctx.year, room);
+        }
+        const composite = (cutover: number, frac: number): Map<number, number> => {
+            const p = new Map<number, number>();
+            for (const [year, amt] of executed) if (year < cutover) p.set(year, amt);
+            if (frac > 0) {
+                for (const [year, amt] of tailFill) {
+                    if (year >= cutover && amt * frac > 0.5) p.set(year, amt * frac);
+                }
+            }
+            return p;
+        };
+        const TRIM_TAIL_YEARS = 6;
+        const convYears = [...executed.keys()].sort((a, b) => a - b).slice(-TRIM_TAIL_YEARS);
+        let bestTrim: { cutover: number; frac: number } | null = null;
+        const trial = (cutover: number, frac: number): void => {
+            const before = best;
+            consider(`trim(C=${cutover},f=${frac.toFixed(2)})`, null, composite(cutover, frac), 'trim');
+            if (best !== before) bestTrim = { cutover, frac };
+        };
+        for (const cutover of convYears) {
+            for (const frac of [0, 0.3]) trial(cutover, frac);
+        }
+        // Refine the trickle level at the winning cutover (the frac axis is the sharper one).
+        if (bestTrim !== null) {
+            const { cutover, frac } = bestTrim;
+            for (const f of [frac - 0.15, frac + 0.15]) {
+                if (f > 0.009 && f <= 1) trial(cutover, f);
+            }
+        }
+    }
+
+    const diagnostics: EngineSearchDiagnostics = { sims, bestHeadroom: best.headroom, bestLabel: best.label };
+    if (best.kind === 'trim' && trimAnchor !== null) {
+        diagnostics.trimAnchorLabel = trimAnchor.label;
+        diagnostics.trimAnchorHeadroom = trimAnchor.headroom;
+    }
     return {
         conversionsByYear: best.plan,
         winningTimeline: best.score.timeline,
-        diagnostics: { sims, bestHeadroom: best.headroom, bestLabel: best.label },
+        diagnostics,
     };
 }

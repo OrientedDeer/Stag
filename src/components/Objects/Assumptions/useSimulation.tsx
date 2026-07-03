@@ -847,7 +847,7 @@ export const runSimulation = (
  * the only difference is whether a `returnDistribution` is layered on (#98).
  * Extracted verbatim from runSimulationWithOptimization; behavior-preserving.
  */
-function buildDpSolveInputs(
+export function buildDpSolveInputs(
     accounts: AnyAccount[],
     incomes: AnyIncome[],
     expenses: AnyExpense[],
@@ -1056,10 +1056,19 @@ export const buildMcConversionPolicy = (
     //   • a SCALED seed variant won (F8, label 'legacy-dp×k') → bestHeadroom is null ⇒ undefined
     //     ⇒ no cap, matching the pre-F8 behavior on that class (the raw DP used to win there);
     //     a DP-shaped winner has no h to cap against.
+    //   • a TAIL-TRIMMED composite won (#165) → classify by its ANCHOR's family (the search
+    //     reports it via trimAnchorLabel/-Headroom): a trim keeps the anchor's plan through
+    //     the cutover and only shrinks the tail, so the anchor's scalar cap is still the
+    //     right (slightly conservative) per-path ceiling — a trim of a grid winner keeps the
+    //     cap at h (the #89 over-conversion corner stays protected), a trim of the DP seed
+    //     keeps no cap.
+    const isTrim = search.diagnostics.trimAnchorLabel !== undefined;
+    const capLabel = isTrim ? search.diagnostics.trimAnchorLabel : search.diagnostics.bestLabel;
+    const capH = isTrim ? search.diagnostics.trimAnchorHeadroom : search.diagnostics.bestHeadroom;
     const capHeadroom: number | undefined =
-        search.diagnostics.bestLabel === 'legacy-dp' ? undefined
-            : search.diagnostics.bestLabel === 'std-ded-baseline' ? 0
-                : (search.diagnostics.bestHeadroom ?? undefined);
+        capLabel === 'legacy-dp' ? undefined
+            : capLabel === 'std-ded-baseline' ? 0
+                : (capH ?? undefined);
     if (stochasticPlan.policy) stochasticPlan.policy.capHeadroom = capHeadroom;
     return stochasticPlan;
 };

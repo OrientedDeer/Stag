@@ -258,3 +258,111 @@ describe('F9 — IRMAA/ACA cliff probes in the coarse h-grid', () => {
         expect(res.diagnostics.bestHeadroom).not.toBeNull();
     });
 });
+
+describe('#165 — tail-trim pass (keep the head, shrink the tail)', () => {
+    // A scorer whose timelines REFLECT EXECUTION: the trim pass anchors its cutover grid on
+    // extractConversionPlan(anchor timeline), so these tests must mint timelines with real
+    // rothConversion rows (the default makeScorer's marker timelines deliberately carry none,
+    // which is exactly why the pass no-ops — and costs zero sims — in the F8/F9 tests above).
+    // `executes` clamps execution (a year listed there executes $0 — the phantom-tail case).
+    function makeExecutingScorer(
+        scoreOf: (plan: Map<number, number>) => number,
+        executesYear: (year: number) => boolean = () => true,
+    ) {
+        const scored: Map<number, number>[] = [];
+        const timelines = new Map<string, SimulationYear[]>();
+        const scorePlan = (plan: Map<number, number>): ConversionPlanScore => {
+            scored.push(new Map(plan));
+            const timeline = [...plan.entries()]
+                .filter(([y, amt]) => executesYear(y) && amt > 0)
+                .sort((a, b) => a[0] - b[0])
+                .map(([y, amt]) => ({ year: y, rothConversion: { amount: amt } })) as unknown as SimulationYear[];
+            timelines.set(planKey(plan), timeline);
+            return { afterTaxNW: scoreOf(plan), timeline };
+        };
+        return { scorePlan, scored, timelines };
+    }
+
+    // Ten-year horizon: three "cheap" head years (2031-2033) and a tail (2034+). The head is
+    // unreachable by fill-to-h (income 900k), so only seed-shaped plans can score it — and the
+    // landscape pays for keeping the head at FULL size while shrinking the tail to a trickle:
+    // exactly the shape no proportional scaling or flat-h plan can express.
+    const TAIL_START = 2034;
+    const LAST = 2040;
+    const trimContexts = () => {
+        const out: DPYearContext[] = [];
+        for (let y = YEAR1; y <= LAST; y++) {
+            out.push(makeCtx(y, { nonSSOrdinaryIncomeExclRMD: y <= 2033 ? 900_000 : 0 }));
+        }
+        return out;
+    };
+    const headTotal = (p: Map<number, number>) =>
+        [...p.entries()].filter(([y]) => y < TAIL_START).reduce((s, [, v]) => s + Math.min(v, 100_000), 0);
+    const landscape = (p: Map<number, number>) => {
+        let v = headTotal(p) * 10; // full-size head conversions are precious
+        for (const [y, amt] of p) {
+            if (y >= TAIL_START) v += amt <= 20_000 ? amt * 2 : -amt * 2; // small tail trickle pays, big tail costs
+        }
+        return v;
+    };
+    const seed = new Map<number, number>();
+    for (let y = YEAR1; y <= 2036; y++) seed.set(y, 100_000);
+
+    it('a trimmed composite wins: head kept verbatim, tail replaced by a refined std-ded trickle', () => {
+        const { scorePlan, timelines } = makeExecutingScorer(landscape);
+        const res = searchConversionPlanByEngine(trimContexts(), scorePlan, {
+            ...baselineOpts(1_000),
+            seedPlans: [{ label: 'legacy-dp', plan: seed }],
+        });
+
+        // Coarse grid finds trim(C=2034, f=0.30); the refine probes f=0.45 and it wins
+        // (trickle 0.45 × stdDed = 6,750 ≤ the 20k sweet spot, and more trickle pays more).
+        expect(res.diagnostics.bestLabel).toBe('trim(C=2034,f=0.45)');
+        expect(res.diagnostics.bestHeadroom).toBeNull();
+        // The #89 MC capHeadroom derivation classifies a trim winner by its anchor's family.
+        expect(res.diagnostics.trimAnchorLabel).toBe('legacy-dp');
+        expect(res.diagnostics.trimAnchorHeadroom).toBeNull();
+        for (const y of [YEAR1, 2032, 2033]) expect(res.conversionsByYear.get(y)).toBe(100_000);
+        for (let y = TAIL_START; y <= LAST; y++) {
+            expect(res.conversionsByYear.get(y)).toBeCloseTo(STD_DED * 0.45, 6);
+        }
+        // Replay invariant: the returned timeline is the scored replay of exactly the returned plan.
+        expect(res.winningTimeline).toBe(timelines.get(planKey(res.conversionsByYear)));
+    });
+
+    it('anchors the cutover grid on EXECUTED years, not scheduled ones (phantom tail)', () => {
+        // The seed also schedules 2037-2040, but those years execute $0 (drained Traditional).
+        // Anchoring on the schedule would spend the whole cutover grid on phantom years
+        // (every composite execution-identical to the anchor); anchoring on execution puts
+        // C inside the real tail, so composites with a trimmed 2033/2034 must appear.
+        const phantomSeed = new Map(seed);
+        for (let y = 2037; y <= LAST; y++) phantomSeed.set(y, 100_000);
+        const { scorePlan, scored } = makeExecutingScorer(landscape, y => y <= 2036);
+        const res = searchConversionPlanByEngine(trimContexts(), scorePlan, {
+            ...baselineOpts(1_000),
+            seedPlans: [{ label: 'legacy-dp', plan: phantomSeed }],
+        });
+        expect(res.diagnostics.bestLabel).toMatch(/^trim\(C=2034/);
+        const sawRealCut = scored.some(p =>
+            (p.get(YEAR1) ?? 0) === 100_000 && (p.get(2034) ?? 0) > 0 && (p.get(2034) ?? 0) < 10_000);
+        expect(sawRealCut).toBe(true);
+    });
+
+    it('the tail trickle ignores the BASELINE world\'s RMDs (they would silence it)', () => {
+        // Tail contexts carry a huge baseline Traditional + RMD divisor: fill-to-headroom(0)
+        // computes $0 there (baseline RMDs swallow the deduction), but the trimmed world holds
+        // only a small residual — the trickle must still be offered at frac × stdDed.
+        const ctxs = trimContexts().map(ctx => (ctx.year >= TAIL_START
+            ? { ...ctx, rmdDivisor: 25, baselineTradBalance: 10_000_000 }
+            : { ...ctx, baselineTradBalance: 10_000_000 }));
+        const { scorePlan } = makeExecutingScorer(landscape);
+        const res = searchConversionPlanByEngine(ctxs, scorePlan, {
+            ...baselineOpts(1_000),
+            seedPlans: [{ label: 'legacy-dp', plan: seed }],
+        });
+        expect(res.diagnostics.bestLabel).toMatch(/^trim\(C=2034/);
+        for (let y = TAIL_START; y <= LAST; y++) {
+            expect(res.conversionsByYear.get(y) ?? 0).toBeGreaterThan(0);
+        }
+    });
+});
