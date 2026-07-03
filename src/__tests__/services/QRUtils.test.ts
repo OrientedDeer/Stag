@@ -1345,6 +1345,22 @@ describe('qrUtils', () => {
       expect(expanded).toEqual(original);
     });
 
+    // #167: TARGET buckets carry capType/capValue like every other bucket —
+    // qrUtils passes them through untransformed, so no qrUtils change needed.
+    it('should roundtrip a priorities array containing a TARGET bucket', () => {
+      const original = {
+        priorities: [
+          { id: 'p1', name: 'House fund', type: 'SAVINGS', accountId: 'acc1', capType: 'TARGET', capValue: 25000 },
+          { id: 'p2', name: 'Rainy day', type: 'SAVINGS', accountId: 'acc2', capType: 'MULTIPLE_OF_EXPENSES', capValue: 6 },
+        ],
+      };
+
+      const compacted = compactAssumptions(original);
+      const expanded = expandCompactAssumptions(compacted);
+
+      expect(expanded.priorities).toEqual(original.priorities);
+    });
+
     it('should compact to much smaller object', () => {
       // All default values
       const fullDefaults = {

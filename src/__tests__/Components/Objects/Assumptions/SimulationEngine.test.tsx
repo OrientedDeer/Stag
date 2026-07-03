@@ -1073,6 +1073,39 @@ describe('Simulation Engine', () => {
             // Should be at or near 6 months expenses (18k)
             expect(savingsAfter!.amount).toBeGreaterThan(10000);  // At least contributed something
         });
+
+        // #167: TARGET = fund to a fixed dollar balance (nominal), the
+        // dollar-denominated sibling of MULTIPLE_OF_EXPENSES.
+        it('should handle TARGET cap type (top up year 1, ~$0 once full, replenish after draw-down)', () => {
+            const makeIncome = () => new WorkIncome(
+                'inc-1', 'Job', 150000, 'Annually', 'Yes',
+                0, 0, 0, 0, '', null, 'FIXED',
+                new Date('2025-01-01')
+            );
+            const makeExpense = () => new FoodExpense('exp-1', 'Food', 36000, 'Annually', new Date('2025-01-01'));
+            const assumptionsWithPriority: AssumptionsState = {
+                ...cleanAssumptions,
+                priorities: [
+                    { id: 'p1', name: 'House fund', type: 'SAVINGS', accountId: 'sav-1', capType: 'TARGET', capValue: 12000 }
+                ]
+            };
+
+            // Year with a gap: $4k balance, $12k target → tops up to the target.
+            const belowTarget = new SavedAccount('sav-1', 'House Fund', 4000, 0);
+            const topUp = simulateOneYear(2025, [makeIncome()], [makeExpense()], [belowTarget], assumptionsWithPriority, mockTaxState);
+            expect(topUp.accounts.find(acc => acc.id === 'sav-1')!.amount).toBeCloseTo(12000, 6);
+
+            // Year starting AT the target → nothing more is added (0% APR, so
+            // any increase could only come from a bogus allocation).
+            const atTarget = new SavedAccount('sav-1', 'House Fund', 12000, 0);
+            const full = simulateOneYear(2025, [makeIncome()], [makeExpense()], [atTarget], assumptionsWithPriority, mockTaxState);
+            expect(full.accounts.find(acc => acc.id === 'sav-1')!.amount).toBeCloseTo(12000, 6);
+
+            // After a draw-down, a surplus year self-replenishes back to target.
+            const drawnDown = new SavedAccount('sav-1', 'House Fund', 7000, 0);
+            const replenished = simulateOneYear(2025, [makeIncome()], [makeExpense()], [drawnDown], assumptionsWithPriority, mockTaxState);
+            expect(replenished.accounts.find(acc => acc.id === 'sav-1')!.amount).toBeCloseTo(12000, 6);
+        });
     });
 
     // =========================================================================

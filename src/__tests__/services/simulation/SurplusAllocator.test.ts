@@ -504,6 +504,68 @@ describe('SurplusAllocator', () => {
             expect(sav1Alloc?.amount).toBe(20000);
         });
 
+        // #167: TARGET is the dollar-denominated sibling of MULTIPLE_OF_EXPENSES —
+        // capValue IS the desired end balance; fund max(0, target − balance).
+        it('should handle TARGET cap type (funds the gap to the dollar target)', () => {
+            const savings = new SavedAccount('sav1', 'House Fund', 4000, 4);
+
+            const result = allocateSurplus(
+                50000,
+                [savings],
+                [{ accountId: 'sav1', priority: 1, capType: 'TARGET', capValue: 10000 }],
+                0,
+                defaultSettings()
+            );
+
+            // Target: $10000, current: $4000 → fund $6000
+            const sav1Alloc = result.allocations.find(a => a.accountId === 'sav1');
+            expect(sav1Alloc?.amount).toBe(6000);
+        });
+
+        it('should allocate $0 to a TARGET bucket at/above target and pass surplus to lower buckets', () => {
+            const savings = new SavedAccount('sav1', 'House Fund', 12000, 4);
+            const brokerage = new InvestedAccount('brok', 'Brokerage', 0, 0, 0, 0.1, 'Brokerage');
+
+            const result = allocateSurplus(
+                20000,
+                [savings, brokerage],
+                [
+                    { accountId: 'sav1', priority: 1, capType: 'TARGET', capValue: 10000 },
+                    { accountId: 'brok', priority: 2, capType: 'REMAINDER' },
+                ],
+                0,
+                defaultSettings()
+            );
+
+            // Already above target → nothing added, full surplus flows past.
+            const sav1Alloc = result.allocations.find(a => a.accountId === 'sav1');
+            expect(sav1Alloc).toBeUndefined();
+            const brokAlloc = result.allocations.find(a => a.accountId === 'brok');
+            expect(brokAlloc?.amount).toBe(20000);
+        });
+
+        it('should not overshoot when two TARGET buckets point at the same account', () => {
+            const savings = new SavedAccount('sav1', 'House Fund', 2000, 4);
+
+            const result = allocateSurplus(
+                50000,
+                [savings],
+                [
+                    { accountId: 'sav1', priority: 1, capType: 'TARGET', capValue: 6000 },
+                    { accountId: 'sav1', priority: 2, capType: 'TARGET', capValue: 10000 },
+                ],
+                0,
+                defaultSettings()
+            );
+
+            // Bucket 1 funds to $6000 (+$4000); bucket 2 sees the pass's earlier
+            // allocation and only tops up to $10000 (+$4000 more), never $8000.
+            const totalToSav1 = result.allocations
+                .filter(a => a.accountId === 'sav1')
+                .reduce((sum, a) => sum + a.amount, 0);
+            expect(totalToSav1).toBe(8000);
+        });
+
         it('should allocate to brokerage via priority bucket', () => {
             const brokerage = new InvestedAccount('brok', 'Brokerage', 100000, 0, 0, 0.1, 'Brokerage');
 

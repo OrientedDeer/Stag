@@ -254,7 +254,7 @@ export function computeEOYBudgetContributions(
         }
 
         const expectedRemaining = Math.max(0, annualGoal - ytdActual);
-        const source: 'budget-ytd' = 'budget-ytd';
+        const source = 'budget-ytd' as const;
 
         additions[priority.accountId] = (additions[priority.accountId] || 0) + expectedRemaining;
         rows.push({

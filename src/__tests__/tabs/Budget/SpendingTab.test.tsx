@@ -192,4 +192,58 @@ describe('SpendingTab pacing "why" tooltip', () => {
         // Today's active expenses: $1,000/mo rent — labeled as this month's figure.
         expect(screen.getByText(/\$1,000\/mo this month/)).toBeInTheDocument();
     });
+
+    // #167: TARGET is a balance-target flavor like MULTIPLE_OF_EXPENSES, so it
+    // renders in the Savings Targets section with funded status, not as an
+    // annual contribution row.
+    it('renders a TARGET bucket in the savings-target section with funded status', () => {
+        vi.setSystemTime(new Date(2026, 5, 12)); // June 12, 2026
+
+        const priorities: PriorityBucket[] = [{
+            id: 'hf',
+            name: 'House fund',
+            type: 'SAVINGS',
+            accountId: 'hf1',
+            capType: 'TARGET',
+            capValue: 20000,
+        }];
+
+        renderSpendingTab({
+            budget: { selectedMonth: 6, selectedYear: 2026 },
+            expenses: [rent],
+            accounts: [new SavedAccount('hf1', 'House Fund', 20000, 0)],
+            priorities,
+        });
+
+        // Row lands in the balance-target section…
+        expect(screen.getByText('Savings Targets')).toBeInTheDocument();
+        const row = screen.getByText('House Fund').closest('tr') as HTMLElement;
+        // …with the dollar target and fully-funded status (balance = target).
+        expect(within(row).getAllByText('$20,000').length).toBeGreaterThan(0);
+        expect(within(row).getByText('Fully funded')).toBeInTheDocument();
+    });
+
+    it('shows an in-progress TARGET bucket with the remaining gap', () => {
+        vi.setSystemTime(new Date(2026, 5, 12)); // June 12, 2026
+
+        const priorities: PriorityBucket[] = [{
+            id: 'hf',
+            name: 'House fund',
+            type: 'SAVINGS',
+            accountId: 'hf1',
+            capType: 'TARGET',
+            capValue: 20000,
+        }];
+
+        renderSpendingTab({
+            budget: { selectedMonth: 6, selectedYear: 2026 },
+            expenses: [rent],
+            accounts: [new SavedAccount('hf1', 'House Fund', 5000, 0)],
+            priorities,
+        });
+
+        const row = screen.getByText('House Fund').closest('tr') as HTMLElement;
+        // 5,000 / 20,000 = 25%, $15,000 to go.
+        expect(within(row).getByText(/25% · \$15,000 to go/)).toBeInTheDocument();
+    });
 });

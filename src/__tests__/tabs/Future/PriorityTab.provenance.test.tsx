@@ -48,6 +48,57 @@ describe('PriorityTab allocation waterfall provenance (C2)', () => {
     });
 });
 
+// #167: TARGET — fund a linked account up to a fixed dollar balance.
+describe('PriorityTab TARGET bucket provenance', () => {
+    function renderTargetBucket(balance: number, target: number) {
+        const expenses = [new OtherExpense('e1', 'Rent', 1000, 'Monthly', new Date(2024, 0, 1))];
+        const accounts = [new SavedAccount('acc1', 'House Fund', balance)];
+        const priorities: PriorityBucket[] = [
+            { id: 'bt', name: 'House fund', type: 'SAVINGS', accountId: 'acc1', capType: 'TARGET', capValue: target },
+        ];
+        render(
+            <ReceiptToastProvider>
+                <AssumptionsContext.Provider value={{ state: { ...defaultAssumptions, priorities }, dispatch: vi.fn() }}>
+                    <AccountContext.Provider value={{ accounts, amountHistory: {} }}>
+                        <ExpenseContext.Provider value={{ expenses }}>
+                            <PriorityTab />
+                        </ExpenseContext.Provider>
+                    </AccountContext.Provider>
+                </AssumptionsContext.Provider>
+            </ReceiptToastProvider>
+        );
+    }
+
+    /** Hover the bucket's provenance help button and return the tooltip text. */
+    function readProvenanceTooltip(): string {
+        // The bucket's Tooltip is the last Help button (summary tooltips render first).
+        const helpButtons = screen.getAllByLabelText('Help');
+        fireEvent.mouseEnter(helpButtons[helpButtons.length - 1]);
+        return screen.getByRole('tooltip').textContent ?? '';
+    }
+
+    it('shows the gap (surplus-clamped) when the balance is below target', () => {
+        renderTargetBucket(1000, 5000);
+
+        expect(screen.getByText('Fund to target ($5,000)')).toBeInTheDocument();
+        const text = readProvenanceTooltip();
+        // Gap: $5,000 target − $1,000 balance = $4,000 still needed…
+        expect(text).toContain('Target balance $5,000');
+        expect(text).toContain('Balance $1,000, so $4,000 still needed');
+        // …but no income in this harness → $0 surplus, so the clamp explains $0 funded.
+        expect(text).toContain('funded $0');
+    });
+
+    it('shows "Target met — fully funded" when the balance is at/above target', () => {
+        renderTargetBucket(8000, 5000);
+
+        expect(screen.getByText('Fund to target ($5,000)')).toBeInTheDocument();
+        const text = readProvenanceTooltip();
+        expect(text).toContain('Target met — fully funded');
+        expect(text).toContain('$8,000');
+    });
+});
+
 describe('PriorityTab reorder/delete feedback (B3)', () => {
     it('fires a ReceiptToast on bucket delete', () => {
         renderWithPriorities([

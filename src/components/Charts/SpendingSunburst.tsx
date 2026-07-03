@@ -234,7 +234,7 @@ export const SpendingSunburst = ({
   const activeTotal = activeSpendingData.children.reduce(
     (sum, cat) => sum + (cat.children?.length
       ? cat.children.reduce((s, i) => s + i.value, 0)
-      : (cat as any).value || 0), 0
+      : (cat as { value?: number }).value || 0), 0
   );
 
   return (
@@ -294,7 +294,7 @@ export const SpendingSunburst = ({
             while (current.depth > 1 && current.parent) {
               current = current.parent;
             }
-            const catColor = (current.data as any)?.color;
+            const catColor = (current.data as { color?: string })?.color;
             return resolve(catColor || 'var(--c-content-subtle)');
           }}
           childColor={{ from: 'color', modifiers: [['brighter', 0.3]] }}
