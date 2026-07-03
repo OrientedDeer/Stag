@@ -24,6 +24,7 @@ import { AnyAccount, reconstituteAccount } from '../Accounts/models';
 import { AnyIncome, reconstituteIncome } from '../Income/models';
 import { AnyExpense, reconstituteExpense } from '../Expense/models';
 import { linkOrphanLoanExpenses } from '../../../services/simulation/linkOrphanLoanExpenses';
+import { runJointSearchEphemeral } from '../../../services/jointSearchRunner';
 import { AssumptionsState, defaultAssumptions } from '../Assumptions/AssumptionsContext';
 import { TaxState } from '../Taxes/TaxContext';
 import { AmountHistoryEntry } from '../Accounts/AccountContext';
@@ -431,14 +432,60 @@ export const ScenarioProvider = ({ children }: { children: ReactNode }) => {
 
         // Run simulation (use 50 years to ensure full lifetime coverage)
         const yearsToRun = 50;
-        const simulation = runSimulationWithOptimization(
-            yearsToRun,
-            accounts,
-            incomes,
-            expenses,
-            assumptions,
-            inputs.taxSettings || taxState
-        );
+        const effectiveTaxState = inputs.taxSettings || taxState;
+        let simulation: SimulationYear[];
+        if (!assumptions.investments.taxOptimizationEnabled) {
+            // No joint search → the sync run is fast; a worker round trip would
+            // only add latency. Yield a macrotask first so the "Comparing…"
+            // spinner paints before the synchronous block (same gotcha as
+            // buildProjectionAsync's fast path, #158).
+            await new Promise<void>(resolve => setTimeout(resolve, 0));
+            simulation = runSimulationWithOptimization(
+                yearsToRun,
+                accounts,
+                incomes,
+                expenses,
+                assumptions,
+                effectiveTaxState
+            );
+        } else {
+            try {
+                // #166: the multi-second joint conversion/order search runs in a
+                // fresh single-use worker (spawn → run → terminate) so Run
+                // Comparison doesn't freeze the UI — and, unlike the persistent
+                // jointSearch runner, can neither supersede nor be superseded by
+                // an in-flight live-projection recalc.
+                simulation = await runJointSearchEphemeral({
+                    yearsToRun,
+                    accounts,
+                    incomes,
+                    expenses,
+                    assumptions,
+                    taxState: effectiveTaxState,
+                    // Explicit so the worker prorates from the same date the sync
+                    // path resolves internally (`referenceDate ?? new Date()`).
+                    referenceDate: new Date(),
+                });
+            } catch (err) {
+                // Worker unavailable (jsdom/tests, exotic browsers) or failed —
+                // fall back to the synchronous engine with the live instances,
+                // behind a macrotask yield so the spinner stays painted. Surface
+                // the cause in dev (same guard as buildProjectionAsync): a
+                // permanently-broken worker is otherwise invisible.
+                if (import.meta.env.DEV) {
+                    console.warn('scenario comparison worker unavailable; running on the main thread instead:', err);
+                }
+                await new Promise<void>(resolve => setTimeout(resolve, 0));
+                simulation = runSimulationWithOptimization(
+                    yearsToRun,
+                    accounts,
+                    incomes,
+                    expenses,
+                    assumptions,
+                    effectiveTaxState
+                );
+            }
+        }
 
         // Calculate milestones
         const milestones = calculateMilestones(simulation, assumptions);

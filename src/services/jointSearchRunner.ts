@@ -112,6 +112,23 @@ let worker: Worker | null = null;
 let inFlight: InFlight | null = null;
 let nextRequestId = 1;
 
+/** Build the postMessage payload for a request (shared by both run modes). */
+function toWorkerRequest(input: JointSearchInput, requestId: number): JointSearchWorkerRequest {
+    return {
+        requestId,
+        yearsToRun: input.yearsToRun,
+        accounts: input.accounts as unknown[],
+        incomes: input.incomes as unknown[],
+        expenses: input.expenses as unknown[],
+        assumptions: input.assumptions,
+        taxState: input.taxState,
+        referenceDate: input.referenceDate,
+        eoyContributionAdditions: input.eoyContributionAdditions,
+        eoyDebtReductions: input.eoyDebtReductions,
+        eoyMortgageReductions: input.eoyMortgageReductions,
+    };
+}
+
 function dropWorker(): void {
     worker?.terminate();
     worker = null;
@@ -187,19 +204,70 @@ export function runJointSearchInWorker(input: JointSearchInput): Promise<Simulat
         }
         const requestId = nextRequestId++;
         inFlight = { requestId, resolve, reject, onProgress: input.onProgress };
-        const req: JointSearchWorkerRequest = {
-            requestId,
-            yearsToRun: input.yearsToRun,
-            accounts: input.accounts as unknown[],
-            incomes: input.incomes as unknown[],
-            expenses: input.expenses as unknown[],
-            assumptions: input.assumptions,
-            taxState: input.taxState,
-            referenceDate: input.referenceDate,
-            eoyContributionAdditions: input.eoyContributionAdditions,
-            eoyDebtReductions: input.eoyDebtReductions,
-            eoyMortgageReductions: input.eoyMortgageReductions,
+        worker.postMessage(toWorkerRequest(input, requestId));
+    });
+}
+
+/**
+ * Run one joint search in a fresh, single-use worker: spawn → run → terminate
+ * (#166, the scenario-comparison "Run Comparison" path). Deliberately NOT
+ * routed through the persistent runner above: its supersede semantics are
+ * "latest request wins, terminate the in-flight one" — correct for the live
+ * projection (only the newest inputs matter) but wrong in BOTH directions for
+ * a comparison run, which must always complete: a live recalc landing mid-run
+ * would silently cancel the comparison, and the comparison would terminate a
+ * live recalc whose caller treats the rejection as "a newer request owns the
+ * UI" and never repaints. An ephemeral worker is fully isolated — no shared
+ * state, no supersede rules, no contention for the persistent worker's memo
+ * cache — and costs nothing when idle. Its memo cache starts cold, which is
+ * fine: scenario inputs differ from the live plan's, so there is nothing to
+ * reuse anyway.
+ *
+ * Rejects with an ordinary Error if the worker can't be constructed or the
+ * run fails — the caller falls back to the synchronous engine. There is no
+ * `JointSearchSupersededError` on this path by design.
+ */
+export function runJointSearchEphemeral(input: JointSearchInput): Promise<SimulationYear[]> {
+    return new Promise<SimulationYear[]>((resolve, reject) => {
+        if (typeof Worker === 'undefined') {
+            reject(new Error('Web Workers unavailable in this environment'));
+            return;
+        }
+        let ephemeral: Worker;
+        try {
+            ephemeral = new Worker(new URL('./jointSearch.worker.ts', import.meta.url), { type: 'module' });
+        } catch (e) {
+            reject(e instanceof Error ? e : new Error('joint search worker unavailable'));
+            return;
+        }
+        const requestId = nextRequestId++;
+        const settle = (finish: () => void): void => {
+            ephemeral.terminate();
+            finish();
         };
-        worker.postMessage(req);
+        ephemeral.onmessage = (e: MessageEvent<JointSearchWorkerResponse>): void => {
+            const msg = e.data;
+            if (msg.requestId !== requestId) return;
+            if (msg.type === 'progress') {
+                input.onProgress?.(msg.message);
+                return;
+            }
+            if (msg.type === 'done') {
+                // Reconstitution can throw — reject rather than leaving the
+                // promise (and the comparison busy state) hanging.
+                try {
+                    const timeline = reconstituteTimeline(msg.timeline);
+                    settle(() => resolve(timeline));
+                } catch (err) {
+                    settle(() => reject(err instanceof Error ? err : new Error(String(err))));
+                }
+            } else {
+                settle(() => reject(new Error(msg.message)));
+            }
+        };
+        ephemeral.onerror = (ev: ErrorEvent): void => {
+            settle(() => reject(new Error(ev.message || 'joint search worker error')));
+        };
+        ephemeral.postMessage(toWorkerRequest(input, requestId));
     });
 }
