@@ -14,12 +14,16 @@ import {
     runMonteCarloSimulationSync,
     buildMcAfterTaxRuler,
     mcYearsToRun,
+    computeHorizonTriptych,
+    TRIPTYCH_AGES,
 } from '../../services/MonteCarloEngine';
 import {
     analyzeScenario,
     computeConversionStats,
     totalConvertedInTimeline,
     getPercentileValue,
+    crraCertaintyEquivalent,
+    computeCertaintyEquivalents,
 } from '../../services/MonteCarloAggregator';
 import { SeededRandom } from '../../services/RandomGenerator';
 import { runSimulation } from '../../components/Objects/Assumptions/useSimulation';
@@ -242,5 +246,130 @@ describe('F11 — conversion-facing folds', TIMEOUT, () => {
         const median = (a: number[]): number | null => (a.length ? pctl(a, 50) : null);
         expect(stats.medianConvertedAfterDownYear).toBe(median(afterDown));
         expect(stats.medianConvertedAfterOtherYears).toBe(median(afterOther));
+    });
+});
+
+describe('F13/#160 — CRRA certainty equivalents', TIMEOUT, () => {
+    it('matches hand-computed values at gamma=2 and gamma=4', () => {
+        const values = [100, 200, 400];
+        // gamma=2: CE = n / Σ(1/w) = 3 / (1/100 + 1/200 + 1/400) = 3/0.0175 = 1200/7
+        expect(crraCertaintyEquivalent(values, 2)).toBeCloseTo(1200 / 7, 8);
+        // gamma=4: CE = (mean(w^-3))^(-1/3)
+        //   mean = (1e-6 + 1.25e-7 + 1.5625e-8)/3 = 3.802083e-7 → CE ≈ 138.036
+        expect(crraCertaintyEquivalent(values, 4)).toBeCloseTo(138.03613466513653, 6);
+        // Also pin against the direct un-normalized textbook formula — an
+        // independent check on the median-normalized implementation.
+        const direct = Math.pow(
+            (Math.pow(100, -3) + Math.pow(200, -3) + Math.pow(400, -3)) / 3, -1 / 3,
+        );
+        expect(crraCertaintyEquivalent(values, 4)).toBeCloseTo(direct, 8);
+    });
+
+    it('is scale-invariant at 6-7-figure wealth (the median-normalization is numerically safe)', () => {
+        const base = [42_000, 500_000, 1_500_000, 8_000_000];
+        for (const gamma of [2, 4]) {
+            const small = crraCertaintyEquivalent(base, gamma);
+            const large = crraCertaintyEquivalent(base.map(v => v * 1000), gamma);
+            expect(Number.isFinite(small)).toBe(true);
+            expect(Number.isFinite(large)).toBe(true);
+            // CE(k·w) = k·CE(w)
+            expect(large / 1000).toBeCloseTo(small, 6);
+        }
+        // Degenerate distribution: CE of a sure thing is the sure thing.
+        expect(crraCertaintyEquivalent([750_000, 750_000], 4)).toBeCloseTo(750_000, 6);
+    });
+
+    it('excludes failed paths and non-positive after-tax values from the solvent set', () => {
+        // Path 0: positive but FAILED (mid-life deficit; #111 success flag wins).
+        // Path 1, 2: solvent. Path 3: success flag set but after-tax value ≤ 0 —
+        // CRRA is undefined there, guarded out with no epsilon floor.
+        const values = [900, 100, 200, -50];
+        const flags = [false, true, true, true];
+        const ce = computeCertaintyEquivalents(values, flags);
+        expect(ce).toBeDefined();
+        expect(ce!.solventCount).toBe(2);
+        expect(ce!.totalCount).toBe(4);
+        // Hand-computed over the surviving {100, 200}:
+        //   gamma=2: 2 / (1/100 + 1/200) = 400/3
+        expect(ce!.gamma2).toBeCloseTo(400 / 3, 8);
+        //   gamma=4: (mean(100^-3, 200^-3))^(-1/3) ≈ 121.141
+        expect(ce!.gamma4).toBeCloseTo(121.14137285547595, 6);
+        // No qualifying path at all → undefined (the failure rate tells that story).
+        expect(computeCertaintyEquivalents([-1, 100], [true, false])).toBeUndefined();
+        // Direct CE call on non-positive wealth is a loud error, not a coercion.
+        expect(() => crraCertaintyEquivalent([100, 0], 2)).toThrow();
+    });
+
+    it('summary CE: gamma4 ≤ gamma2 ≤ solvent mean, matching an independent engine fold', () => {
+        const sc = makeScenario();
+        const cfg = mcConfig();
+        const summary = runMonteCarloSimulationSync(
+            cfg, sc.accounts, sc.incomes, sc.expenses, sc.assumptions, sc.taxState, {},
+        );
+        expect(summary.certaintyEquivalents).toBeDefined();
+        const ce = summary.certaintyEquivalents!;
+
+        // Independent recompute: same seed stream, same per-path sims, same ruler;
+        // solvency from analyzeScenario's #111 success flag.
+        const years = mcYearsToRun(sc.assumptions);
+        const ruler = buildMcAfterTaxRuler(years, sc.accounts, sc.incomes, sc.expenses, sc.assumptions, sc.taxState);
+        const rng = new SeededRandom(cfg.seed);
+        const afterTax: number[] = [];
+        const success: boolean[] = [];
+        for (let i = 0; i < cfg.numScenarios; i++) {
+            const returns = rng.generateReturns(years, cfg.returnMean, cfg.returnStdDev);
+            const tl = runSimulation(years, sc.accounts, sc.incomes, sc.expenses, sc.assumptions, sc.taxState, returns, {});
+            afterTax.push(terminalAfterTaxNetWorth(tl, ruler));
+            success.push(analyzeScenario(i, tl, returns).success);
+        }
+        const expected = computeCertaintyEquivalents(afterTax, success)!;
+        expect(Math.abs(ce.gamma2 - expected.gamma2)).toBeLessThan(1);
+        expect(Math.abs(ce.gamma4 - expected.gamma4)).toBeLessThan(1);
+        expect(ce.solventCount).toBe(expected.solventCount);
+        expect(ce.totalCount).toBe(cfg.numScenarios);
+
+        // Risk-aversion ordering: CE(γ=4) ≤ CE(γ=2) ≤ mean of the solvent values.
+        const solvent = afterTax.filter((v, i) => success[i] && v > 0);
+        const solventMean = solvent.reduce((s, v) => s + v, 0) / solvent.length;
+        expect(ce.gamma4).toBeLessThanOrEqual(ce.gamma2 + 1e-9);
+        expect(ce.gamma2).toBeLessThanOrEqual(solventMean + 1e-9);
+    });
+});
+
+describe('F13/#160 — horizon triptych', TIMEOUT, () => {
+    it('produces finite after-tax values at 75/85/95; the 75 column equals a direct runSimulation-to-75 valuation', () => {
+        const sc = makeScenario(); // age 65 today, configured LE 80
+        const trip = computeHorizonTriptych(sc.accounts, sc.incomes, sc.expenses, sc.assumptions, sc.taxState);
+        expect(trip.map(h => h.age)).toEqual([...TRIPTYCH_AGES]);
+        // All three horizons exceed current age + 1 — every column runs, INCLUDING
+        // 95 which lies past the configured LE of 80 (the point of the stress).
+        // Monotone-nondecreasing wealth is deliberately NOT asserted: dying later
+        // can be poorer, and that is real.
+        for (const h of trip) {
+            expect(h.afterTaxNetWorth).not.toBeNull();
+            expect(Number.isFinite(h.afterTaxNetWorth!)).toBe(true);
+        }
+
+        // Direct 75-horizon valuation constructed WITHOUT the triptych helper:
+        // fresh milestones with End of Plan at 75, deterministic run, per-horizon ruler.
+        const BY = NOW - 65;
+        const a75: AssumptionsState = { ...sc.assumptions, milestones: createBuiltinMilestones(BY, 65, 75) };
+        const years = mcYearsToRun(a75);
+        const tl = runSimulation(years, sc.accounts, sc.incomes, sc.expenses, a75, sc.taxState, undefined, {});
+        const ruler75 = buildMcAfterTaxRuler(years, sc.accounts, sc.incomes, sc.expenses, a75, sc.taxState);
+        expect(trip[0].afterTaxNetWorth!).toBeCloseTo(terminalAfterTaxNetWorth(tl, ruler75), 6);
+    });
+
+    it('skips horizons at or below current age + 1', () => {
+        const sc = makeScenario();
+        // Re-anchor the household to age 80 today: the 75 column is behind them.
+        const assumptions: AssumptionsState = {
+            ...sc.assumptions,
+            milestones: createBuiltinMilestones(NOW - 80, 65, 85),
+        };
+        const trip = computeHorizonTriptych(sc.accounts, sc.incomes, sc.expenses, assumptions, sc.taxState);
+        expect(trip[0]).toEqual({ age: 75, afterTaxNetWorth: null });
+        expect(trip[1].afterTaxNetWorth).not.toBeNull();
+        expect(trip[2].afterTaxNetWorth).not.toBeNull();
     });
 });
