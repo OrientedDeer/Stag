@@ -104,6 +104,12 @@ export async function buildProjectionAsync(
         if (err instanceof JointSearchSupersededError) throw err;
         // Worker unavailable (jsdom/tests, exotic browsers) or failed —
         // fall back to the synchronous engine with the live instances.
+        // A permanently-broken worker is otherwise invisible (the sync path
+        // just silently freezes the UI again); surface it in dev so it's
+        // diagnosable — same guard the Monte Carlo worker fallback carries.
+        if (import.meta.env.DEV) {
+            console.warn('joint search worker unavailable; running on the main thread instead:', err);
+        }
         return runSimulationWithOptimization(
             yearsToRun, accounts, incomes, expenses, assumptions, taxState,
             undefined, undefined, additions, debtReductions, mortgageReductions,

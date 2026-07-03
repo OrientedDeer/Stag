@@ -11,6 +11,10 @@
  * summary is posted back and re-reconstituted on the main thread
  * (see montecarloRunner.reconstituteSummary).
  */
+// MUST stay the first import — see workerWindowShim doc (dev react-refresh
+// preamble references `window`; without the shim this worker dies at load and
+// every MC run silently falls back to the main-thread engine).
+import './workerWindowShim';
 import { runMonteCarloSimulation, solveMcConversionPlan } from './MonteCarloEngine';
 import { getCachedPlan, putCachedPlan } from './policyCache';
 import { reconstituteAccount } from '../components/Objects/Accounts/models';
