@@ -252,6 +252,8 @@ export function computeConversionStats(scenarios: ScenarioResult[]): ConversionM
         fractionOfPathsConverting: scenarios.length > 0 ? converting / scenarios.length : 0,
         medianConvertedAfterDownYear: medianOrNull(afterDown),
         medianConvertedAfterOtherYears: medianOrNull(afterOther),
+        sampleYearsAfterDown: afterDown.length,
+        sampleYearsAfterOther: afterOther.length,
     };
 }
 

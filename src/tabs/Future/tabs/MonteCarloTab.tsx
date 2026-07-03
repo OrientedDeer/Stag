@@ -9,14 +9,14 @@ import { TaxContext } from '../../../components/Objects/Taxes/TaxContext';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { applyChosenWithdrawalOrder } from '../../../services/simulation/EngineDirectConversionSearch';
 import { calculateNetWorth, formatCompactCurrency } from './FutureUtils';
-import { YearlyPercentile, RETURN_PRESETS, ReturnPresetKey, getPresetReturnMean } from '../../../services/MonteCarloTypes';
+import { YearlyPercentile, RETURN_PRESETS, ReturnPresetKey, getPresetReturnMean, ConversionMcStats } from '../../../services/MonteCarloTypes';
 import { HISTORICAL_STATS } from '../../../data/HistoricalReturns';
 import { HistoricalBacktestPanel } from './HistoricalBacktestPanel';
 import { DropdownInput } from '../../../components/Layout/InputFields/DropdownInput';
 import { PercentageInput } from '../../../components/Layout/InputFields/PercentageInput';
 import { NumberInput } from '../../../components/Layout/InputFields/NumberInput';
 import { ToggleInput } from '../../../components/Layout/InputFields/ToggleInput';
-import { useHorizonTriptych } from './useHorizonTriptych';
+import { Tooltip } from '../../../components/Layout/InputFields/Tooltip';
 
 interface MonteCarloTabProps {
     simulationData: SimulationYear[];
@@ -43,6 +43,37 @@ function extractDeterministicLine(simulationData: SimulationYear[]): YearlyPerce
         year: year.year,
         netWorth: calculateNetWorth(year.accounts),
     }));
+}
+
+/**
+ * Buy-the-dip line (#162): turn the after-a-down-year vs other-years median
+ * conversion comparison into ONE interpreted sentence instead of two nearly
+ * identical dollar figures. Returns null (line hidden) when either sample is
+ * too small for its median to mean anything, or when the other-years median
+ * is $0 (no base for a percentage).
+ */
+const DIP_MIN_SAMPLE_YEARS = 20;
+const DIP_MEANINGFUL_DIFF_PCT = 5;
+
+function describeBuyTheDip(stats: ConversionMcStats, fmt: (n: number) => string): string | null {
+    const down = stats.medianConvertedAfterDownYear;
+    const other = stats.medianConvertedAfterOtherYears;
+    if (down === null || other === null) return null;
+    // Older persisted summaries predate the sample counts; undefined fails the
+    // gate and the line simply stays hidden until the next run.
+    if (!(stats.sampleYearsAfterDown >= DIP_MIN_SAMPLE_YEARS)
+        || !(stats.sampleYearsAfterOther >= DIP_MIN_SAMPLE_YEARS)) return null;
+    if (other <= 0) return null;
+    const diffPct = (down / other - 1) * 100;
+    const medians = `(median ${fmt(down)} vs ${fmt(other)})`;
+    if (Math.abs(diffPct) < DIP_MEANINGFUL_DIFF_PCT) {
+        return `The conversion policy converted about the same after down years as in other years ${medians} — on your inputs, market dips barely change the recommended conversions.`;
+    }
+    const n = Math.round(Math.abs(diffPct));
+    if (diffPct > 0) {
+        return `The conversion policy converted ${n}% more in the year after a market loss ${medians} — the policy buys the dip: converting after a crash moves more shares for the same tax.`;
+    }
+    return `The conversion policy converted ${n}% less in the year after a market loss ${medians}.`;
 }
 
 /**
@@ -130,14 +161,11 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
         return extractDeterministicLine(simulationData);
     }, [simulationData]);
 
-    // Horizon triptych (F13/#160): three deterministic re-scores at death 75/85/95.
-    // Computed OUTSIDE the MC run (no MC results needed), gated on the sub-tab so
-    // the Historical view never pays for the sims.
-    const triptych = useHorizonTriptych(
-        activeSubTab === 'monte-carlo',
-        accounts, incomes, expenses, assumptions, taxState,
-        simulationData[0]?.chosenWithdrawalOrder,
-    );
+    // Buy-the-dip line (#162): one interpreted sentence, or null (hidden) on a
+    // thin sample / $0 base.
+    const dipLine = summary?.conversionStats
+        ? describeBuyTheDip(summary.conversionStats, (n) => formatCompactCurrency(n, { forceExact }))
+        : null;
 
     // Near-tie tiebreak note (#160 task 3): when the baseline comparison ran and
     // both the success rate and the median after-tax outcome are essentially
@@ -294,7 +322,7 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                         label="Mean Return"
                         value={config.returnMean}
                         onChange={handleReturnMeanChange}
-                        tooltip="Expected average annual return"
+                        tooltip="Average annual return the random paths are drawn around. With Inflation Adjusted ON this is a NOMINAL return — your real return plus your inflation assumption (e.g. 7% real + 2.5% inflation = 9.5% here) — because the simulation runs in nominal dollars. With it OFF it's a real return, applied directly in today's dollars."
                         max={50}
                     />
 
@@ -494,58 +522,31 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                             </div>
                         </div>
                     </div>
-                    {/* CRRA certainty equivalents (fp-review F13 / #160). Solvent-only
-                        by convention — CRRA is undefined at ≤$0 wealth — so the line
-                        always names the conditioning and sits next to the failure rate. */}
+                    {/* CRRA certainty equivalent (fp-review F13 / #160). Solvent-only
+                        by convention — CRRA is undefined at ≤$0 wealth. γ=2 is the
+                        headline; γ=4 lives in the tooltip (it's dominated by the single
+                        worst surviving path and reads alarmist as a headline). */}
                     {summary.certaintyEquivalents && (
                         <div className="mt-3 pt-3 border-t border-border-default text-sm text-content-muted">
-                            <span
-                                className="cursor-help underline decoration-dotted underline-offset-2"
-                                title="A certainty equivalent is the guaranteed amount you'd trade the risky distribution for; higher γ means more risk-averse. Computed over solvent paths only — failed paths are reported by the failure rate instead."
-                            >
-                                Certainty-equivalent (γ=2 / γ=4)
+                            <span className="inline-flex items-center gap-1">
+                                Certainty equivalent
+                                <Tooltip text={
+                                    `If you could trade this plan's range of outcomes for one guaranteed amount, `
+                                    + `a moderately risk-averse person would accept about `
+                                    + `${formatCompactCurrency(summary.certaintyEquivalents.gamma2, { forceExact })} (γ=2). `
+                                    + `A very risk-averse person would accept `
+                                    + `${formatCompactCurrency(summary.certaintyEquivalents.gamma4, { forceExact })} (γ=4) — `
+                                    + `that lower number is dominated by the single worst surviving path. `
+                                    + `Computed only over the ${((summary.certaintyEquivalents.solventCount / summary.certaintyEquivalents.totalCount) * 100).toFixed(0)}% `
+                                    + `of runs that stay solvent — the success rate tells the rest of the story.`
+                                } />
                             </span>
                             {': '}
                             <span className="text-content-default font-medium tabular-nums">
                                 {formatCompactCurrency(summary.certaintyEquivalents.gamma2, { forceExact })}
-                                {' / '}
-                                {formatCompactCurrency(summary.certaintyEquivalents.gamma4, { forceExact })}
                             </span>
-                            {' '}— among the {((summary.certaintyEquivalents.solventCount / summary.certaintyEquivalents.totalCount) * 100).toFixed(0)}%
-                            of paths that stay solvent ({summary.certaintyEquivalents.solventCount} of {summary.certaintyEquivalents.totalCount});
-                            read alongside the {(100 - summary.successRate).toFixed(1)}% failure rate.
                         </div>
                     )}
-                </div>
-            )}
-
-            {/* Horizon triptych (fp-review F13 / #160): deterministic re-scores of the
-                current plan ended at 75/85/95. Independent of the MC run. */}
-            {triptych && triptych.some(h => h.afterTaxNetWorth !== null) && (
-                <div className="bg-surface-overlay/50 rounded-xl p-4 border border-border-default">
-                    <h4 className="text-content-default font-medium mb-1">If the Plan Ends at 75 / 85 / 95</h4>
-                    <p className="text-content-muted text-xs mb-3">
-                        Deterministic re-scores of your current plan ended at each age on the
-                        expected-return path — not Monte Carlo percentiles. Values are after-tax
-                        terminal net worth, on the same valuation as the after-tax row.
-                    </p>
-                    <div className="grid grid-cols-3 gap-4">
-                        {triptych.map(h => (
-                            <div key={h.age}>
-                                <div className="text-content-muted text-xs uppercase tracking-wider mb-1">
-                                    Ends at {h.age}
-                                </div>
-                                <div className="text-lg lg:text-xl font-bold text-content-default truncate">
-                                    {h.afterTaxNetWorth !== null
-                                        ? formatCompactCurrency(h.afterTaxNetWorth, { forceExact })
-                                        : '—'}
-                                </div>
-                                {h.afterTaxNetWorth === null && (
-                                    <div className="text-content-muted text-xs mt-1">Already past this age</div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
                 </div>
             )}
 
@@ -572,17 +573,7 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                                 {(summary.conversionStats.fractionOfPathsConverting * 100).toFixed(0)}%
                             </span>
                         </div>
-                        {summary.conversionStats.medianConvertedAfterDownYear !== null
-                            && summary.conversionStats.medianConvertedAfterOtherYears !== null && (
-                            <div>
-                                Median converted the year after a market loss vs other years:{' '}
-                                <span className="text-content-default font-medium tabular-nums">
-                                    {formatCompactCurrency(summary.conversionStats.medianConvertedAfterDownYear, { forceExact })}
-                                    {' vs '}
-                                    {formatCompactCurrency(summary.conversionStats.medianConvertedAfterOtherYears, { forceExact })}
-                                </span>
-                            </div>
-                        )}
+                        {dipLine && <div>{dipLine}</div>}
                     </div>
                 </div>
             )}
@@ -700,9 +691,11 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                         <strong>What this simulation holds fixed:</strong> only investment returns are
                         randomized. Inflation, salary growth, savings interest, and property
                         appreciation follow your deterministic assumptions on every path; the plan
-                        always ends at your configured End of Plan age; and taxes use current-law
-                        brackets and your configured filing status on every path — future tax-law
-                        changes are not modeled.
+                        always ends at your configured End of Plan age; and taxes use your
+                        configured filing status on every path. Tax brackets and deductions keep
+                        pace with your inflation assumption; what&apos;s held fixed is the LAW
+                        itself — today&apos;s rates, bracket structure, and rules, with no future
+                        legislation.
                     </p>
                 </div>
             </div>

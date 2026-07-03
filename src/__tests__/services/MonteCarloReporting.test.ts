@@ -246,6 +246,10 @@ describe('F11 — conversion-facing folds', TIMEOUT, () => {
         const median = (a: number[]): number | null => (a.length ? pctl(a, 50) : null);
         expect(stats.medianConvertedAfterDownYear).toBe(median(afterDown));
         expect(stats.medianConvertedAfterOtherYears).toBe(median(afterOther));
+        // #162: sample sizes are exposed so the UI can hide the comparison when
+        // either slice is too thin for its median to mean anything.
+        expect(stats.sampleYearsAfterDown).toBe(afterDown.length);
+        expect(stats.sampleYearsAfterOther).toBe(afterOther.length);
     });
 });
 
