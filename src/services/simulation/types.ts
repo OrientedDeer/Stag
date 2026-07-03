@@ -670,6 +670,17 @@ export interface AccountBalanceSnapshot {
     accountId: string;
     accountName: string;
     accountType: WithdrawalAccountType;
+    /**
+     * #155: per-snapshot consumption key. When a Roth account is split into a
+     * penalty-free slice + a penalized slice (two snapshots sharing one accountId),
+     * the planner's ACA-substitution consumption map must track each slice
+     * separately — keying by accountId would let consumption on one slice corrupt
+     * the other's availability. Defaults to accountId when absent (unsplit).
+     */
+    sliceKey?: string;
+    /** #155: which side of the under-59½ Roth penalty split this snapshot is
+     *  (absent for unsplit snapshots). Informational / decision-log readability. */
+    rothSlice?: 'penaltyFree' | 'penalized';
     balance: number;
     vestedBalance: number;
     /** For brokerage: unrealized gains / balance */

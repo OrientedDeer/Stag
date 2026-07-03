@@ -69,6 +69,11 @@ self.onmessage = async (e: MessageEvent): Promise<void> => {
         // absorbs float noise (benign extra misses otherwise); the current year
         // guards against day-to-day drift.
         const cacheKey = JSON.stringify({
+            // Engine-behavior version: the key otherwise hashes INPUTS only, so an
+            // engine change (e.g. #155's Roth penalty-slice split) would replay a
+            // stale cached policy solved under the old behavior. Bump on
+            // policy-affecting engine changes so old IndexedDB entries miss.
+            v: 'v2-155',
             rm: Number(req.config.returnMean.toFixed(4)),
             rs: Number(req.config.returnStdDev.toFixed(4)),
             a: req.accounts,

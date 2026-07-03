@@ -320,6 +320,119 @@ function categorizeSnapshots(
     return { nonPenalized, savings, penalized };
 }
 
+// #155: a slice below this is immaterial — don't split (avoids ~$0 snapshots from
+// float dust). Matches the "> ~$1" materiality call in the issue scope.
+const ROTH_SLICE_EPSILON = 1;
+
+/**
+ * #155: split each under-59½ Roth snapshot into a PENALTY-FREE slice (contribution
+ * basis + conversion layers aged ≥ 5 years — withdrawable with no tax and no
+ * penalty) and a PENALIZED slice (young conversions + earnings).
+ *
+ * Why: categorizeSnapshots decides "penalized" per-ACCOUNT, so an under-59½ Roth
+ * lands whole in nonPenalized and a deficit that outruns its penalty-free basis
+ * silently rolls into penalized earnings (ordinary tax + 10%) while a later
+ * account in the order — even a penalized Traditional — goes untouched. The split
+ * keeps the free slice in the account's place in the order and defers the
+ * penalized slice to the very END of the penalized bucket, so a deficit stops at
+ * the free slice, spills to the next account, and touches penalized Roth earnings
+ * only as the last resort. Placing the penalized Roth slice AFTER even the
+ * under-65 HSA snapshots is deliberate: Roth-space preservation (tax-free growth
+ * forever) outweighs rate-pure micro-ordering in a corner that is near-unreachable
+ * in practice (everything else must already be drained).
+ *
+ * Mechanics: the FREE slice keeps rothContributions/conversionHistory; the
+ * PENALIZED slice zeroes them so planWithdrawals' pooled-basis builders don't
+ * double-count. Capping the free slice's draw at its vestedBalance makes
+ * grossUpRoth's FIFO walk (contributions → oldest conversions → …) consume exactly
+ * the free layers, because the penalized layers come last by construction; the
+ * penalized slice then walks the young conversion layers correctly via the SAME
+ * in-place-mutated pooled conversion arrays (pooledRothConversions /
+ * roth401kConversions) the free slice already advanced.
+ *
+ * roth_ira free capacity is POOLED across accounts (IRS Pub 590-B — mirrors
+ * planWithdrawals) and allocated to accounts in input order, which is the drain
+ * order. roth_401k is per-account. The pooled allocation is per-call: if Roth IRAs
+ * were split across this call and another (ordered tier vs #111 fallback tier),
+ * each call would only see its own snapshots' basis. In practice the fallback tier
+ * is EMPTY on the tax-opt path — the reorder-only withdrawal UI auto-syncs every
+ * eligible account into the order — so we don't defend against it.
+ *
+ * Gated by the caller to the tax-opt path (honorLiteralOrder=false) only; the
+ * literal-order path stays byte-identical (#154). No-op at age ≥ 59½.
+ */
+function splitRothPenaltySlices(
+    buckets: { nonPenalized: AccountBalanceSnapshot[]; penalized: AccountBalanceSnapshot[] },
+    currentAge: number,
+    currentYear: number,
+): void {
+    if (currentAge >= EARLY_WITHDRAWAL_AGE) return; // self-healing: no split at 59½+
+
+    // Penalty-free capacity carried on a snapshot: contribution basis plus
+    // conversion layers aged ≥ 5 years (same aging convention as grossUpRoth's
+    // per-layer penalty check: currentYear - conv.year >= 5).
+    const freeCapacityOf = (s: AccountBalanceSnapshot): number =>
+        Math.max(0, s.rothContributions ?? 0)
+        + (s.conversionHistory ?? []).reduce(
+            (sum, c) => sum + (c.amount > 0 && currentYear - c.year >= 5 ? c.amount : 0), 0);
+
+    let remainingPooledFree = buckets.nonPenalized
+        .filter(s => s.accountType === 'roth_ira')
+        .reduce((sum, s) => sum + freeCapacityOf(s), 0);
+
+    const newNonPenalized: AccountBalanceSnapshot[] = [];
+    const penalizedSlices: AccountBalanceSnapshot[] = [];
+    for (const s of buckets.nonPenalized) {
+        if (s.accountType !== 'roth_ira' && s.accountType !== 'roth_401k') {
+            newNonPenalized.push(s);
+            continue;
+        }
+        let freeSlice: number;
+        if (s.accountType === 'roth_ira') {
+            // Pooled basis is fungible across Roth IRAs: allocate the remaining
+            // pooled free capacity in input (= drain) order, regardless of which
+            // snapshot's fields happen to carry the basis.
+            freeSlice = Math.min(s.vestedBalance, remainingPooledFree);
+            remainingPooledFree -= freeSlice;
+        } else {
+            freeSlice = Math.min(s.vestedBalance, freeCapacityOf(s));
+        }
+        const remainder = s.vestedBalance - freeSlice;
+
+        if (remainder <= ROTH_SLICE_EPSILON) {
+            // Effectively all penalty-free — no split needed.
+            newNonPenalized.push(s);
+            continue;
+        }
+        if (freeSlice <= ROTH_SLICE_EPSILON) {
+            // Effectively all penalized — move the WHOLE snapshot to the end of the
+            // penalized bucket, KEEPING its basis fields: it's the sole slice for
+            // this account, and (for pooled roth_ira) its rothContributions /
+            // conversionHistory may back another account's free slice, so the
+            // pooled builders must still see them exactly once.
+            penalizedSlices.push({ ...s, rothSlice: 'penalized' });
+            continue;
+        }
+        newNonPenalized.push({
+            ...s,
+            vestedBalance: freeSlice,
+            sliceKey: `${s.accountId}::penaltyFree`,
+            rothSlice: 'penaltyFree',
+        });
+        penalizedSlices.push({
+            ...s,
+            vestedBalance: remainder,
+            rothContributions: 0,
+            conversionHistory: [],
+            sliceKey: `${s.accountId}::penalized`,
+            rothSlice: 'penalized',
+        });
+    }
+    buckets.nonPenalized.length = 0;
+    buckets.nonPenalized.push(...newNonPenalized);
+    buckets.penalized.push(...penalizedSlices);
+}
+
 /**
  * Create snapshots for all accounts in withdrawal order.
  * On the optimizer-owned path (honorLiteralOrder=false) savings leads the
@@ -358,6 +471,10 @@ export function createOrderedSnapshots(
 ): AccountBalanceSnapshot[] {
     // Use mid-year date for ESPP disposition calculations
     const snapshotDate = year ? new Date(year, 5, 15) : undefined;
+    // #155: year for aging Roth conversion layers (5-year rule) in the penalty
+    // split. Falls back to today, matching createAccountSnapshot's
+    // `snapshotDate ?? new Date()` convention; YearSolver always passes `year`.
+    const sliceYear = year ?? new Date().getFullYear();
 
     // Ordered tier: resolve withdrawalOrder to accounts (skip unknown ids), collect
     // the ids seen so the fallback tier can filter to the remainder.
@@ -387,9 +504,13 @@ export function createOrderedSnapshots(
     const orderedResult = honorLiteralOrder
         ? orderedAccounts.map(a => createAccountSnapshot(a, snapshotDate))
         : (() => {
-              const { nonPenalized, savings, penalized } = categorizeSnapshots(orderedAccounts, snapshotDate, currentAge);
+              const buckets = categorizeSnapshots(orderedAccounts, snapshotDate, currentAge);
+              // #155: on the optimizer-owned path, split under-59½ Roth snapshots
+              // into penalty-free + penalized slices so a deficit stops at the
+              // free basis instead of rolling into penalized earnings.
+              splitRothPenaltySlices(buckets, currentAge, sliceYear);
               // Final order: savings → non-penalized → penalized (#161)
-              return [...savings, ...nonPenalized, ...penalized];
+              return [...buckets.savings, ...buckets.nonPenalized, ...buckets.penalized];
           })();
     if (!includeUnorderedSellable) return orderedResult;
 
@@ -398,9 +519,14 @@ export function createOrderedSnapshots(
     // user's entire order — a safety net so the drawdown liquidates a real asset
     // before processDeficitDebt can fabricate debt.
     const fallbackAccounts = accounts.filter(a => !orderedIds.has(a.id) && isSellableAccount(a));
-    const { nonPenalized: fbNonPenalized, savings: fbSavings, penalized: fbPenalized } =
-        categorizeSnapshots(fallbackAccounts, snapshotDate, currentAge);
-    return [...orderedResult, ...fbNonPenalized, ...fbSavings, ...fbPenalized];
+    const fbBuckets = categorizeSnapshots(fallbackAccounts, snapshotDate, currentAge);
+    // #155: same Roth penalty split, same tax-opt-only gate. Note the pooled
+    // roth_ira free capacity is computed per-categorizeSnapshots-call, so this
+    // tier can't see basis held by ordered-tier snapshots — acceptable because on
+    // the tax-opt path this fallback tier is EMPTY in practice (the reorder-only
+    // withdrawal UI auto-syncs every eligible account into the order).
+    if (!honorLiteralOrder) splitRothPenaltySlices(fbBuckets, currentAge, sliceYear);
+    return [...orderedResult, ...fbBuckets.nonPenalized, ...fbBuckets.savings, ...fbBuckets.penalized];
 }
 
 // Tax-efficiency rank for withdrawal ordering (lower = tap first): spend cash first
@@ -999,8 +1125,12 @@ export function planWithdrawals(
     let cumulativeSTCG = 0; // Tracks brokerage STCG realized this loop (also in MAGI) — #75
     let runningOrdinaryIncome = currentOrdinaryIncome;
 
-    // ACA cliff: track Roth amounts pre-consumed by look-ahead substitution
+    // ACA cliff: track Roth amounts pre-consumed by look-ahead substitution.
+    // #155: keyed per-SNAPSHOT (sliceKey, defaulting to accountId) — a split Roth
+    // contributes two snapshots with the same accountId, and consumption recorded
+    // against one slice must not shrink the other slice's availability.
     const acaRothConsumed = new Map<string, number>();
+    const sliceKeyOf = (s: AccountBalanceSnapshot): string => s.sliceKey ?? s.accountId;
     const ACA_WITHDRAWAL_BUFFER = 500; // Buffer under cliff for withdrawal LTCG
 
     // Get tax parameters
@@ -1088,7 +1218,7 @@ export function planWithdrawals(
         if (remainingNetNeeded <= 0) break;
 
         // Reduce available balance for Roth accounts already tapped by ACA substitution look-ahead
-        const acaAlreadyConsumed = acaRothConsumed.get(snapshot.accountId) ?? 0;
+        const acaAlreadyConsumed = acaRothConsumed.get(sliceKeyOf(snapshot)) ?? 0;
         const effectiveVestedBalance = snapshot.vestedBalance - acaAlreadyConsumed;
         if (effectiveVestedBalance <= 0) continue;
 
@@ -1228,7 +1358,7 @@ export function planWithdrawals(
                                 if (rothSubstitutionNet >= netShortfall) break;
                                 if (rothSnapshot.accountType !== 'roth_ira' && rothSnapshot.accountType !== 'roth_401k') continue;
 
-                                const alreadyConsumed = acaRothConsumed.get(rothSnapshot.accountId) ?? 0;
+                                const alreadyConsumed = acaRothConsumed.get(sliceKeyOf(rothSnapshot)) ?? 0;
                                 const availableRoth = rothSnapshot.vestedBalance - alreadyConsumed;
                                 if (availableRoth <= 0) continue;
 
@@ -1304,8 +1434,8 @@ export function planWithdrawals(
 
                                 if (rothNet <= 0) continue;
 
-                                // Track consumption
-                                acaRothConsumed.set(rothSnapshot.accountId, alreadyConsumed + rothGross);
+                                // Track consumption (per-slice key, #155)
+                                acaRothConsumed.set(sliceKeyOf(rothSnapshot), alreadyConsumed + rothGross);
                                 rothSubstitutionNet += rothNet;
 
                                 // Record the Roth substitution withdrawal
