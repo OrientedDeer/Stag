@@ -419,37 +419,6 @@ export default function FutureTab() {
                     </AlertBanner>
                 )}
 
-                {/* 2b. Non-vesting RSU grant warning (#132). A configured grant that
-                    can't be valued recognizes $0 ordinary income at vest, silently
-                    landing in the headline numbers. Surface it at the top of the
-                    results so it can't be missed by collapsing/scrolling past the card. */}
-                {nonVestingRSUWarnings.length > 0 && (
-                    <AlertBanner severity="warning" title="RSU Grant Won't Vest" className="mb-6">
-                        <p className="text-sm">
-                            One or more income sources have a configured RSU grant that the
-                            projection can&apos;t value, so each affected vest recognizes
-                            <strong> $0</strong> of income:
-                        </p>
-                        <ul className="mt-2 list-disc list-inside text-sm space-y-1">
-                            {nonVestingRSUWarnings.map((w) => (
-                                <li key={w.id}>
-                                    <strong>{w.name}</strong>
-                                    {w.reason === 'no-price'
-                                        ? "'s RSU grant won't vest — its linked RSU account has no current share price set."
-                                        : w.reason === 'no-account'
-                                            ? "'s RSU grant won't vest — it isn't linked to an RSU account, so vesting recognizes $0."
-                                            : "'s RSU grant won't vest — it has neither a start date nor a start milestone, so there's no anchor to vest against."}
-                                </li>
-                            ))}
-                        </ul>
-                        <p className="mt-2 text-sm">
-                            Fix it on the income card in the <strong>Income</strong> tab
-                            {rsuFixHints.length > 0 ? ` (${rsuFixHints.join('; ')})` : ''}
-                            {' '}so the vest value reaches your projection.
-                        </p>
-                    </AlertBanner>
-                )}
-
                 {/* Milestone Cards */}
                 <Panel padding="sm" className="mb-4 shadow-lg">
                     <div className="flex items-center gap-3 mb-2">
@@ -497,6 +466,38 @@ export default function FutureTab() {
                         <ProgressTimeline milestones={milestones} />
                     </div>
                 </Panel>
+
+                {/* Non-vesting RSU grant warning (#132). A configured grant that
+                    can't be valued recognizes $0 ordinary income at vest, silently
+                    landing in the headline numbers. Surface it with the results
+                    (below the retirement timeline) so it can't be missed by
+                    collapsing/scrolling past the income card. */}
+                {nonVestingRSUWarnings.length > 0 && (
+                    <AlertBanner severity="warning" title="RSU Grant Won't Vest" className="mb-4">
+                        <p className="text-sm">
+                            One or more income sources have a configured RSU grant that the
+                            projection can&apos;t value, so each affected vest recognizes
+                            <strong> $0</strong> of income:
+                        </p>
+                        <ul className="mt-2 list-disc list-inside text-sm space-y-1">
+                            {nonVestingRSUWarnings.map((w) => (
+                                <li key={w.id}>
+                                    <strong>{w.name}</strong>
+                                    {w.reason === 'no-price'
+                                        ? "'s RSU grant won't vest — its linked RSU account has no current share price set."
+                                        : w.reason === 'no-account'
+                                            ? "'s RSU grant won't vest — it isn't linked to an RSU account, so vesting recognizes $0."
+                                            : "'s RSU grant won't vest — it has neither a start date nor a start milestone, so there's no anchor to vest against."}
+                                </li>
+                            ))}
+                        </ul>
+                        <p className="mt-2 text-sm">
+                            Fix it on the income card in the <strong>Income</strong> tab
+                            {rsuFixHints.length > 0 ? ` (${rsuFixHints.join('; ')})` : ''}
+                            {' '}so the vest value reaches your projection.
+                        </p>
+                    </AlertBanner>
+                )}
 
                 {/* Tab System */}
                 <Panel padding="none" className="rounded-lg mb-1 flex overflow-x-auto custom-scrollbar">
