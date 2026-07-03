@@ -211,6 +211,10 @@ describe('joint optimizer payoff — material order gain on an order-sensitive s
         // conservative (measured ~$442.7k / ~9% after F8+F9, 2026-07-02 — the F9 probe grid finds
         // the h≈$320k peak the old search missed); a regression that kept the stored order → $0 → fails.
         expect(res[0].orderOptimizationGain!).toBeGreaterThan(20_000);
+        // F5a dpTrace fallback: the winning NON-user order never got its own DP solve (the DP is
+        // solved once, under the user's order, and reused as every candidate's seed) — the debug
+        // trace must still be attached, carrying the user-order DP analysis.
+        expect(res.some(y => y.dpTrace)).toBe(true);
     });
 
     it('the co-optimized result is storage-invariant: both stored orders converge to the same order and value', () => {
