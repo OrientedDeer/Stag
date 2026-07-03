@@ -1,6 +1,12 @@
 import { MonteCarloConfig, ScenarioResult, MonteCarloSummary } from './MonteCarloTypes';
 import { SeededRandom } from './RandomGenerator';
-import { analyzeScenario, summarizeScenarios } from './MonteCarloAggregator';
+import {
+    analyzeScenario,
+    summarizeScenarios,
+    BaselinePathResult,
+    TradValuationRuler,
+} from './MonteCarloAggregator';
+import { buildTradValuation, terminalAfterTaxNetWorth } from '../tabs/Future/tabs/FutureUtils';
 import { runSimulation, buildMcConversionPolicy } from '../components/Objects/Assumptions/useSimulation';
 import { AnyAccount } from '../components/Objects/Accounts/models';
 import { DPPolicy } from './simulation/RothConversionDP';
@@ -62,6 +68,74 @@ function buildMcConversionPlan(
     );
     if (!dpPlan) return {};
     return { plan: dpPlan.conversionsByYear, policy: dpPlan.policy };
+}
+
+/**
+ * Assumptions for the std-ded-only baseline: rate-match strategy (so the DP
+ * path isn't taken) with `conversionMode: 'std-ded-only'` at the call site —
+ * the SAME construction useSimulation's own baselines and the cookbook harness
+ * use, so the ruler and the F7 baseline arm stay strategy-independent.
+ */
+function stdDedBaselineAssumptions(assumptions: AssumptionsState): AssumptionsState {
+    return {
+        ...assumptions,
+        investments: { ...assumptions.investments, rothConversionStrategy: 'rate-match' },
+    };
+}
+
+/**
+ * Build the after-tax valuation ruler (fp-review F4) ONCE per MC run: a single
+ * deterministic std-ded-only baseline sim supplies the strategy-independent
+ * terminal-year context `buildTradValuation` prices the residual Traditional
+ * with. Every path's terminal year is then valued with this one ruler — it is
+ * never rebuilt per path. Reporting-only: nothing here feeds conversion
+ * execution.
+ */
+export function buildMcAfterTaxRuler(
+    yearsToRun: number,
+    accounts: AnyAccount[],
+    incomes: AnyIncome[],
+    expenses: AnyExpense[],
+    assumptions: AssumptionsState,
+    taxState: TaxState,
+): TradValuationRuler {
+    const baselineTimeline = runSimulation(
+        yearsToRun, accounts, incomes, expenses,
+        stdDedBaselineAssumptions(assumptions), taxState, undefined,
+        { conversionMode: 'std-ded-only' },
+    );
+    return buildTradValuation(baselineTimeline, assumptions, taxState);
+}
+
+/**
+ * Run one path of the OPTIONAL std-ded-only baseline arm (fp-review F7) and
+ * fold it to a lightweight result immediately (the full timeline is dropped, so
+ * the arm never doubles resident memory). Pairing is exact by construction: the
+ * arm REUSES the active path's already-drawn `yearlyReturns` — no second RNG
+ * stream to keep in lockstep. No policy solve is needed: with the rate-match
+ * strategy + `conversionMode: 'std-ded-only'`, conversions are locked to the
+ * standard-deduction baseline.
+ */
+function runBaselinePath(
+    yearlyReturns: number[],
+    yearsToRun: number,
+    accounts: AnyAccount[],
+    incomes: AnyIncome[],
+    expenses: AnyExpense[],
+    baselineAssumptions: AssumptionsState,
+    taxState: TaxState,
+    ruler: TradValuationRuler,
+): BaselinePathResult {
+    const timeline = runSimulation(
+        yearsToRun, accounts, incomes, expenses, baselineAssumptions, taxState, yearlyReturns,
+        { conversionMode: 'std-ded-only' },
+    );
+    const analyzed = analyzeScenario(0, timeline, yearlyReturns);
+    return {
+        success: analyzed.success,
+        yearOfDepletion: analyzed.yearOfDepletion,
+        terminalAfterTaxNW: terminalAfterTaxNetWorth(timeline, ruler),
+    };
 }
 
 /** Simulation horizon = life expectancy − current age (≥ 0). */
@@ -164,8 +238,14 @@ export async function runMonteCarloSimulation(
     const mcPlan = precomputedPlan
         ?? buildMcConversionPlan(yearsToRun, accounts, incomes, expenses, assumptions, taxState, config);
 
+    // After-tax valuation ruler (F4): ONE deterministic baseline sim per run.
+    const ruler = buildMcAfterTaxRuler(yearsToRun, accounts, incomes, expenses, assumptions, taxState);
+
     // Chunk size for yielding to UI
     const CHUNK_SIZE = 10;
+
+    // Progress spans both arms when the baseline comparison is on (2× the runs).
+    const totalRuns = config.numScenarios * (config.compareToBaseline ? 2 : 1);
 
     for (let i = 0; i < config.numScenarios; i++) {
         // Run a single scenario
@@ -185,17 +265,36 @@ export async function runMonteCarloSimulation(
         scenarios.push(result);
 
         // Report progress
-        const progress = ((i + 1) / config.numScenarios) * 100;
+        const progress = ((i + 1) / totalRuns) * 100;
         onProgress?.(progress);
 
         // Yield to UI every CHUNK_SIZE scenarios
-        if ((i + 1) % CHUNK_SIZE === 0 && i < config.numScenarios - 1) {
+        if ((i + 1) % CHUNK_SIZE === 0 && i < totalRuns - 1) {
             await new Promise(resolve => setTimeout(resolve, 0));
         }
     }
 
+    // OPTIONAL second arm (F7): same draws, conversions locked to the std-ded
+    // baseline. Reuses each path's yearlyReturns so pairing is exact.
+    let baselinePaths: BaselinePathResult[] | undefined;
+    if (config.compareToBaseline) {
+        baselinePaths = [];
+        const baselineAssumptions = stdDedBaselineAssumptions(assumptions);
+        for (let i = 0; i < scenarios.length; i++) {
+            baselinePaths.push(runBaselinePath(
+                scenarios[i].yearlyReturns, yearsToRun,
+                accounts, incomes, expenses, baselineAssumptions, taxState, ruler,
+            ));
+            const progress = ((config.numScenarios + i + 1) / totalRuns) * 100;
+            onProgress?.(progress);
+            if ((i + 1) % CHUNK_SIZE === 0 && config.numScenarios + i < totalRuns - 1) {
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
+        }
+    }
+
     // Summarize all scenarios
-    return summarizeScenarios(scenarios, config.seed);
+    return summarizeScenarios(scenarios, config.seed, { ruler, baselinePaths });
 }
 
 /**
@@ -219,6 +318,8 @@ export function runMonteCarloSimulationSync(
     const mcPlan = precomputedPlan
         ?? buildMcConversionPlan(yearsToRun, accounts, incomes, expenses, assumptions, taxState, config);
 
+    const ruler = buildMcAfterTaxRuler(yearsToRun, accounts, incomes, expenses, assumptions, taxState);
+
     for (let i = 0; i < config.numScenarios; i++) {
         const result = runSingleScenario(
             i,
@@ -236,7 +337,16 @@ export function runMonteCarloSimulationSync(
         scenarios.push(result);
     }
 
-    return summarizeScenarios(scenarios, config.seed);
+    let baselinePaths: BaselinePathResult[] | undefined;
+    if (config.compareToBaseline) {
+        const baselineAssumptions = stdDedBaselineAssumptions(assumptions);
+        baselinePaths = scenarios.map(s => runBaselinePath(
+            s.yearlyReturns, yearsToRun,
+            accounts, incomes, expenses, baselineAssumptions, taxState, ruler,
+        ));
+    }
+
+    return summarizeScenarios(scenarios, config.seed, { ruler, baselinePaths });
 }
 
 /**

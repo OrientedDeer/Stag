@@ -23,6 +23,13 @@ export interface MonteCarloConfig {
     lastInflationRate?: number;
     /** Tracks the assumptions investment return rate when the custom returnMean was last synced */
     lastRor?: number;
+    /**
+     * Run a second arm on the SAME random seeds with Roth conversions locked to the
+     * standard-deduction-only baseline, and report the paired plan-vs-baseline
+     * comparison (Δsuccess, paired after-tax deltas). Roughly doubles runtime, so
+     * it defaults off. The baseline arm needs no policy solve.
+     */
+    compareToBaseline?: boolean;
 }
 
 /**
@@ -161,6 +168,60 @@ export interface PercentileData {
     p90: YearlyPercentile[];
 }
 
+/** Terminal-distribution percentiles (single numbers, not per-year bands). */
+export interface TerminalPercentiles {
+    p10: number;
+    p50: number;
+    p90: number;
+}
+
+/**
+ * Conversion-facing MC statistics (fp-review F11): folds over the per-path
+ * timelines' recorded `rothConversion` amounts. Purely reporting — the
+ * conversion decisions themselves come from the #98 policy, untouched here.
+ */
+export interface ConversionMcStats {
+    /** p10/p50/p90 of the TOTAL $ converted per path across the horizon. */
+    totalConverted: TerminalPercentiles;
+    /** Fraction of paths (0-1) that executed any conversion at all. */
+    fractionOfPathsConverting: number;
+    /**
+     * Buy-the-dip audit: median $ converted in years immediately FOLLOWING a
+     * negative-return year, vs all other years, sampled inside each path's own
+     * converting window. Null when the sample is empty.
+     */
+    medianConvertedAfterDownYear: number | null;
+    medianConvertedAfterOtherYears: number | null;
+}
+
+/**
+ * Paired plan-vs-baseline comparison (fp-review F7). The baseline arm re-runs
+ * every path on the SAME return draws with conversions locked to the
+ * std-ded-only baseline, so the per-path deltas are causal (common random
+ * numbers), not cross-sectional band differences.
+ */
+export interface McBaselineComparison {
+    /** Baseline arm's success rate (0-100). */
+    baselineSuccessRate: number;
+    /** Active − baseline success rate, in percentage points. */
+    deltaSuccessRate: number;
+    /** Failed-path counts per arm (same seeds, so directly comparable). */
+    activeFailures: number;
+    baselineFailures: number;
+    /** Median depletion year among each arm's failed paths (null: no failures). */
+    medianDepletionYearActive: number | null;
+    medianDepletionYearBaseline: number | null;
+    /**
+     * Fraction of paths (0-1) whose terminal AFTER-TAX net worth ended strictly
+     * below the same-seed baseline path's.
+     */
+    fractionBehindBaseline: number;
+    /** Percentiles of the PAIRED per-path after-tax delta (active − baseline). */
+    afterTaxDelta: TerminalPercentiles;
+    /** Baseline arm's terminal after-tax percentiles (cross-sectional). */
+    baselineAfterTax: TerminalPercentiles;
+}
+
 /**
  * Summary of Monte Carlo simulation results
  */
@@ -183,6 +244,20 @@ export interface MonteCarloSummary {
     averageFinalNetWorth: number;
     /** Seed used for reproducibility */
     seed: number;
+    /**
+     * Terminal AFTER-TAX net worth percentiles (fp-review F4): each path's
+     * terminal balances valued through the situation-based Traditional
+     * valuation ruler (buildTradValuation, built ONCE from the deterministic
+     * std-ded baseline), so residual Traditional is NOT priced at 100 cents.
+     * The nominal bands above stay unchanged. Undefined when the ruler wasn't
+     * supplied (e.g. summaries built directly in older tests).
+     */
+    afterTaxPercentiles?: TerminalPercentiles;
+    /** Conversion-facing stats (F11). Undefined only for pre-existing summaries. */
+    conversionStats?: ConversionMcStats;
+    /** Paired same-seed plan-vs-baseline comparison (F7); set only when the
+     *  baseline arm ran (config.compareToBaseline). */
+    baselineComparison?: McBaselineComparison;
 }
 
 /**
