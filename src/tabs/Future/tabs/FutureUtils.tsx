@@ -229,11 +229,15 @@ export function buildTradValuation(
         + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0);
     const ss = TaxService.getSocialSecurityBenefits(last.incomes, last.year);
     const fixed = Math.max(0, TaxService.getGrossIncome(last.incomes, last.year) - ss);
+    // The household inflation rate: COLAs the persisting SS/fixed income AND indexes the
+    // drawdown's brackets/std-deduction per year (#157) — the real schedules are
+    // inflation-indexed, so freezing them at the terminal-year thresholds while the
+    // residual compounds at nominal g overstated the exit tax on long drawdowns.
     const cola = assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0;
     return {
         rate: projectedRMDRate,
         tradDeferredTax: (b: number) =>
-            bracketAwareTradExitValue(b, terminalAge, g, fedParams, effTax.filingStatus, 'self-liquidate', ss, fixed, cola, stateParams),
+            bracketAwareTradExitValue(b, terminalAge, g, fedParams, effTax.filingStatus, 'self-liquidate', ss, fixed, cola, stateParams, cola),
     };
 }
 
