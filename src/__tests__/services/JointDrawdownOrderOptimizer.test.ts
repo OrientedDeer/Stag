@@ -137,14 +137,17 @@ describe('joint optimizer wires through runSimulationWithOptimization', { timeou
 // from a stored order to a materially better one. A regression that silently kept the user's
 // order would still pass the wiring tests above — but fails these.
 //
-// HISTORY (fp-review 2026-07-02, F9): this block originally asserted a switch trad-first →
+// HISTORY (fp-review 2026-07-02): this block originally asserted a switch trad-first →
 // Traditional-preserving worth ~$62k. That gain was substantially a SEARCH-MISS artifact: the
 // pre-F9 golden refinement missed the user-order conversion peak at h≈$320k, which the F9
-// IRMAA-probe grid now brackets correctly. With the better search, BOTH storages co-optimize to
-// the SAME conventional-order plan (measured nw $5,221,766 — strictly above the old ~$4.78M
-// winner), the discriminating direction reverses (stored Traditional-preserving → conventional,
-// measured gain ~$442,700), and the co-optimized result becomes storage-invariant. The tests pin
-// those two (stronger) properties: an exercised material switch, and storage invariance.
+// IRMAA-probe grid brackets correctly (with ACA priced via the DP shadow penalty, the
+// conventional order won at nw $5,221,766). Then F1 made the ACA subsidy loss real engine cash,
+// this fixture set acaAware:false to keep testing order mechanics in isolation, and the
+// co-optimum flipped back to Traditional-preserving (measured switch gain $27,026 from
+// trad-first storage). Twice flipped by legitimate economics changes → these tests are now
+// DIRECTION-AGNOSTIC: they pin that both storages converge to one co-optimum, that the arm
+// stored away from it actively switches with a material gain, and that the incumbent arm
+// reports gain $0 — without hardcoding WHICH order wins.
 // ===========================================================================
 describe('joint optimizer payoff — material order gain on an order-sensitive scenario', { timeout: 240_000 }, () => {
     // MFJ, large Traditional, strong SS, modest liquid buffer, high living, long horizon — the
@@ -159,7 +162,8 @@ describe('joint optimizer payoff — material order gain on an order-sensitive s
         new InvestedAccount('acc-roth', 'Roth IRA', 100_000, 0, 10, 0, 'Roth IRA', false, 1.0, 100_000),
         new SavedAccount('acc-cash', 'Cash', 50_000, 0),
     ];
-    // Stored order is CONVENTIONAL (trad-first) — the optimizer must actively switch away from it.
+    // Two stored orders differing only in Trad/Roth position; the co-optimum equals exactly one
+    // of them, so whichever arm stores the other one must actively switch away from it.
     const tradFirst: WithdrawalOrderItem[] = [
         { id: 'ws-cash', name: 'Cash', accountId: 'acc-cash' },
         { id: 'ws-brk', name: 'Brokerage', accountId: 'acc-brk' },
@@ -191,8 +195,6 @@ describe('joint optimizer payoff — material order gain on an order-sensitive s
     const osTaxState: TaxState = { filingStatus: 'Married Filing Jointly', stateResidency: 'Texas', deductionMethod: 'Standard', fedOverride: null, ficaOverride: null, stateOverride: null, year: NOW };
     const osIncomes = () => [new CurrentSocialSecurityIncome('inc-ss', 'Social Security', 6_666, 'Monthly', new Date(BY + 67, 0, 1))]; // ~$80k/yr from 67
     const osExpenses = () => [new FoodExpense('exp-living', 'Living', 160_000, 'Annually', new Date(`${NOW}-01-01`))];
-    const idx = (order: { accountId: string }[], id: string) => order.findIndex(o => o.accountId === id);
-
     // Both joint runs are shared across the assertions below (each is ~13-14 engine sims per order).
     const run = (() => {
         const cache = new Map<string, ReturnType<typeof runSimulationWithOptimization>>();
@@ -207,33 +209,32 @@ describe('joint optimizer payoff — material order gain on an order-sensitive s
         };
     })();
 
-    it('switches AWAY from a stored Traditional-preserving order to the conventional co-optimum (material gain)', () => {
-        const res = run('stored-trad-preserving', tradPreserving);
-        const chosen = res[0].chosenWithdrawalOrder!;
-        expect(chosen).toBeDefined();
-        // Picked the conventional order (Traditional drawn before Roth), switching from the stored
-        // Traditional-preserving order — the switching machinery is exercised, not just enumerated.
-        expect(idx(chosen, 'acc-trad')).toBeLessThan(idx(chosen, 'acc-roth'));
-        // PAYOFF: the chosen order beats the stored order by a material margin at FULL
-        // co-optimization (each order scored with its own optimal conversion plan). Threshold is
-        // conservative (measured ~$442.7k / ~9% after F8+F9, 2026-07-02 — the F9 probe grid finds
-        // the h≈$320k peak the old search missed); a regression that kept the stored order → $0 → fails.
-        expect(res[0].orderOptimizationGain!).toBeGreaterThan(20_000);
-        // F5a dpTrace fallback: the winning NON-user order never got its own DP solve (the DP is
-        // solved once, under the user's order, and reused as every candidate's seed) — the debug
-        // trace must still be attached, carrying the user-order DP analysis.
-        expect(res.some(y => y.dpTrace)).toBe(true);
-    });
-
-    it('the co-optimized result is storage-invariant: both stored orders converge to the same order and value', () => {
+    it('the arm stored away from the co-optimum actively switches to it with a material gain', () => {
         const a = run('stored-trad-first', tradFirst);
         const b = run('stored-trad-preserving', tradPreserving);
-        // Same chosen order from either starting point (the conventional co-optimum wins from both;
-        // the trad-first storage keeps its own order as the incumbent, gain $0).
-        expect(a[0].chosenWithdrawalOrder!.map(o => o.accountId)).toEqual(b[0].chosenWithdrawalOrder!.map(o => o.accountId));
-        expect(a[0].orderOptimizationGain!).toBe(0);
-        // Same co-optimized after-tax value (measured byte-equal at $5,221,766; small tolerance
-        // because each storage builds its ruler from its OWN stored-order std-ded baseline).
+        const chosenIds = (r: typeof a) => r[0].chosenWithdrawalOrder!.map(o => o.accountId);
+        // Both storages converge to ONE co-optimum, which equals exactly one of the two stored
+        // orders — so the other arm exercised a real switch (not just enumeration).
+        expect(chosenIds(a)).toEqual(chosenIds(b));
+        const storedIds = { a: tradFirst.map(o => o.accountId), b: tradPreserving.map(o => o.accountId) };
+        const aIsIncumbent = JSON.stringify(chosenIds(a)) === JSON.stringify(storedIds.a);
+        const bIsIncumbent = JSON.stringify(chosenIds(b)) === JSON.stringify(storedIds.b);
+        expect(aIsIncumbent !== bIsIncumbent).toBe(true); // exactly one arm is stored at the co-optimum
+        const incumbent = aIsIncumbent ? a : b;
+        const switcher = aIsIncumbent ? b : a;
+        // PAYOFF: the switching arm beats its stored order by a material margin at FULL
+        // co-optimization (each order scored with its own optimal conversion plan). Threshold is
+        // conservative (measured $27,026 on 2026-07-02 with acaAware:false + the F8/F9 search);
+        // a regression that silently kept the stored order → $0 → fails. The incumbent arm's
+        // own order IS the co-optimum, so its gain is exactly $0.
+        expect(switcher[0].orderOptimizationGain!).toBeGreaterThan(20_000);
+        expect(incumbent[0].orderOptimizationGain!).toBe(0);
+        // F5a dpTrace fallback: the switching arm's winning order never got its own DP solve (the
+        // DP is solved once, under the user's order, and reused as every candidate's seed) — the
+        // debug trace must still be attached, carrying the user-order DP analysis.
+        expect(switcher.some(y => y.dpTrace)).toBe(true);
+        // Same co-optimized after-tax value from either starting point (small tolerance because
+        // each storage builds its ruler from its OWN stored-order std-ded baseline).
         const nwA = a[0].strategyTerminalAfterTaxNW!;
         const nwB = b[0].strategyTerminalAfterTaxNW!;
         expect(Math.abs(nwA - nwB)).toBeLessThan(Math.max(5_000, Math.abs(nwA) * 1e-3));
