@@ -16,6 +16,7 @@ import { DropdownInput } from '../../../components/Layout/InputFields/DropdownIn
 import { PercentageInput } from '../../../components/Layout/InputFields/PercentageInput';
 import { NumberInput } from '../../../components/Layout/InputFields/NumberInput';
 import { ToggleInput } from '../../../components/Layout/InputFields/ToggleInput';
+import { Tooltip } from '../../../components/Layout/InputFields/Tooltip';
 import { useHorizonTriptych } from './useHorizonTriptych';
 
 interface MonteCarloTabProps {
@@ -494,26 +495,29 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                             </div>
                         </div>
                     </div>
-                    {/* CRRA certainty equivalents (fp-review F13 / #160). Solvent-only
-                        by convention — CRRA is undefined at ≤$0 wealth — so the line
-                        always names the conditioning and sits next to the failure rate. */}
+                    {/* CRRA certainty equivalent (fp-review F13 / #160). Solvent-only
+                        by convention — CRRA is undefined at ≤$0 wealth. γ=2 is the
+                        headline; γ=4 lives in the tooltip (it's dominated by the single
+                        worst surviving path and reads alarmist as a headline). */}
                     {summary.certaintyEquivalents && (
                         <div className="mt-3 pt-3 border-t border-border-default text-sm text-content-muted">
-                            <span
-                                className="cursor-help underline decoration-dotted underline-offset-2"
-                                title="A certainty equivalent is the guaranteed amount you'd trade the risky distribution for; higher γ means more risk-averse. Computed over solvent paths only — failed paths are reported by the failure rate instead."
-                            >
-                                Certainty-equivalent (γ=2 / γ=4)
+                            <span className="inline-flex items-center gap-1">
+                                Certainty equivalent
+                                <Tooltip text={
+                                    `If you could trade this plan's range of outcomes for one guaranteed amount, `
+                                    + `a moderately risk-averse person would accept about `
+                                    + `${formatCompactCurrency(summary.certaintyEquivalents.gamma2, { forceExact })} (γ=2). `
+                                    + `A very risk-averse person would accept `
+                                    + `${formatCompactCurrency(summary.certaintyEquivalents.gamma4, { forceExact })} (γ=4) — `
+                                    + `that lower number is dominated by the single worst surviving path. `
+                                    + `Computed only over the ${((summary.certaintyEquivalents.solventCount / summary.certaintyEquivalents.totalCount) * 100).toFixed(0)}% `
+                                    + `of runs that stay solvent — the success rate tells the rest of the story.`
+                                } />
                             </span>
                             {': '}
                             <span className="text-content-default font-medium tabular-nums">
                                 {formatCompactCurrency(summary.certaintyEquivalents.gamma2, { forceExact })}
-                                {' / '}
-                                {formatCompactCurrency(summary.certaintyEquivalents.gamma4, { forceExact })}
                             </span>
-                            {' '}— among the {((summary.certaintyEquivalents.solventCount / summary.certaintyEquivalents.totalCount) * 100).toFixed(0)}%
-                            of paths that stay solvent ({summary.certaintyEquivalents.solventCount} of {summary.certaintyEquivalents.totalCount});
-                            read alongside the {(100 - summary.successRate).toFixed(1)}% failure rate.
                         </div>
                     )}
                 </div>
