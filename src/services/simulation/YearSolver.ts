@@ -181,6 +181,14 @@ export interface YearSolverInput {
     // bull-path overrun / can't-add-years / trim-drift. Non-anticipative: the
     // policy integrates over the return distribution, never a path's realized future.
     mcConversionPolicy?: DPPolicy;
+
+    // #164 INTERNAL — never set by callers. When true, the conversion strategy
+    // plans a $0 conversion (the spending-deficit bracket reservation is still
+    // computed, since it doesn't depend on the conversion amount). Used by
+    // solveRetirementYear's display-fidelity counterfactual re-solve, which
+    // reports the conversion's tax cost as the finite difference between this
+    // year's total tax with and without the conversion.
+    forceZeroConversion?: boolean;
 }
 
 export interface ConversionPlan {
@@ -786,6 +794,23 @@ function planConversion(
         }
     }
 
+    // #164 display-fidelity counterfactual: "this exact year, but a $0
+    // conversion". The spending reservation above is kept (it's independent of
+    // the conversion amount and shapes the withdrawal order); sizing, the SS-
+    // torpedo search, and the ACA clamp are skipped — a $0 conversion needs none.
+    if (input.forceZeroConversion) {
+        taxOptimizationTarget.actualConversion = 0;
+        return {
+            conversion: null,
+            conversionTax: 0,
+            taxSource: 'SURPLUS',
+            additionalOrdinaryIncome: 0,
+            decisions,
+            bracketSpaceForSpending,
+            taxOptimizationTarget,
+        };
+    }
+
     // Calculate conversion amount: min of bracket space (after spending reservation)
     // and available Traditional balance. Iterative refinement of baselineProjections
     // (in runSimulationWithOptimization) handles the "smooth glidepath" behavior
@@ -1247,6 +1272,14 @@ function planConversionDP(
                 });
             }
         }
+    }
+
+    // #164 display-fidelity counterfactual: "this exact year, but a $0
+    // conversion". Keeps the spending reservation above (independent of the
+    // conversion amount); skipReturn preserves bracketSpaceForSpending. Mirrors
+    // the natural zero-plan path below.
+    if (input.forceZeroConversion) {
+        return skipReturn(bracketSpaceForSpending > 0 ? 'SPENDING_DEFICIT' : 'NO_BRACKET_SPACE');
     }
 
     // Look up the precomputed conversion amount. Clamp to (traditional - reserved
@@ -2013,6 +2046,57 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
                 `(MAGI $${Math.round(acaMagiEstimate).toLocaleString()} crossed the 400% FPL cliff ` +
                 `$${Math.round(acaCliffThreshold).toLocaleString()} before age 65).`,
         });
+    }
+
+    // =========================================================================
+    // #164: Display-fidelity conversion tax cost (reporting only)
+    // =========================================================================
+    // The planning-time estimate (computeConversionTaxAndSource) prices the
+    // conversion's LTCG-bump from the ACCOUNT-AVERAGE brokerage gain ratio and
+    // ignores the extra brokerage sale that funds the conversion tax itself —
+    // but the withdrawal planner realizes gains FIFO oldest-lot-first, so in
+    // brokerage-funded years the displayed cost understated the truth. Re-solve
+    // this exact year with the conversion forced to $0 and report the finite
+    // difference (total tax with − total tax without) as the conversion's tax
+    // cost. Everything decided above — conversion amount, tax source,
+    // withdrawals, taxes, cashflows — is final and untouched; only the reported
+    // PlannedConversion.taxAmount (and its fed/state decomposition) changes.
+    // Nothing decision-side reads it (the DP / engine-direct search score
+    // timelines on balances and `rothConversion.amount` only).
+    //
+    // Skipped on hot non-display paths, where the estimate was never surfaced:
+    //   • forceZeroConversion — the counterfactual itself (no recursion);
+    //   • mcConversionPolicy — MC per-path solves (the aggregator reads only
+    //     `amount`; also keeps #98 MC golden masters byte-identical);
+    //   • conversionMode 'std-ded-only' — the O(years²) baseline sub-sims
+    //     (consumed via BaselineProjections, which carries no tax costs).
+    if (
+        conversionPlan.conversion &&
+        conversionPlan.conversion.amount > 0 &&
+        !input.forceZeroConversion &&
+        !input.mcConversionPolicy &&
+        input.conversionMode !== 'std-ded-only'
+    ) {
+        const counterfactual = solveRetirementYear({ ...input, forceZeroConversion: true });
+        const estimatedTaxCost = conversionPlan.conversion.taxAmount;
+        const trueTaxCost = Math.max(0, totalTax - counterfactual.tax.total);
+        // Decomposition: the solver-side state delta is exact; the planner's
+        // withdrawalOrdinaryTax delta (a fed+state blend on Traditional draws)
+        // lands in the federal component, so fed + state always equals taxAmount.
+        const stateDelta = Math.min(trueTaxCost, Math.max(0, finalStateTax - counterfactual.tax.state));
+        conversionPlan.conversion.taxAmount = trueTaxCost;
+        conversionPlan.conversion.stateTaxCost = stateDelta;
+        conversionPlan.conversion.federalTaxCost = trueTaxCost - stateDelta;
+        if (Math.abs(trueTaxCost - estimatedTaxCost) > 0.5) {
+            decisions.push({
+                category: 'conversion',
+                amount: trueTaxCost,
+                description: `Conversion tax cost (display): $${Math.round(trueTaxCost).toLocaleString()} — ` +
+                    `this year's total tax minus a no-conversion re-solve's ` +
+                    `($${Math.round(counterfactual.tax.total).toLocaleString()}); ` +
+                    `sizing-time estimate was $${Math.round(estimatedTaxCost).toLocaleString()}.`,
+            });
+        }
     }
 
     // The year's MAGI (≈ AGI) — stored so year N+2 can read it for its IRMAA
