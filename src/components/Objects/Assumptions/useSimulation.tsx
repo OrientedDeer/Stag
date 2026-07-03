@@ -1064,6 +1064,130 @@ export const buildMcConversionPolicy = (
     return stochasticPlan;
 };
 
+// ---------------------------------------------------------------------------
+// #158 — per-order artifact memo cache for the joint conversion/order search.
+//
+// Every debounced input edit re-runs `runSimulationWithOptimization`, and each
+// candidate withdrawal order pays a std-ded baseline sim + DP-context build
+// (+ the single F5a DP solve under the user's order). Those artifacts are pure
+// functions of (the inputs, the order), so we memoize them across calls: an
+// edit that leaves an order's inputs unchanged (e.g. only the user's stored
+// withdrawal order was reordered — the tax-aware candidate orders' inputs are
+// untouched) reuses that order's artifacts instead of recomputing.
+//
+// WHAT THE KEY COVERS (be honest): the key serializes every argument the run
+// reads — yearsToRun, the model instances' own enumerable props (JSON.stringify
+// of the class instances; Dates → ISO strings), assumptions (minus
+// withdrawalStrategy, which is keyed separately per order), taxState,
+// yearlyReturns, the EOY contribution/debt/mortgage records, dpObjective — plus
+// the wall-clock YEAR (runSimulation's `new Date().getFullYear()` start-year
+// anchor) and the reference date's YEAR+MONTH (`remainingFraction` reads only
+// the month). NOT covered: the day of month (the engine never reads it), and
+// any hypothetical module-global state a model method might read (none known).
+// Over-keying only costs a spurious miss; the serialization above is exhaustive
+// over the inputs, so a hit is guaranteed to describe an identical computation.
+//
+// HOME + EVICTION: module state — thread-local, so the worker (jointSearch.
+// worker.ts) and the main thread (sync fallback, WithdrawalTab what-ifs) each
+// hold their own instance. LRU with max 8 entries (~2 recent input states × 3
+// candidate orders + slack); the runner keeps the worker alive across requests
+// so its cache survives between recalcs, but a superseded (terminated) worker
+// loses it — the next run simply recomputes.
+//
+// MUTATION SAFETY: callers mutate year 0 of returned timelines (logs.push +
+// field stamps in runSimulationWithOptimization), so entries store — and every
+// hit returns — a timeline whose year-0 row is a fresh shallow copy with its
+// own `logs` array. Years 1+ are shared; the only post-run write to them is
+// the dpTrace stamp, which is deterministic-identical on a key hit (same
+// inputs ⇒ same plan ⇒ same trace), hence idempotent.
+// ---------------------------------------------------------------------------
+interface JointSearchArtifactsEntry {
+    /** std-ded-only baseline timeline under this (inputs, order); year-0-protected. */
+    baselineTimeline: SimulationYear[];
+    dpInputs?: DPInputs;
+    effectiveDpObjective?: DPObjectiveOptions;
+    /**
+     * Only set when THIS order's DP was actually solved (the user's order under
+     * F5a). Candidate orders seeded via `reuseDpPlan` do NOT store the seed here:
+     * it belongs to the user-order key, and caching it under the candidate's key
+     * would let a later run where THIS order is the user's order skip a solve it
+     * is supposed to perform.
+     */
+    dpPlan?: DPPlan;
+}
+const jointSearchArtifactCache = new Map<string, JointSearchArtifactsEntry>();
+const JOINT_SEARCH_ARTIFACT_CACHE_MAX = 8;
+// Raw NUL as key separator: JSON.stringify escapes control characters inside
+// its output, so the separator can never collide with serialized content.
+const JOINT_KEY_SEP = '\u0000';
+
+/** Test hook (also handy at a REPL): drop all memoized joint-search artifacts. */
+export function clearJointSearchArtifactCache(): void {
+    jointSearchArtifactCache.clear();
+}
+
+function jointCacheGet(key: string): JointSearchArtifactsEntry | undefined {
+    const entry = jointSearchArtifactCache.get(key);
+    if (entry) {
+        // LRU touch: re-insert so iteration order tracks recency.
+        jointSearchArtifactCache.delete(key);
+        jointSearchArtifactCache.set(key, entry);
+    }
+    return entry;
+}
+
+function jointCachePut(key: string, entry: JointSearchArtifactsEntry): void {
+    jointSearchArtifactCache.delete(key);
+    jointSearchArtifactCache.set(key, entry);
+    while (jointSearchArtifactCache.size > JOINT_SEARCH_ARTIFACT_CACHE_MAX) {
+        const oldest = jointSearchArtifactCache.keys().next().value as string;
+        jointSearchArtifactCache.delete(oldest);
+    }
+}
+
+/** Shallow-copy year 0 (with its own logs array) so post-run year-0 mutations
+ *  never contaminate a cached timeline or a previously returned one. */
+function withFreshYearZero(timeline: SimulationYear[]): SimulationYear[] {
+    if (timeline.length === 0) return timeline;
+    return [{ ...timeline[0], logs: [...timeline[0].logs] }, ...timeline.slice(1)];
+}
+
+/** Serialize the order-independent inputs once per run (see cache doc above). */
+function buildJointSearchInputsKey(
+    yearsToRun: number,
+    accounts: AnyAccount[],
+    incomes: AnyIncome[],
+    expenses: AnyExpense[],
+    assumptions: AssumptionsState,
+    taxState: TaxState,
+    yearlyReturns: number[] | undefined,
+    referenceDate: Date | undefined,
+    eoyContributionAdditions: Record<string, number> | undefined,
+    eoyDebtReductions: Record<string, number> | undefined,
+    eoyMortgageReductions: Record<string, number> | undefined,
+    dpObjective: DPObjectiveOptions | undefined,
+): string {
+    const { withdrawalStrategy: _perOrder, ...assumptionsSansOrder } = assumptions;
+    void _perOrder;
+    const refDate = referenceDate ?? new Date();
+    return JSON.stringify({
+        yearsToRun,
+        accounts,
+        incomes,
+        expenses,
+        assumptions: assumptionsSansOrder,
+        taxState,
+        yearlyReturns: yearlyReturns ?? null,
+        wallYear: new Date().getFullYear(),
+        refYear: refDate.getFullYear(),
+        refMonth: refDate.getMonth(),
+        eoyContributionAdditions: eoyContributionAdditions ?? null,
+        eoyDebtReductions: eoyDebtReductions ?? null,
+        eoyMortgageReductions: eoyMortgageReductions ?? null,
+        dpObjective: dpObjective ?? null,
+    });
+}
+
 /**
  * Run simulation with rolling per-year baseline sub-simulations for accurate
  * Roth conversion decisions.
@@ -1100,11 +1224,28 @@ export const runSimulationWithOptimization = (
      * See RothConversionDP.planConversionsViaDP.
      */
     dpObjective?: DPObjectiveOptions,
+    /**
+     * Optional coarse progress reporting (#158). Invoked with a short human-
+     * readable stage message before each expensive milestone (baseline sim, DP
+     * solve, each candidate order's engine search) so the worker path can keep
+     * the UI spinner honest. Purely observational — never affects the result;
+     * the sync/test call sites simply omit it.
+     */
+    onProgress?: (message: string) => void,
 ): SimulationYear[] => {
     // DEFAULT is bracket-aware DP (#89); rate-match is the non-default fallback. The default
     // is resolved through the shared helper (single source of truth in AssumptionsContext).
     const strategy = resolveRothConversionStrategy(assumptions.investments.rothConversionStrategy);
     const taxOptOn = assumptions.investments.taxOptimizationEnabled;
+
+    // #158: order-independent half of the artifact cache key, built once per run.
+    const inputsKey = buildJointSearchInputsKey(
+        yearsToRun, accounts, incomes, expenses, assumptions, taxState, yearlyReturns,
+        referenceDate, eoyContributionAdditions, eoyDebtReductions, eoyMortgageReductions,
+        dpObjective,
+    );
+    const orderCacheKeyFor = (order: AssumptionsState['withdrawalStrategy']): string =>
+        inputsKey + JOINT_KEY_SEP + JSON.stringify(order);
 
     // Always run a full-horizon std-ded-only baseline up front. Used for:
     //   1. Live "your strategy vs free-conversions only" comparison in
@@ -1119,17 +1260,27 @@ export const runSimulationWithOptimization = (
         ...assumptions,
         investments: { ...assumptions.investments, rothConversionStrategy: 'rate-match' },
     };
-    const stdDedBaselineTimeline = runSimulation(
-        yearsToRun, accounts, incomes, expenses, baselineAssumptions, taxState,
-        yearlyReturns,
-        {
-            referenceDate,
-            conversionMode: 'std-ded-only',
-            eoyContributionAdditions,
-            eoyDebtReductions,
-            eoyMortgageReductions,
-        },
-    );
+    // #158: the user's stored order runs this baseline — memoize it under that order's key.
+    const storedOrderCacheKey = orderCacheKeyFor(assumptions.withdrawalStrategy);
+    const cachedStoredOrderEntry = jointCacheGet(storedOrderCacheKey);
+    let stdDedBaselineTimeline: SimulationYear[];
+    if (cachedStoredOrderEntry) {
+        stdDedBaselineTimeline = withFreshYearZero(cachedStoredOrderEntry.baselineTimeline);
+    } else {
+        onProgress?.('Projecting baseline (standard-deduction-only)…');
+        stdDedBaselineTimeline = runSimulation(
+            yearsToRun, accounts, incomes, expenses, baselineAssumptions, taxState,
+            yearlyReturns,
+            {
+                referenceDate,
+                conversionMode: 'std-ded-only',
+                eoyContributionAdditions,
+                eoyDebtReductions,
+                eoyMortgageReductions,
+            },
+        );
+        jointCachePut(storedOrderCacheKey, { baselineTimeline: withFreshYearZero(stdDedBaselineTimeline) });
+    }
     // After-tax terminal net worth of the std-ded baseline, for the Withdrawal-tab
     // "After-Tax Wealth Gained" comparison (#94). Build ONE situation-based discount ruler
     // from the strategy-INDEPENDENT baseline timeline and reuse it for both the baseline and
@@ -1208,13 +1359,30 @@ export const runSimulationWithOptimization = (
                 const isUser = order === fullStrategy;
                 const aOrder: AssumptionsState = (isUser && canReuseUserBaseline)
                     ? assumptions : { ...assumptions, withdrawalStrategy: order };
-                const baselineO = (isUser && canReuseUserBaseline) ? stdDedBaselineTimeline : runSimulation(
-                    yearsToRun, accounts, incomes, expenses,
-                    { ...aOrder, investments: { ...aOrder.investments, rothConversionStrategy: 'rate-match' } },
-                    taxState, yearlyReturns,
-                    { referenceDate, conversionMode: 'std-ded-only', eoyContributionAdditions, eoyDebtReductions, eoyMortgageReductions },
-                );
-                const { dpInputs, effectiveDpObjective } = buildDpSolveInputs(accounts, incomes, expenses, aOrder, taxState, baselineO);
+                // #158: per-order artifact memoization. On a key hit (identical inputs + identical
+                // order) the baseline sim, the DP-context build, and — for the order that solved it —
+                // the DP solve are all skipped; cached values are exactly what a fresh compute would
+                // produce (the key serializes every input), so warm results are byte-equal to cold.
+                const orderCacheKey = orderCacheKeyFor(aOrder.withdrawalStrategy);
+                const cached = jointCacheGet(orderCacheKey);
+                let baselineO: SimulationYear[];
+                if (isUser && canReuseUserBaseline) {
+                    // Same key as the outer std-ded baseline — reuse the run (or its cache hit) directly.
+                    baselineO = stdDedBaselineTimeline;
+                } else if (cached) {
+                    baselineO = withFreshYearZero(cached.baselineTimeline);
+                } else {
+                    onProgress?.(`Projecting baseline for order ${order.map(w => w.name).join(' → ')}…`);
+                    baselineO = runSimulation(
+                        yearsToRun, accounts, incomes, expenses,
+                        { ...aOrder, investments: { ...aOrder.investments, rothConversionStrategy: 'rate-match' } },
+                        taxState, yearlyReturns,
+                        { referenceDate, conversionMode: 'std-ded-only', eoyContributionAdditions, eoyDebtReductions, eoyMortgageReductions },
+                    );
+                }
+                const { dpInputs, effectiveDpObjective } = (cached?.dpInputs && cached.effectiveDpObjective)
+                    ? { dpInputs: cached.dpInputs, effectiveDpObjective: cached.effectiveDpObjective }
+                    : buildDpSolveInputs(accounts, incomes, expenses, aOrder, taxState, baselineO);
                 // F5a (fp-review 2026-07-02): the synchronous DP solve is the dominant cost of the joint
                 // search (~3–5s per order vs a fraction of that for all of an order's engine replays),
                 // and its plan is only a SEED — the engine-direct search scores it on the real engine
@@ -1226,7 +1394,22 @@ export const runSimulationWithOptimization = (
                 // seed; the fill-to-h family + the F8 scaled-seed sweep cover magnitude, and the engine
                 // score decides. (The per-order dpInputs/contexts are still built from that order's own
                 // baseline — only the expensive solve is shared.)
-                const dpPlan = reuseDpPlan ?? planConversionsViaDP(dpInputs, effectiveDpObjective);
+                //
+                // #158 precedence: an explicit reuseDpPlan ALWAYS wins (that's the F5a semantics — the
+                // candidate order must seed from the user-order plan, even if a solved plan for this
+                // order happens to sit in the cache from a run where it WAS the user's order); only a
+                // would-have-solved call (reuseDpPlan undefined) may take the cached solve.
+                if (reuseDpPlan === undefined && cached?.dpPlan === undefined) {
+                    onProgress?.('Solving the Roth-conversion plan (DP)…');
+                }
+                const dpPlan = reuseDpPlan ?? cached?.dpPlan ?? planConversionsViaDP(dpInputs, effectiveDpObjective);
+                jointCachePut(orderCacheKey, {
+                    baselineTimeline: cached?.baselineTimeline ?? withFreshYearZero(baselineO),
+                    dpInputs,
+                    effectiveDpObjective,
+                    // Cache the plan only when this call would have solved it (see interface doc).
+                    dpPlan: reuseDpPlan === undefined ? dpPlan : cached?.dpPlan,
+                });
                 return { order, aOrder, baselineO, dpInputs, dpPlan };
             };
             const runUnderOrder = (aOrder: AssumptionsState, plan: Map<number, number>) => runSimulation(
@@ -1258,12 +1441,17 @@ export const runSimulationWithOptimization = (
             // The user-order artifacts run FIRST and own the single DP solve (F5a); every other
             // candidate order reuses that plan as its seed.
             const userArtifacts = buildArtifacts(fullStrategy);
+            onProgress?.(`Searching conversions — order 1 of ${candidateOrders.length}…`);
             const userResult = fullSearch(userArtifacts);
             let best = userResult;
             let totalSims = userResult.sims;
+            let orderIndex = 1;
             for (const order of candidateOrders) {
                 if (order === fullStrategy) continue;
-                const result = fullSearch(buildArtifacts(order, userArtifacts.dpPlan));
+                orderIndex += 1;
+                const artifacts = buildArtifacts(order, userArtifacts.dpPlan);
+                onProgress?.(`Searching conversions — order ${orderIndex} of ${candidateOrders.length}…`);
+                const result = fullSearch(artifacts);
                 totalSims += result.sims;
                 if (result.nw > best.nw + 1) best = result; // the de-converted truth decides; ties keep the incumbent
             }
