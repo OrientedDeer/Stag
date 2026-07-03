@@ -7,7 +7,8 @@
 
 import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
 import { AssumptionsState, getRetirementAge, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../components/Objects/Taxes/TaxContext';
+import { TaxState, resolveTaxEventsForYear } from '../components/Objects/Taxes/TaxContext';
+import { buildMilestoneReachYears } from './simulation/MilestoneEvaluator';
 import { TaxParameters } from '../data/TaxData';
 import { AnyIncome, WorkIncome } from '../components/Objects/Income/models';
 import { InvestedAccount } from '../components/Objects/Accounts/models';
@@ -385,12 +386,18 @@ export function getProjectedRMDMarginalRate(
 
     const birthYear = getBirthYear(assumptions.milestones);
     const rmdStartYear = birthYear + getRMDStartAge(birthYear);
-    const fs = taxState.filingStatus;
+    // Resolve scheduled tax life events PER projected year (fp-review F3a): a scheduled
+    // MFJ→Single switch or state move is priced by the engine in-horizon, so the RMD-era
+    // rate this haircut applies must use the same per-year filing status / residency —
+    // not the raw year-0 values for the whole projection.
+    const reachYears = buildMilestoneReachYears(simulation);
+    const effTaxAt = (year: number): TaxState => resolveTaxEventsForYear(taxState, year, reachYears);
 
     // Combined fed+state marginal rate on the top dollar of `ordinaryIncome`.
     const combinedMarginalAt = (year: number, ordinaryIncome: number): number => {
-        const fedParams = TaxService.getTaxParameters(year, fs, 'federal', undefined, assumptions);
-        const stateParams = TaxService.getTaxParameters(year, fs, 'state', taxState.stateResidency, assumptions);
+        const eff = effTaxAt(year);
+        const fedParams = TaxService.getTaxParameters(year, eff.filingStatus, 'federal', undefined, assumptions);
+        const stateParams = TaxService.getTaxParameters(year, eff.filingStatus, 'state', eff.stateResidency, assumptions);
         const fedRate = fedParams ? TaxService.getMarginalTaxRate(Math.max(0, ordinaryIncome - (fedParams.standardDeduction || 0)), fedParams).rate : 0;
         const stateRate = stateParams ? TaxService.getMarginalTaxRate(Math.max(0, ordinaryIncome - (stateParams.standardDeduction || 0)), stateParams).rate : 0;
         return fedRate + stateRate;
@@ -411,7 +418,7 @@ export function getProjectedRMDMarginalRate(
         // Traditional dollars hit. Weight by the balance being taxed.
         if (simYear.year >= rmdStartYear) {
             const age = simYear.year - birthYear;
-            const rate = combinedMarginalAt(simYear.year, getOrdinaryAGI(simYear, age, fs));
+            const rate = combinedMarginalAt(simYear.year, getOrdinaryAGI(simYear, age, effTaxAt(simYear.year).filingStatus));
             weightedRateSum += rate * tradBalance;
             weightSum += tradBalance;
         }
@@ -430,7 +437,7 @@ export function getProjectedRMDMarginalRate(
     // runs only here (not per-year) since the peak's income is only needed now.
     if (!peakSimYear) return null;
     const peakAge = peakSimYear.year - birthYear;
-    const otherAGI = Math.max(0, getOrdinaryAGI(peakSimYear, peakAge, fs) - (peakSimYear.rmdDetails?.totalWithdrawn ?? 0));
+    const otherAGI = Math.max(0, getOrdinaryAGI(peakSimYear, peakAge, effTaxAt(peakSimYear.year).filingStatus) - (peakSimYear.rmdDetails?.totalWithdrawn ?? 0));
     return combinedMarginalAt(peakSimYear.year, otherAGI + peakBalance / PEAK_RMD_DIVISOR);
 }
 

@@ -1,8 +1,9 @@
 import { AnyAccount, DebtAccount, ESPPAccount, InvestedAccount, PropertyAccount, RSUAccount } from '../../../components/Objects/Accounts/models';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { AssumptionsState, getBirthYear } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { TaxState, resolveTaxEventsForYear } from '../../../components/Objects/Taxes/TaxContext';
 import { getProjectedRMDMarginalRate } from '../../../services/TaxOptimizationService';
+import { buildMilestoneReachYears } from '../../../services/simulation/MilestoneEvaluator';
 import { bracketAwareTradExitValue, HEIR_EXIT_RATE } from '../../../services/simulation/RothConversionDP';
 import * as TaxService from '../../../components/Objects/Taxes/TaxService';
 
@@ -210,13 +211,20 @@ export function buildTradValuation(
     if (!last) return { rate: projectedRMDRate };
     const birthYear = getBirthYear(assumptions.milestones);
     const terminalAge = last.year - birthYear + 1;
-    const fedParams = TaxService.getTaxParameters(last.year, taxState.filingStatus, 'federal', undefined, assumptions);
+    // Resolve scheduled tax life events (filing-status / state-residency changes) to the
+    // TERMINAL year before building the ruler (fp-review F3a). The engine, the DP contexts,
+    // and the DP's own terminal all price a scheduled event (e.g. MFJ→Single widowhood);
+    // using the raw year-0 taxState here left the largest term in the objective on the
+    // wrong brackets whenever an event fires in-horizon. Milestone-triggered events resolve
+    // against the reach years this timeline actually recorded.
+    const effTax = resolveTaxEventsForYear(taxState, last.year, buildMilestoneReachYears(realYears));
+    const fedParams = TaxService.getTaxParameters(last.year, effTax.filingStatus, 'federal', undefined, assumptions);
     if (!fedParams) return { rate: projectedRMDRate };
     // State tax rides the exit drawdown too (fp-review F2): the conversion-cost side
     // prices state tax in full, so a fed-only exit over-values the residual and biases
     // the optimizer toward under-conversion in taxed states. No-tax states (or an
     // unknown residency) resolve to undefined → fed-only, unchanged.
-    const stateParams = TaxService.getTaxParameters(last.year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions) ?? null;
+    const stateParams = TaxService.getTaxParameters(last.year, effTax.filingStatus, 'state', effTax.stateResidency, assumptions) ?? null;
     const g = (assumptions.investments.returnRates.ror ?? 7) / 100
         + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0);
     const ss = TaxService.getSocialSecurityBenefits(last.incomes, last.year);
@@ -225,7 +233,7 @@ export function buildTradValuation(
     return {
         rate: projectedRMDRate,
         tradDeferredTax: (b: number) =>
-            bracketAwareTradExitValue(b, terminalAge, g, fedParams, taxState.filingStatus, 'self-liquidate', ss, fixed, cola, stateParams),
+            bracketAwareTradExitValue(b, terminalAge, g, fedParams, effTax.filingStatus, 'self-liquidate', ss, fixed, cola, stateParams),
     };
 }
 
