@@ -250,7 +250,7 @@ describe('Scenario 1: Level 2 - Solver Tests', () => {
         expect(yearPlan.converged).toBe(true);
     });
 
-    it('should tap brokerage first, not Traditional', () => {
+    it('should tap savings then brokerage first, not Traditional', () => {
         const yearPlan = solveRetirementYear(solverInput);
 
         const deficitWithdrawals = yearPlan.withdrawals.filter(
@@ -258,8 +258,12 @@ describe('Scenario 1: Level 2 - Solver Tests', () => {
         );
 
         if (deficitWithdrawals.length > 0) {
-            // First withdrawal should be from brokerage
-            expect(deficitWithdrawals[0].source).toBe('brokerage');
+            // #161: under tax-opt, savings leads the non-penalized tier ($0 tax,
+            // $0 MAGI — cheapest source), so the $20k cash is spent first and
+            // brokerage covers the rest. The point of this test survives intact:
+            // the penalized Traditional is NOT the first source.
+            expect(deficitWithdrawals[0].source).toBe('savings');
+            expect(deficitWithdrawals[1]?.source).toBe('brokerage');
         }
     });
 

@@ -1634,7 +1634,10 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // the order already lists every account (the golden masters and all scenarios).
     // honorLiteralOrder only when the USER owns the order (Tax Opt off). When Tax Opt
     // is on the optimizer owns it and keeps its penalty-aware execution — the order it
-    // SCORES must match how it RUNS, so its picks stay stable (#154).
+    // SCORES must match how it RUNS, so its picks stay stable (#154). On that
+    // optimizer-owned path savings leads the non-penalized tier (#161, per
+    // WITHDRAWAL_TAX_RANK) so idle cash deploys for living expenses instead of
+    // waiting for a big-tax year to force it out.
     let accountSnapshots = createOrderedSnapshots(
         input.accounts, input.withdrawalOrder, input.currentAge, input.year, true, !input.taxOptimizationEnabled,
     );
@@ -2252,7 +2255,9 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         // too — same as the retirement drawdown — so a pre-retirement shortfall taps
         // accounts in the exact sequence the UI shows. Gated on Tax Opt OFF: when Tax
         // Optimization is ON the optimizer owns the order and keeps its penalty-aware
-        // bucketing (the order it scores must match how it runs). includeUnorderedSellable
+        // bucketing, savings-first among non-penalized (#161) — the same execution as
+        // the retirement drawdown, so the order it scores matches how it runs both
+        // before and after retirement. includeUnorderedSellable
         // stays false here — the #111 safety-net tier is deliberately retirement-only
         // because the working-year initialDeficit conflates tax with spending and would
         // mishandle RSU withholding (#114).
