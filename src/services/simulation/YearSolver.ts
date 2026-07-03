@@ -21,7 +21,7 @@ import { AnyExpense, LoanExpense } from "../../components/Objects/Expense/models
 import { isOfferableDebt, DEBT_PAYOFF_EPSILON } from "./SurplusAllocator";
 import { TaxParameters } from "../../data/TaxData";
 import { TaxState } from "../../components/Objects/Taxes/TaxContext";
-import { AssumptionsState } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { AssumptionsState, ACA_SUBSIDY_LOSS_DEFAULT } from "../../components/Objects/Assumptions/AssumptionsContext";
 import { RothConversionStrategy, resolveRothConversionStrategy } from "../../components/Objects/Assumptions/rothConversionStrategy";
 import {
     YearPlan,
@@ -390,7 +390,6 @@ function computeConversionTaxAndSource(
     surplus: number,
     fedParams: TaxParameters,
     stateParams: TaxParameters | null,
-    acaOptions: ACAOptions | undefined,
 ): { conversionTax: number; conversionFedTax: number; conversionStateTax: number; taxSource: ConversionTaxSource } {
     // Estimate this year's LTCG so the conversion's displayed Tax Cost reflects
     // the LTCG bump (brokerage is sold for the spending deficit + conversion tax,
@@ -406,6 +405,13 @@ function computeConversionTaxAndSource(
     // First arg must be ordinary income EXCLUDING SS — the function re-derives
     // taxable SS internally from the separate socialSecurityBenefits arg. Passing
     // baseOrdinaryIncome (which already includes taxable SS) double-counts SS.
+    //
+    // No acaOptions here (reported-cost path, mirroring the IRMAA convention):
+    // the ACA subsidy repayment is charged as REAL cash by solveRetirementYear
+    // (acaSubsidyRepayment → total tax) in cliff-crossing years, so folding it
+    // into the conversion's displayed taxAmount would double-count it. The
+    // SEARCH paths (coarseToFineSearch, DP) still price the cliff via acaOptions
+    // to steer conversion sizing.
     const conversionTaxResult = calculateEffectiveConversionTax(
         nonSSOrdinaryIncome,
         socialSecurityBenefits,
@@ -414,7 +420,6 @@ function computeConversionTaxAndSource(
         input.taxState.filingStatus,
         fedParams,
         stateParams,
-        acaOptions,
     );
 
     const conversionTax = conversionTaxResult.taxIncrease;
@@ -529,7 +534,7 @@ function computeCeilingContext(
             currentAge: input.currentAge,
             acaSubsidyAware: true,
             acaCliffThreshold: getAcaCliffThreshold(acaFiling, input.year),
-            estimatedSubsidyLoss: 12000,
+            estimatedSubsidyLoss: input.assumptions.investments.acaAnnualSubsidyLoss ?? ACA_SUBSIDY_LOSS_DEFAULT,
         };
     }
 
@@ -1043,7 +1048,7 @@ function planConversion(
     const { conversionTax, conversionFedTax, conversionStateTax, taxSource } =
         computeConversionTaxAndSource(
             input, baseOrdinaryIncome, nonSSOrdinaryIncome, socialSecurityBenefits,
-            conversionAmount, spendingDeficit, surplus, fedParams, stateParams, acaOptions,
+            conversionAmount, spendingDeficit, surplus, fedParams, stateParams,
         );
     const netToRoth = conversionAmount;
 
@@ -1304,26 +1309,10 @@ function planConversionDP(
         return skipReturn('TRADITIONAL_DEPLETED', 'Skipped DP conversion: no valid source or target account.');
     }
 
-    // ACA options for the tax cost calc (same logic as rate-match path).
-    let acaOptions: ACAOptions | undefined;
-    if (input.acaAware && input.currentAge < 65) {
-        // Use the shared 400% FPL cliff (by year + filing status) rather than hardcoded
-        // values, matching RothConversionDP. The old constants ($125k MFJ / $62.5k single)
-        // diverged from the real thresholds (~$81.8k / $60.2k for 2024).
-        const acaFiling: 'single' | 'married_filing_jointly' =
-            input.taxState.filingStatus === 'Married Filing Jointly' ? 'married_filing_jointly' : 'single';
-        acaOptions = {
-            currentAge: input.currentAge,
-            acaSubsidyAware: true,
-            acaCliffThreshold: getAcaCliffThreshold(acaFiling, input.year),
-            estimatedSubsidyLoss: 12000,
-        };
-    }
-
     const { conversionTax, conversionFedTax, conversionStateTax, taxSource } =
         computeConversionTaxAndSource(
             input, baseOrdinaryIncome, nonSSOrdinaryIncome, socialSecurityBenefits,
-            conversionAmount, spendingDeficit, surplus, fedParams, stateParams, acaOptions,
+            conversionAmount, spendingDeficit, surplus, fedParams, stateParams,
         );
 
     const conversion: PlannedConversion = {
@@ -1745,6 +1734,22 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // prior-year MAGI exists at all.
     const irmaaSurcharge = computeIrmaaForYear(input, baseOrdinaryIncome, decisions);
 
+    // ACA subsidy repayment (F1): a pre-65 retirement year whose ACA MAGI
+    // (100%-of-SS base + conversion + deficit-funding withdrawals + realized
+    // gains) reaches the 400%-FPL cliff loses the marketplace premium subsidy —
+    // a REAL cash cost, charged like IRMAA: folded into the deficit (so
+    // withdrawals cover it) and into the year's total tax. Recomputed each
+    // iteration alongside the MAGI drivers (Trad withdrawal / ESPP / LTCG /
+    // STCG); those only grow with the deficit, so the cliff test is monotone
+    // and converges with the loop. The searches (rate-match clamp, DP shadow
+    // penalty, withdrawal-planner steering) still AVOID the cliff; this prices
+    // the years where the plan crosses it anyway, so the engine-direct
+    // optimizer's judge no longer scores crossings at $0.
+    const acaEstimatedSubsidyLoss =
+        input.assumptions.investments.acaAnnualSubsidyLoss ?? ACA_SUBSIDY_LOSS_DEFAULT;
+    let acaSubsidyRepayment = 0;
+    let acaMagiEstimate = 0;
+
     // Iterative deficit loop: converges on LTCG and SS taxability.
     //
     // Two circular dependencies resolved by iteration:
@@ -1856,6 +1861,15 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         // LTCG bracket-stack effect of STCG are retained.
         const fedTaxExStcgOrdinary = finalFedResult.totalTax - stcgOrdinaryTaxDelta(estimatedSTCG);
 
+        // ACA cliff check with this iteration's MAGI drivers. Uses the same MAGI
+        // base as the withdrawal planner's cliff guard (acaBaseMAGI, incl. 100%
+        // of SS) plus the loop-produced income the guard layers on internally.
+        if (acaCliffActive) {
+            acaMagiEstimate = acaBaseMAGI + estimatedTradWithdrawal +
+                estimatedESPPOrdinaryIncome + estimatedLTCG + stcgForFederal(estimatedSTCG);
+            acaSubsidyRepayment = acaMagiEstimate >= acaCliffThreshold ? acaEstimatedSubsidyLoss : 0;
+        }
+
         // Deficit includes authoritative LTCG tax (via fedTaxExStcgOrdinary).
         // Note: classifyIncome adds rmdAmount to spendable, so we don't subtract it again.
         const deficit =
@@ -1863,7 +1877,8 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
             fedTaxExStcgOrdinary +
             finalStateTax +
             ficaTax +
-            irmaaSurcharge -
+            irmaaSurcharge +
+            acaSubsidyRepayment -
             incomeClassification.classified.spendable;
 
         if (deficit <= 0) {
@@ -1983,8 +1998,19 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // Total tax uses authoritative federal (ordinary + LTCG + NIIT, less STCG
     // ordinary which the planner carries) + state (with LTCG) + withdrawal
     // ordinary tax (Roth 5-year, Traditional, HSA, RSU STCG) + FICA + penalties
-    // + Medicare IRMAA surcharge (from year N-2 MAGI).
-    const totalTax = finalFedTaxExStcgOrdinary + finalStateTax + withdrawalOrdinaryTax + ficaTax + totalPenalties + irmaaSurcharge;
+    // + Medicare IRMAA surcharge (from year N-2 MAGI) + ACA subsidy repayment
+    // (pre-65 cliff crossing).
+    const totalTax = finalFedTaxExStcgOrdinary + finalStateTax + withdrawalOrdinaryTax + ficaTax + totalPenalties + irmaaSurcharge + acaSubsidyRepayment;
+
+    if (acaSubsidyRepayment > 0) {
+        decisions.push({
+            category: 'tax',
+            amount: acaSubsidyRepayment,
+            description: `ACA subsidy lost: $${Math.round(acaSubsidyRepayment).toLocaleString()} ` +
+                `(MAGI $${Math.round(acaMagiEstimate).toLocaleString()} crossed the 400% FPL cliff ` +
+                `$${Math.round(acaCliffThreshold).toLocaleString()} before age 65).`,
+        });
+    }
 
     // The year's MAGI (≈ AGI) — stored so year N+2 can read it for its IRMAA
     // lookback. Equals all ordinary income (incl. taxable SS + conversion) plus the
@@ -2044,6 +2070,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         withdrawalOrdinaryTax,
         niit: finalFedResult.niitTax,
         irmaa: irmaaSurcharge,
+        aca: acaSubsidyRepayment,
         penalties: totalPenalties,
         total: totalTax,
     };
@@ -2325,6 +2352,9 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         withdrawalOrdinaryTax,
         niit: niitTax,
         irmaa: irmaaSurcharge,
+        // Working years assume employer coverage (no marketplace subsidy at
+        // stake); the ACA charge applies only on the retirement path.
+        aca: 0,
         penalties: totalPenalties,
         total: finalTotalTax,
     };

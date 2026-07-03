@@ -1011,6 +1011,7 @@ describe('qrUtils', () => {
           rothConversionUserSituation: 'self-liquidate',
           taxOptimizationEnabled: false,
           acaAware: true,
+          acaAnnualSubsidyLoss: 12000,
         },
         demographics: {
           birthYear: 1985,
@@ -1068,6 +1069,7 @@ describe('qrUtils', () => {
           rothConversionUserSituation: 'self-liquidate',
           taxOptimizationEnabled: false,
           acaAware: true,
+          acaAnnualSubsidyLoss: 12000,
         },
         demographics: {
           birthYear: 1990,
@@ -1314,6 +1316,7 @@ describe('qrUtils', () => {
           rothConversionUserSituation: 'self-liquidate',
           taxOptimizationEnabled: false,
           acaAware: true,
+          acaAnnualSubsidyLoss: 12000,
         },
         demographics: {
           birthYear: 1988,
@@ -1965,6 +1968,7 @@ describe('qrUtils', () => {
             rothConversionUserSituation: 'self-liquidate',
             taxOptimizationEnabled: false,
             acaAware: true,
+            acaAnnualSubsidyLoss: 12000,
           },
           demographics: {
             birthYear: 1985,
@@ -2092,6 +2096,7 @@ describe('qrUtils', () => {
             rothConversionUserSituation: 'self-liquidate',
             taxOptimizationEnabled: false,
             acaAware: true,
+            acaAnnualSubsidyLoss: 12000,
           },
           demographics: {
             birthYear: 1990,
@@ -2420,6 +2425,7 @@ describe('qrUtils', () => {
             rothConversionUserSituation: 'self-liquidate',
             taxOptimizationEnabled: false,
             acaAware: true,
+            acaAnnualSubsidyLoss: 12000,
           },
           demographics: { priorYearMode: false },
           display: { useCompactCurrency: true, showExperimentalFeatures: false, hsaEligible: true },
@@ -2477,6 +2483,7 @@ describe('qrUtils', () => {
           rothConversionDPBackloadDelta: 0.02, // non-default
           taxOptimizationEnabled: true, // non-default
           acaAware: false, // non-default
+          acaAnnualSubsidyLoss: 12000,
         },
         demographics: {
           priorYearMode: true,
@@ -2568,6 +2575,7 @@ describe('qrUtils', () => {
             rothConversionDPBackloadDelta: 0.015,
             taxOptimizationEnabled: true, // non-default
             acaAware: false, // non-default
+            acaAnnualSubsidyLoss: 12000,
           },
           demographics: {
             priorYearMode: false,

@@ -53,7 +53,7 @@
 
 import { TaxParameters, FilingStatus } from "../../data/TaxData";
 import { TaxState, resolveTaxEventsForYear } from "../../components/Objects/Taxes/TaxContext";
-import { AssumptionsState, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { AssumptionsState, getBirthYear, ACA_SUBSIDY_LOSS_DEFAULT } from "../../components/Objects/Assumptions/AssumptionsContext";
 import { SimulationYear, DPYearTrace } from "./types";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
 import { ACAOptions } from "./helpers";
@@ -126,7 +126,6 @@ const MIN_CONVERSION_RANGE = 10_000;
  * spans the top federal bracket from $0 income, so any optimum will land below it.
  */
 const MAX_CONVERSION_CAP = 500_000;
-const ACA_SUBSIDY_LOSS_DEFAULT = 12_000;
 /**
  * Early-withdrawal penalty on Traditional 401k/IRA distributions taken for
  * SPENDING before age 59.5. Mirrors WithdrawalPlanner's flat 10% (it grosses up
@@ -632,7 +631,9 @@ export function buildDPYearContexts(
                 currentAge: age,
                 acaSubsidyAware: true,
                 acaCliffThreshold: getAcaCliffThreshold(acaFiling, simYear.year),
-                estimatedSubsidyLoss: ACA_SUBSIDY_LOSS_DEFAULT,
+                // Same number the engine charges as real cash (YearSolver), so
+                // seed and judge price identical cliff economics.
+                estimatedSubsidyLoss: assumptions.investments.acaAnnualSubsidyLoss ?? ACA_SUBSIDY_LOSS_DEFAULT,
             };
         }
 
@@ -722,7 +723,10 @@ export function buildDPYearContexts(
             + (simYear.taxDetails.fica ?? 0)
             // IRMAA is in totalExpense too; the DP recomputes it per-plan in
             // computeYearTax, so strip the baseline value to avoid double-counting.
-            + (simYear.taxDetails.irmaa ?? 0);
+            + (simYear.taxDetails.irmaa ?? 0)
+            // Likewise the ACA subsidy repayment (now real engine cash): the DP
+            // prices the cliff per-plan via acaOptions in computeYearTax.
+            + (simYear.taxDetails.aca ?? 0);
         const spendingNeed = Math.max(
             0,
             (simYear.cashflow.totalExpense ?? 0) - baselineTaxes,

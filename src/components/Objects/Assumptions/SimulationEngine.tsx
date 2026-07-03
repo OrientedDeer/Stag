@@ -999,6 +999,7 @@ function simulateOneYearWithNewEngine(
             withdrawalOrdinaryTax: withdrawalState.withdrawalOrdinaryTaxTotal,
             niit: yearPlan.tax.niit,
             irmaa: yearPlan.tax.irmaa,
+            aca: yearPlan.tax.aca,
             earlyWithdrawalPenalty: withdrawalState.withdrawalPenalties,
             longTermCapitalGains: withdrawalState.longTermCapitalGains,
         },
