@@ -99,16 +99,18 @@ export const McHeadlineTiles = ({ summary, forceExact }: McHeadlineTilesProps) =
     // lives in the tooltip (it's dominated by the single worst surviving path
     // and reads alarmist as a headline).
     const ce = summary.certaintyEquivalents;
+    const solventPct = ce ? ((ce.solventCount / ce.totalCount) * 100).toFixed(0) : '';
     const ceTooltip = ce
-        ? `The plan doesn't produce ONE ending value — it produces this whole spread of them. `
-        + `This tile collapses the spread to a single number: the guaranteed amount that would `
-        + `feel like a fair trade for taking the gamble. It sits below the median because an `
-        + `uncertain outcome is worth less than a sure one — the wider the downside, the bigger `
-        + `the discount. Here a moderately risk-averse person would trade for about `
-        + `${fmt(ce.gamma2)} (γ=2); a very risk-averse person for `
-        + `${fmt(ce.gamma4)} (γ=4, dominated by the single worst surviving path). `
-        + `Computed only over the ${((ce.solventCount / ce.totalCount) * 100).toFixed(0)}% `
-        + `of runs that stay solvent — the success rate tells the rest of the story.`
+        ? `The "gamble" is the plan itself: the same plan run through ${ce.totalCount.toLocaleString()} `
+        + `simulated market histories ends ${ce.totalCount.toLocaleString()} different ways, and you `
+        + `only get to live one of them. This tile prices that draw as a single sure number — the `
+        + `guaranteed amount a moderately risk-averse person would accept instead of taking it `
+        + `(${fmt(ce.gamma2)}, γ=2; a very risk-averse person: ${fmt(ce.gamma4)}, γ=4, which is `
+        + `dominated by the single worst surviving path). It is always below the solvent-path `
+        + `AVERAGE — that shortfall is the price of the uncertainty — but it can legitimately sit `
+        + `above the Median tile: long upside tails pull the average far above the median, and the `
+        + `CE counts only the ${solventPct}% of runs that stay solvent while the median counts `
+        + `every path.`
         : undefined;
 
     return (
