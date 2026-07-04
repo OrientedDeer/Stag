@@ -573,7 +573,9 @@ export default function PriorityTab() {
                         const currentBalance = targetAccount.amount;
                         cost = Math.max(0, targetAmount - currentBalance);
                         label = `Emergency fund (${item.capValue}× expenses)`;
-                        wantedNote = `Target = ${item.capValue} months × ${formatMoney(totalMonthlyFixedExpenses)} monthly expenses = ${formatMoney(targetAmount)}. Balance ${formatMoney(currentBalance)}, so ${formatMoney(cost)} still needed`;
+                        wantedNote = cost > 0
+                            ? `Target = ${item.capValue} months × ${formatMoney(totalMonthlyFixedExpenses)} monthly expenses = ${formatMoney(targetAmount)}. Balance ${formatMoney(currentBalance)}, so ${formatMoney(cost)} still needed`
+                            : `Target met — fully funded (balance ${formatMoney(currentBalance)} ≥ target ${formatMoney(targetAmount)})`;
                     } else {
                         cost = 0;
                         label = `Emergency fund (${item.capValue}× expenses)`;
