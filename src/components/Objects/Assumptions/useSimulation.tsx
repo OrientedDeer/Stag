@@ -356,11 +356,13 @@ function runSimulationLoop(args: {
     dpDebugByYear?: Map<number, string[]>;
     /** #98 closed-loop conversion policy. MC path only. */
     mcConversionPolicy?: DPPolicy;
+    /** #170: candidate-scoring runs — skip the display-only tax-cost refinements. */
+    skipDisplayRefinement?: boolean;
 }): void {
     let { currentAccounts, currentIncomes, currentExpenses, previousActiveMilestones } = args;
     const { milestoneReachYears, timeline, assumptions, taxState, yearlyReturns,
             previousSimYear, yearsToRun, conversionMode, baselineProvider, dpConversionPlan, dpDebugByYear,
-            mcConversionPolicy } = args;
+            mcConversionPolicy, skipDisplayRefinement } = args;
 
     // #146 [4]: true while any milestone-started income may still be dormant. Latches
     // off once they have all fired (the dormant list empties) — milestones are
@@ -419,6 +421,7 @@ function runSimulationLoop(args: {
                 dpConversionPlan,
                 dpDebugByYear,
                 mcConversionPolicy,
+                skipDisplayRefinement,
             },
         );
 
@@ -500,6 +503,14 @@ export interface RunSimulationOptions {
      *  conversion strategy looks up the conversion at the path's realized
      *  (Traditional, Roth) state — see YearSolver.planConversionDP. */
     mcConversionPolicy?: DPPolicy;
+    /** #170: candidate-SCORING runs only (engine-direct conversion search, joint
+     *  withdrawal-order search, MC h*-cap derivation). Skips the display-only
+     *  conversion tax-cost refinements — the #164 counterfactual re-solve and the
+     *  #159 working-year finite-difference decomposition — which scoring
+     *  timelines never surface. Reporting-only: amounts, balances, taxes, and
+     *  cashflows are identical either way. NEVER set on the run whose timeline
+     *  reaches the UI — displayed taxAmount must stay finite-difference-exact. */
+    skipDisplayRefinement?: boolean;
 }
 
 export const runSimulation = (
@@ -522,6 +533,7 @@ export const runSimulation = (
         eoyDebtReductions,
         eoyMortgageReductions,
         mcConversionPolicy,
+        skipDisplayRefinement,
     } = options;
 
     // Calculate start year and current age from birth year
@@ -834,6 +846,7 @@ export const runSimulation = (
         dpConversionPlan,
         dpDebugByYear,
         mcConversionPolicy,
+        skipDisplayRefinement,
     });
 
     return timeline;
@@ -1040,7 +1053,9 @@ export const buildMcConversionPolicy = (
     const scorePlan = (plan: Map<number, number>) => {
         const tl = runSimulation(
             yearsToRun, accounts, incomes, expenses, assumptions, taxState, undefined,
-            { dpConversionPlan: plan },
+            // #170: pure scoring — these timelines only feed the h*-cap derivation,
+            // never a display, so skip the per-conversion-year counterfactual re-solve.
+            { dpConversionPlan: plan, skipDisplayRefinement: true },
         );
         return { afterTaxNW: terminalAfterTaxNetWorth(tl, ruler), timeline: tl };
     };
@@ -1429,14 +1444,18 @@ export const runSimulationWithOptimization = (
                 });
                 return { order, aOrder, baselineO, dpInputs, dpPlan };
             };
-            const runUnderOrder = (aOrder: AssumptionsState, plan: Map<number, number>) => runSimulation(
+            // #170: candidate SCORING runs pass skipDisplayRefinement — their timelines
+            // never reach the UI, so they skip the #164 per-conversion-year counterfactual
+            // re-solve (and the #159 working-year decomposition). The final user-facing
+            // projection re-runs the winner below with the refinement ON.
+            const runUnderOrder = (aOrder: AssumptionsState, plan: Map<number, number>, skipDisplayRefinement: boolean) => runSimulation(
                 yearsToRun, accounts, incomes, expenses, aOrder, taxState, yearlyReturns,
-                { referenceDate, dpConversionPlan: plan, eoyContributionAdditions, eoyDebtReductions, eoyMortgageReductions },
+                { referenceDate, dpConversionPlan: plan, skipDisplayRefinement, eoyContributionAdditions, eoyDebtReductions, eoyMortgageReductions },
             );
-            // A full conversion engine-search under one order's artifacts → {order, timeline, nw, label, sims, dpPlan}.
+            // A full conversion engine-search under one order's artifacts → {order, aOrder, plan, timeline, nw, label, sims, dpPlan}.
             const fullSearch = (art: ReturnType<typeof buildArtifacts>) => {
                 const scorePlan = (plan: Map<number, number>) => {
-                    const tl = runUnderOrder(art.aOrder, plan);
+                    const tl = runUnderOrder(art.aOrder, plan, true);
                     return { afterTaxNW: terminalAfterTaxNetWorth(tl, tradValuationRuler), timeline: tl };
                 };
                 const s = searchConversionPlanByEngine(art.dpInputs.contexts, scorePlan, {
@@ -1447,7 +1466,8 @@ export const runSimulationWithOptimization = (
                     irmaaScheduleForYear: (year, fs) => getIRMAASchedule(fs, year, assumptions),
                 });
                 return {
-                    order: art.order, timeline: s.winningTimeline,
+                    order: art.order, aOrder: art.aOrder, plan: s.conversionsByYear,
+                    timeline: s.winningTimeline,
                     nw: terminalAfterTaxNetWorth(s.winningTimeline, tradValuationRuler),
                     label: s.diagnostics.bestLabel, sims: s.diagnostics.sims + 1,
                     dpPlan: art.dpPlan, // the DP seed this order searched with (since F5a: always the user-order solve) — its traces feed the debug screen
@@ -1472,8 +1492,23 @@ export const runSimulationWithOptimization = (
                 totalSims += result.sims;
                 if (result.nw > best.nw + 1) best = result; // the de-converted truth decides; ties keep the incumbent
             }
-            finalTimeline = best.timeline;
-            defaultBranchTerminalAfterTaxNW = best.nw; // finalTimeline === best.timeline, already scored on the ruler
+            // #170: scoring ran unrefined, but the displayed conversion taxAmount must stay
+            // finite-difference-exact (#164) — re-run the winning (order, plan) ONCE with the
+            // refinement on. One extra full sim replaces one counterfactual year-solve per
+            // conversion year per scored candidate. Skipped when the std-ded baseline won
+            // (its timeline came from the conversionMode:'std-ded-only' run, which never had
+            // the refinement — pre-existing display contract for that path — and replaying
+            // its extracted plan via dpConversionPlan would execute through a different code
+            // path) and when the winner executed no conversions (the refinement is a no-op).
+            const winnerHasConversions = best.timeline.some(
+                y => !y.isEndOfYearProjection && (y.rothConversion?.amount ?? 0) > 0);
+            if (best.label !== 'std-ded-baseline' && winnerHasConversions) {
+                onProgress?.('Refining the chosen projection…');
+                finalTimeline = runUnderOrder(best.aOrder, best.plan, false);
+            } else {
+                finalTimeline = best.timeline;
+            }
+            defaultBranchTerminalAfterTaxNW = best.nw; // already scored on the ruler (the #170 refined re-run only changes reported tax costs, never balances)
             if (finalTimeline.length > 0) {
                 const orderChanged = best.order !== fullStrategy;
                 const orderGain = best.nw - userResult.nw; // full-search value of the chosen order alone

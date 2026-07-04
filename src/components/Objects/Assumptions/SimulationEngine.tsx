@@ -214,6 +214,10 @@ export interface SimulateOneYearOptions {
     dpDebugByYear?: Map<number, string[]>;
     /** #98 closed-loop conversion policy. MC path only; undefined in production. */
     mcConversionPolicy?: DPPolicy;
+    /** #170: candidate-scoring runs only — skip the #164/#159 display-only
+     *  conversion tax-cost refinements (reporting-only; results are otherwise
+     *  identical). Never set on the user-facing projection. */
+    skipDisplayRefinement?: boolean;
 }
 
 /**
@@ -243,6 +247,7 @@ function simulateOneYearWithNewEngine(
         dpConversionPlan,
         dpDebugByYear,
         mcConversionPolicy,
+        skipDisplayRefinement,
     } = options;
     const logs: string[] = [];
     logs.push('[V2 Engine] Using new YearSolver-based simulation');
@@ -615,6 +620,7 @@ function simulateOneYearWithNewEngine(
         dpConversionPlan,
         dpDebugByYear,
         mcConversionPolicy,
+        skipDisplayRefinement,
     };
 
     const yearPlan = solveYear(solverInput);

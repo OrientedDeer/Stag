@@ -189,6 +189,17 @@ export interface YearSolverInput {
     // reports the conversion's tax cost as the finite difference between this
     // year's total tax with and without the conversion.
     forceZeroConversion?: boolean;
+
+    // #170: set ONLY on candidate-SCORING runs (engine-direct conversion search,
+    // joint withdrawal-order search, MC h*-cap derivation) — timelines that never
+    // surface a displayed tax cost. Skips the display-fidelity refinements: the
+    // #164 counterfactual re-solve (solveRetirementYear) and the #159 working-year
+    // finite-difference decomposition. Reporting-only — conversion amounts,
+    // balances, taxes, and cashflows are identical either way; only the reported
+    // PlannedConversion.taxAmount / fed / state fields fall back to the cheap
+    // estimate ($0 for working years). The final user-facing projection never
+    // sets this.
+    skipDisplayRefinement?: boolean;
 }
 
 export interface ConversionPlan {
@@ -2082,11 +2093,14 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     //   • mcConversionPolicy — MC per-path solves (the aggregator reads only
     //     `amount`; also keeps #98 MC golden masters byte-identical);
     //   • conversionMode 'std-ded-only' — the O(years²) baseline sub-sims
-    //     (consumed via BaselineProjections, which carries no tax costs).
+    //     (consumed via BaselineProjections, which carries no tax costs);
+    //   • skipDisplayRefinement — candidate-scoring runs (#170), whose
+    //     timelines never reach the UI.
     if (
         conversionPlan.conversion &&
         conversionPlan.conversion.amount > 0 &&
         !input.forceZeroConversion &&
+        !input.skipDisplayRefinement &&
         !input.mcConversionPolicy &&
         input.conversionMode !== 'std-ded-only'
     ) {
@@ -2414,16 +2428,24 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
     // Zero-conversion years never take this branch (byte-identical to before).
     let conversion: PlannedConversion | null = null;
     if (conversionAmount > 0 && conversionSourceAccount && conversionTargetAccount) {
-        const fedNoConv = TaxService.calculateTotalFederalTax(
-            taxableOrdinaryBase - socialSecurityBenefits,
-            socialSecurityBenefits,
-            0, 0, preTaxDeductions, input.taxState.filingStatus, fedParams,
-        ).totalTax;
-        const stateNoConv = stateParams
-            ? TaxService.calculateTax(taxableOrdinaryBase - socialSecurityBenefits, preTaxDeductions, stateParams)
-            : 0;
-        const conversionFedTax = Math.max(0, taxResult.totalTax - fedNoConv);
-        const conversionStateTax = Math.max(0, stateTax - stateNoConv);
+        // #170: candidate-scoring runs never display the cost — skip the two
+        // no-conversion tax computations and report $0 (reporting-only; the
+        // conversion income is already inside taxResult/stateTax above, and
+        // nothing decision-side reads taxAmount/taxSource).
+        let conversionFedTax = 0;
+        let conversionStateTax = 0;
+        if (!input.skipDisplayRefinement) {
+            const fedNoConv = TaxService.calculateTotalFederalTax(
+                taxableOrdinaryBase - socialSecurityBenefits,
+                socialSecurityBenefits,
+                0, 0, preTaxDeductions, input.taxState.filingStatus, fedParams,
+            ).totalTax;
+            const stateNoConv = stateParams
+                ? TaxService.calculateTax(taxableOrdinaryBase - socialSecurityBenefits, preTaxDeductions, stateParams)
+                : 0;
+            conversionFedTax = Math.max(0, taxResult.totalTax - fedNoConv);
+            conversionStateTax = Math.max(0, stateTax - stateNoConv);
+        }
         const conversionTax = conversionFedTax + conversionStateTax;
 
         // Tax-payment source, mirroring computeConversionTaxAndSource's preference
