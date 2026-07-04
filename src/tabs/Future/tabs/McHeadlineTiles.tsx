@@ -100,12 +100,13 @@ export const McHeadlineTiles = ({ summary, forceExact }: McHeadlineTilesProps) =
     // and reads alarmist as a headline).
     const ce = summary.certaintyEquivalents;
     const ceTooltip = ce
-        ? `If you could trade this plan's range of outcomes for one guaranteed amount, `
-        + `a moderately risk-averse person would accept about `
-        + `${fmt(ce.gamma2)} (γ=2). `
-        + `A very risk-averse person would accept `
-        + `${fmt(ce.gamma4)} (γ=4) — `
-        + `that lower number is dominated by the single worst surviving path. `
+        ? `The plan doesn't produce ONE ending value — it produces this whole spread of them. `
+        + `This tile collapses the spread to a single number: the guaranteed amount that would `
+        + `feel like a fair trade for taking the gamble. It sits below the median because an `
+        + `uncertain outcome is worth less than a sure one — the wider the downside, the bigger `
+        + `the discount. Here a moderately risk-averse person would trade for about `
+        + `${fmt(ce.gamma2)} (γ=2); a very risk-averse person for `
+        + `${fmt(ce.gamma4)} (γ=4, dominated by the single worst surviving path). `
         + `Computed only over the ${((ce.solventCount / ce.totalCount) * 100).toFixed(0)}% `
         + `of runs that stay solvent — the success rate tells the rest of the story.`
         : undefined;
@@ -147,7 +148,7 @@ export const McHeadlineTiles = ({ summary, forceExact }: McHeadlineTilesProps) =
                     label="Certainty Equivalent"
                     value={ce ? fmt(ce.gamma2) : '—'}
                     valueClassName="text-xl lg:text-2xl text-content-default"
-                    sub={ce ? 'Guaranteed-equivalent value (γ=2)' : 'No solvent paths'}
+                    sub={ce ? 'This spread of outcomes, priced as a sure thing' : 'No solvent paths'}
                     tooltip={ceTooltip}
                 />
             </div>

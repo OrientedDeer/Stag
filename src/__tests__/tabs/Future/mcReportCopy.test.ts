@@ -90,7 +90,7 @@ describe('buildBaselineVerdict', () => {
         expect(sentence).toContain('gained +$120,000 median after-tax per path');
         expect(sentence).toContain('+4.2 pts');
         expect(sentence).toContain('94.2% vs 90.0%');
-        expect(sentence).toContain('vs. converting nothing');
+        expect(sentence).toContain('vs. converting only within the standard deduction');
     });
 
     it('says "lost" with signed negatives when the plan loses', () => {

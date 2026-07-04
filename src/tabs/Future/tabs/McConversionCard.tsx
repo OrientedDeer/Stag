@@ -106,7 +106,8 @@ export const McConversionCard = ({ summary, compareToBaseline, onToggleCompare, 
                 <>
                     {toggle}
                     <p className="text-content-muted text-sm mt-2">
-                        Compare the conversion plan against converting nothing on the same market
+                        Compare the conversion plan against a baseline that converts only within
+                        the standard deduction (the tax-free bracket space) on the same market
                         draws. Enable and re-run — roughly doubles run time.
                     </p>
                 </>

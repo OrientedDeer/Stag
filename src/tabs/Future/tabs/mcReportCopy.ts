@@ -68,7 +68,7 @@ export function buildBaselineVerdict(
         && Math.abs(medianDelta) < 0.02 * cmp.baselineAfterTax.p50;
     if (nearTie) {
         return {
-            sentence: `The conversion plan and converting nothing are nearly tied `
+            sentence: `The conversion plan and the standard-deduction-only baseline are nearly tied `
                 + `(${signedFmt(medianDelta)} median after-tax per path, ${pts} success) — `
                 + `the bad-market (p10) after-tax delta of ${signedFmt(cmp.afterTaxDelta.p10)} is the tiebreak.`,
             nearTie: true,
@@ -79,7 +79,7 @@ export function buildBaselineVerdict(
     return {
         sentence: `The conversion plan ${verb} ${signedFmt(medianDelta)} median after-tax per path `
             + `and ${pts} success (${successRate.toFixed(1)}% vs ${cmp.baselineSuccessRate.toFixed(1)}%) `
-            + `vs. converting nothing.`,
+            + `vs. converting only within the standard deduction.`,
         nearTie: false,
     };
 }
