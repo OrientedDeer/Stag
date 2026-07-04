@@ -272,6 +272,17 @@ export interface DPYearContext {
     baselineConversionAmount?: number;
     /** Diagnostic only — set on the FIRST context: baseline trad at (retirementYear − 1). Used to detect off-by-one between DP starting balance and where real-sim's trad actually is at retirement-year start. */
     diagnosticPreRetirementBaselineTrad?: number;
+    /**
+     * Trad balance ENTERING the year (= engine baseline's end-of-prior-CALENDAR-year
+     * balance, tracked across the years #159 gap gating skips). Unset only when the
+     * year has no prior baseline row (the first context of an already-retired-today
+     * run — covered by DPInputs.currentTradBalance there). #168: the fill-to-headroom
+     * candidate family reads this as its RMD basis when consecutive contexts are
+     * NON-contiguous (a #159 gap→retirement jump over full-income working years),
+     * where the prior CONTEXT's end balance is years stale. For contiguous contexts
+     * this equals the prior context's `baselineTradBalance` exactly.
+     */
+    baselineTradBalanceEnteringYear?: number;
 
     /** Net (RoR − weighted ER) growth rate for trad accounts. */
     growthRate: number;
@@ -822,6 +833,11 @@ export function buildDPYearContexts(
             // (i.e., when this is the first push for retirementYear).
             diagnosticPreRetirementBaselineTrad:
                 contexts.length === 0 ? preRetirementBaselineTrad : undefined,
+            // #168: prevSimYear tracks the prior CALENDAR year (the gap gating above
+            // updates it even for skipped years), so this is the engine's true
+            // entering-year trad balance even across a #159 context discontinuity.
+            baselineTradBalanceEnteringYear:
+                prevSimYear ? sumTradBalanceDiag(prevSimYear) : undefined,
             growthRate,
             rmdDivisor,
         });

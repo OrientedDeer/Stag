@@ -293,18 +293,25 @@ export function extractConversionPlan(timeline: SimulationYear[]): Map<number, n
  * against, so an on-track path reduces to the deterministic optimum h* rather than to a
  * one-year-of-growth mis-estimate of the RMD (which used this year's END balance before).
  *
- * #159: contexts may include PRE-retirement income-GAP years (sabbatical/layoff), making the
- * sequence non-contiguous (gap years, then retirement). Gap years have rmdDivisor = 0, so the
- * RMD basis never reads across the discontinuity in practice — the only exposure is a household
- * retiring AT/after RMD age with earlier gap years, where the first RMD-age context would use a
- * years-old prior balance; that mis-sizes one candidate's fill (the engine score stays exact).
- * A normal full-income career builds no gap contexts, so this family is unchanged there.
+ * #159/#168: contexts may include PRE-retirement income-GAP years (sabbatical/layoff), making
+ * the sequence non-contiguous (gap years, skipped full-income working years, then retirement).
+ * Across such a jump the prior CONTEXT's end balance is years stale — a household retiring
+ * AT/after RMD age with earlier gap years would size its first RMD-age fill from a years-old
+ * basis (#168). So a non-contiguous step reads `baselineTradBalanceEnteringYear` instead: the
+ * engine baseline's trad balance entering the context year, tracked across the skipped years
+ * by buildDPYearContexts. Contiguous contexts keep the prior context's end balance — the
+ * identical number — so a normal full-income career (no gap contexts) is unchanged.
  */
 function fillToHeadroomPlan(contexts: DPYearContext[], headroom: number, startingTradBalance: number): Map<number, number> {
     const plan = new Map<number, number>();
     for (let i = 0; i < contexts.length; i++) {
         const ctx = contexts[i];
-        const priorYearEndTrad = i > 0 ? (contexts[i - 1].baselineTradBalance ?? 0) : startingTradBalance;
+        const prev = i > 0 ? contexts[i - 1] : undefined;
+        const priorYearEndTrad = prev === undefined
+            ? startingTradBalance
+            : ctx.year === prev.year + 1
+                ? (prev.baselineTradBalance ?? 0)
+                : (ctx.baselineTradBalanceEnteringYear ?? prev.baselineTradBalance ?? 0);
         const baselineRMD = ctx.rmdDivisor > 0 ? priorYearEndTrad / ctx.rmdDivisor : 0;
         const otherOrdinary = ctx.nonSSOrdinaryIncomeExclRMD + baselineRMD;
         const ceiling = ctx.fedParams.standardDeduction + headroom;
