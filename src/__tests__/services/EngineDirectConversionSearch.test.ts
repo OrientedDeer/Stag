@@ -366,3 +366,65 @@ describe('#165 — tail-trim pass (keep the head, shrink the tail)', () => {
         }
     });
 });
+
+describe('#168 — fill-family RMD basis across a #159 gap discontinuity', () => {
+    // #159 gap contexts make the sequence non-contiguous: a gap year, then (skipped
+    // full-income working years), then retirement. When the household retires AT/after
+    // RMD age, the retirement context's fill must size its baseline RMD from the
+    // engine-projected balance ENTERING that year (baselineTradBalanceEnteringYear),
+    // not the gap context's years-stale end balance.
+    const GAP_YEAR = YEAR1;          // age 60 via makeCtx
+    const RETIRE_YEAR = YEAR1 + 13;  // age 73 — at RMD age, 12 skipped working years between
+    const RMD_DIVISOR = 20;
+
+    /** Run the search and capture the candidate plan generated for the h=0 grid point. */
+    function h0Plan(ctxs: DPYearContext[], startingTradBalance: number): Map<number, number> {
+        const captured: Map<number, number>[] = [];
+        const { scorePlan } = makeScorer(() => 1); // baseline wins — only generation is inspected
+        searchConversionPlanByEngine(ctxs, scorePlan, {
+            ...baselineOpts(1_000_000),
+            startingTradBalance,
+            onCandidate: (label, _nw, plan) => { if (label === 'h=0') captured.push(new Map(plan)); },
+        });
+        expect(captured.length).toBeGreaterThan(0);
+        return captured[0];
+    }
+
+    it('gap-year horizon + retire at RMD age: the fill RMD basis is the projected entering balance', () => {
+        const ctxs = [
+            // Gap context ends the year at $100k (STALE basis — would give RMD $5k).
+            makeCtx(GAP_YEAR, { rmdDivisor: 0, baselineTradBalance: 100_000 }),
+            // Engine projects $200k entering the retirement year → baseline RMD $10k.
+            makeCtx(RETIRE_YEAR, { rmdDivisor: RMD_DIVISOR, baselineTradBalanceEnteringYear: 200_000 }),
+        ];
+        const plan = h0Plan(ctxs, 1_000_000);
+        // Gap year: no income, no RMD → fill the whole standard deduction.
+        expect(plan.get(GAP_YEAR)).toBeCloseTo(STD_DED, 5);
+        // Retirement year: stdDed − 200k/20 = $5,000. The stale basis would give
+        // stdDed − 100k/20 = $10,000.
+        expect(plan.get(RETIRE_YEAR)).toBeCloseTo(STD_DED - 200_000 / RMD_DIVISOR, 5);
+    });
+
+    it('falls back to the prior context\'s end balance when the entering-year field is absent', () => {
+        const ctxs = [
+            makeCtx(GAP_YEAR, { rmdDivisor: 0, baselineTradBalance: 100_000 }),
+            makeCtx(RETIRE_YEAR, { rmdDivisor: RMD_DIVISOR }), // hand-built contexts without #168 field
+        ];
+        const plan = h0Plan(ctxs, 1_000_000);
+        expect(plan.get(RETIRE_YEAR)).toBeCloseTo(STD_DED - 100_000 / RMD_DIVISOR, 5);
+    });
+
+    it('contiguous contexts (no gap) keep the prior context\'s end balance — #159 byte-identity', () => {
+        const ctxs = [
+            makeCtx(YEAR1, { rmdDivisor: RMD_DIVISOR, baselineTradBalance: 100_000 }),
+            // Poison value: in production this always EQUALS the prior context's end balance;
+            // the contiguous path must not read it, pinning the pre-#168 formula exactly.
+            makeCtx(YEAR2, { rmdDivisor: RMD_DIVISOR, baselineTradBalanceEnteringYear: 987_654_321 }),
+        ];
+        const plan = h0Plan(ctxs, 100_000);
+        // Year 1: stdDed − startingTradBalance/20 = 15,000 − 5,000.
+        expect(plan.get(YEAR1)).toBeCloseTo(STD_DED - 100_000 / RMD_DIVISOR, 5);
+        // Year 2: prior context's baselineTradBalance ($100k), NOT the poison field.
+        expect(plan.get(YEAR2)).toBeCloseTo(STD_DED - 100_000 / RMD_DIVISOR, 5);
+    });
+});

@@ -179,6 +179,33 @@ describe('#159 buildDpSolveInputs: pre-retirement gap-year contexts', () => {
         );
     });
 
+    it('#168: contexts record the engine trad balance ENTERING each year across the gap discontinuity', { timeout: 120_000 }, () => {
+        const s = makeScenario({ withGap: true });
+        const baseline = runStdDedBaseline(s);
+        const { dpInputs } = buildDpSolveInputs(
+            s.accounts, s.incomes, s.expenses, s.assumptions, s.taxState, baseline,
+        );
+        const rows = realRowsByYear(baseline);
+        const gap0Ctx = dpInputs.contexts.find(c => c.year === GAP_YEARS[0])!;
+        const gap1Ctx = dpInputs.contexts.find(c => c.year === GAP_YEARS[1])!;
+        const retireCtx = dpInputs.contexts.find(c => c.year === RETIREMENT_YEAR)!;
+
+        // The retirement context follows the last gap context in the LIST but sits years
+        // later in calendar time: its entering balance (the #168 fill-family RMD basis)
+        // must be the engine's end-of-(retirementYear − 1) balance, not the gap context's
+        // years-stale end balance.
+        expect(retireCtx.baselineTradBalanceEnteringYear).toBeCloseTo(
+            getTotalTraditionalBalance(rows.get(RETIREMENT_YEAR - 1)!.accounts), 0,
+        );
+        expect(retireCtx.baselineTradBalanceEnteringYear).not.toBeCloseTo(
+            gap1Ctx.baselineTradBalance!, 0,
+        );
+
+        // Contiguous pair (the two gap years): entering balance === prior context's end
+        // balance exactly, so the pre-#168 contiguous formula reads the same number.
+        expect(gap1Ctx.baselineTradBalanceEnteringYear).toBe(gap0Ctx.baselineTradBalance);
+    });
+
     it('a normal full-income career builds NO pre-retirement contexts', { timeout: 120_000 }, () => {
         const s = makeScenario({ withGap: false });
         const baseline = runStdDedBaseline(s);
