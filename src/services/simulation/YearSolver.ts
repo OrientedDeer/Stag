@@ -1309,8 +1309,9 @@ function planConversionDP(
         // no re-solve. Avoids the open-loop scaling failure modes (bull-path bracket
         // overrun, can't-add-conversion-years, trim-compounding drift). Non-anticipative:
         // the policy never sees a path's realized future, and these balances reflect only
-        // returns realized through this year. Pre-retirement years have no policy entry
-        // (undefined) → targetConversion stays at the (zero) planned amount.
+        // returns realized through this year. Years without a policy entry (undefined)
+        // keep the planned amount. (#169: pre-retirement GAP years have entries too,
+        // consulted by solveWorkingYear's mirror of this lookup.)
         const rothBalance = getTotalRothBalance(input.accounts);
         const rawPolicy = lookupConversionPolicy(
             input.mcConversionPolicy, input.year, traditionalBalance, rothBalance);
@@ -2300,10 +2301,51 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
     const scheduledConversion = input.forceZeroConversion
         ? 0
         : (input.dpConversionPlan?.get(input.year) ?? 0);
+
+    // #169: MC closed-loop policy consult for GAP years — the same #98 lookup
+    // planConversionDP performs for retirement years. Without it, MC paths
+    // executed the central plan's gap-year amount verbatim (open-loop): a path
+    // whose realized returns left a much smaller (or larger) Traditional balance
+    // in the gap year still converted the centrally-planned amount. The policy
+    // table already covers gap-year contexts (buildDPYearContexts emits them and
+    // the stochastic solve records every context's argmax), so look it up at the
+    // path's REALIZED (Traditional, Roth IRA) state. Non-gap working years have
+    // no policy entry (lookup → undefined) and deterministic runs never set
+    // mcConversionPolicy — both keep the scheduled amount, byte-for-byte.
+    let targetConversion = scheduledConversion;
+    if (!input.forceZeroConversion && input.taxOptimizationEnabled && input.mcConversionPolicy) {
+        const tradForLookup = getTotalTraditionalBalance(input.accounts);
+        const rothForLookup = getTotalRothBalance(input.accounts);
+        const rawPolicy = lookupConversionPolicy(
+            input.mcConversionPolicy, input.year, tradForLookup, rothForLookup);
+        if (rawPolicy !== undefined) {
+            targetConversion = Math.max(0, rawPolicy);
+            // #89 MC over-conversion cap — the same per-path bound planConversionDP
+            // applies: fill realized taxable income only to stdDed + capHeadroom.
+            // The working-year ordinary base nets pre-tax deductions exactly as the
+            // tax calc below does, so the cap adapts to any residual gap-year wages.
+            const capHeadroom = input.mcConversionPolicy.capHeadroom;
+            if (capHeadroom !== undefined) {
+                const nonSSOrdinary = Math.max(
+                    0, taxableOrdinaryBase - socialSecurityBenefits - preTaxDeductions);
+                targetConversion = Math.min(targetConversion,
+                    Math.max(0, fedParams.standardDeduction + capHeadroom - nonSSOrdinary));
+            }
+            if (targetConversion > 0) {
+                decisions.push({
+                    category: 'conversion',
+                    description: `[#98 MC policy] realized Trad $${Math.round(tradForLookup).toLocaleString()}, ` +
+                        `Roth $${Math.round(rothForLookup).toLocaleString()} → gap-year policy conversion ` +
+                        `$${Math.round(targetConversion).toLocaleString()}.`,
+                });
+            }
+        }
+    }
+
     let conversionAmount = 0;
     let conversionSourceAccount: InvestedAccount | null = null;
     let conversionTargetAccount: InvestedAccount | null = null;
-    if (scheduledConversion > 0) {
+    if (targetConversion > 0) {
         const traditionalBalance = getTotalTraditionalBalance(input.accounts);
         conversionSourceAccount = getFirstTraditionalAccount(input.accounts);
         conversionTargetAccount = getFirstRothAccount(input.accounts);
@@ -2311,25 +2353,25 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
             // #159: never skip a scheduled conversion silently — say why.
             decisions.push({
                 category: 'conversion',
-                amount: scheduledConversion,
-                description: `Skipped scheduled Roth conversion of $${Math.round(scheduledConversion).toLocaleString()}: tax optimization is disabled.`,
+                amount: targetConversion,
+                description: `Skipped scheduled Roth conversion of $${Math.round(targetConversion).toLocaleString()}: tax optimization is disabled.`,
             });
         } else if (traditionalBalance <= 0 || !conversionSourceAccount || !conversionTargetAccount) {
             decisions.push({
                 category: 'conversion',
-                amount: scheduledConversion,
-                description: `Skipped scheduled Roth conversion of $${Math.round(scheduledConversion).toLocaleString()}: ` +
+                amount: targetConversion,
+                description: `Skipped scheduled Roth conversion of $${Math.round(targetConversion).toLocaleString()}: ` +
                     (traditionalBalance <= 0 || !conversionSourceAccount
                         ? 'no Traditional balance available.'
                         : 'no Roth account to receive the conversion.'),
             });
         } else {
-            conversionAmount = Math.min(scheduledConversion, traditionalBalance);
-            if (conversionAmount < scheduledConversion - 0.5) {
+            conversionAmount = Math.min(targetConversion, traditionalBalance);
+            if (conversionAmount < targetConversion - 0.5) {
                 decisions.push({
                     category: 'conversion',
                     amount: conversionAmount,
-                    description: `Scheduled Roth conversion of $${Math.round(scheduledConversion).toLocaleString()} clamped to the available Traditional balance ($${Math.round(conversionAmount).toLocaleString()}).`,
+                    description: `Scheduled Roth conversion of $${Math.round(targetConversion).toLocaleString()} clamped to the available Traditional balance ($${Math.round(conversionAmount).toLocaleString()}).`,
                 });
             }
         }

@@ -73,7 +73,10 @@ self.onmessage = async (e: MessageEvent): Promise<void> => {
             // engine change (e.g. #155's Roth penalty-slice split) would replay a
             // stale cached policy solved under the old behavior. Bump on
             // policy-affecting engine changes so old IndexedDB entries miss.
-            v: 'v2-155',
+            // v3-169: gap-year policy entries are now consulted per path
+            // (solveWorkingYear #98 lookup) — pre-#159/#169 cached policies lack
+            // gap-year coverage, so force a re-solve.
+            v: 'v3-169',
             rm: Number(req.config.returnMean.toFixed(4)),
             rs: Number(req.config.returnStdDev.toFixed(4)),
             a: req.accounts,
