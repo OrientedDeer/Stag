@@ -5,9 +5,11 @@ import type { MonteCarloSummary } from '../../../services/MonteCarloTypes';
 
 /**
  * Headline tile row (#162 D1): when the summary carries the after-tax
- * terminal distribution, the tiles are AFTER-TAX (bad/median/good case +
- * certainty equivalent); when it predates that field (stale persisted
- * summary), the legacy gross tiles render instead. All numbers invented.
+ * terminal distribution, the tiles are AFTER-TAX (bad/median/good case);
+ * when it predates that field (stale persisted summary), the legacy gross
+ * tiles render instead. The certainty-equivalent tile was removed by owner
+ * veto 2026-07-04 (the stat is still computed on the summary, just not
+ * shown). All numbers invented.
  */
 
 // Only the fields the tiles read — mirror the cast-fixture convention used
@@ -37,7 +39,7 @@ describe('McHeadlineTiles', () => {
         // Caption explains what the row is.
         expect(screen.getByText(/After-tax terminal net worth/)).toBeInTheDocument();
 
-        // The five headline tiles.
+        // The four headline tiles.
         expect(screen.getByText('Success Rate')).toBeInTheDocument();
         expect(screen.getByText('92.5%')).toBeInTheDocument();
         expect(screen.getByText('Bad Case')).toBeInTheDocument();
@@ -46,8 +48,10 @@ describe('McHeadlineTiles', () => {
         expect(screen.getByText('$1.20M')).toBeInTheDocument(); // after-tax p50
         expect(screen.getByText('Good Case')).toBeInTheDocument();
         expect(screen.getByText('$2.80M')).toBeInTheDocument(); // after-tax p90
-        expect(screen.getByText('Certainty Equivalent')).toBeInTheDocument();
-        expect(screen.getByText('$950.0K')).toBeInTheDocument(); // CE γ=2
+
+        // The CE tile is gone (owner veto) even when the stat is present.
+        expect(screen.queryByText('Certainty Equivalent')).not.toBeInTheDocument();
+        expect(screen.queryByText('$950.0K')).not.toBeInTheDocument();
 
         // GROSS values must NOT be in the headline (they live on the fan chart).
         expect(screen.queryByText('$1.50M')).not.toBeInTheDocument();
@@ -77,15 +81,5 @@ describe('McHeadlineTiles', () => {
 
         const { container: gross } = render(<McHeadlineTiles summary={grossOnlySummary} forceExact={false} />);
         expect(gross.querySelector('.truncate')).toBeNull();
-    });
-
-    it('renders an em-dash CE tile when after-tax data exists but no path was solvent', () => {
-        const noCe = {
-            ...grossOnlySummary,
-            afterTaxPercentiles: { p10: 350_000, p50: 1_200_000, p90: 2_800_000 },
-        } as unknown as MonteCarloSummary;
-        render(<McHeadlineTiles summary={noCe} forceExact={false} />);
-        expect(screen.getByText('Certainty Equivalent')).toBeInTheDocument();
-        expect(screen.getByText('—')).toBeInTheDocument();
     });
 });
