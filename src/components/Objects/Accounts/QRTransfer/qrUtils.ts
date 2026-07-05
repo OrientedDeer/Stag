@@ -51,7 +51,7 @@ const KEY_MAP: Record<string, string> = {
     inflationRate: 'ir', healthcareInflation: 'hi', inflationAdjusted: 'ia',
     salaryGrowth: 'sg', qualifiesForSocialSecurity: 'ss', socialSecurityFundingPercent: 'sp',
     lifestyleCreep: 'lc', housingAppreciation: 'ha', rentInflation: 'ri',
-    ror: 'rr', withdrawalStrategy: 'ws', withdrawalRate: 'wr',
+    ror: 'rr', withdrawalStrategy: 'ws', withdrawalRate: 'wr', withdrawalRateMode: 'wm',
     gkUpperGuardrail: 'gu', gkLowerGuardrail: 'gl', gkAdjustmentPercent: 'ga', autoRothConversions: 'ar',
     retirementAge: 'ra', lifeExpectancy: 'le', birthYear: 'by', priorYearMode: 'pm',
     useCompactCurrency: 'cc', showExperimentalFeatures: 'ef', hsaEligible: 'he',
@@ -358,6 +358,14 @@ export function expandAssumptions(flat: Record<string, unknown>): Record<string,
             // from the top-level `withdrawalStrategy` Burn-Order array restored below.
             withdrawalStrategy: flat.withdrawalStrategy ?? ASSUMPTIONS_DEFAULTS.withdrawalStrategy,
             withdrawalRate: flat.withdrawalRate ?? ASSUMPTIONS_DEFAULTS.withdrawalRate,
+            // Restore only when present. Deliberately NOT defaulted here (and never
+            // stripped as a default on export): a pre-field QR code must arrive with
+            // the field ABSENT so migrateAssumptions can infer the mode from the
+            // saved rate ('manual' when customized); backfilling 'auto' here would
+            // suppress that inference. New exports always carry it explicitly.
+            ...(flat.withdrawalRateMode !== undefined
+                ? { withdrawalRateMode: flat.withdrawalRateMode }
+                : {}),
             gkUpperGuardrail: flat.gkUpperGuardrail ?? ASSUMPTIONS_DEFAULTS.gkUpperGuardrail,
             gkLowerGuardrail: flat.gkLowerGuardrail ?? ASSUMPTIONS_DEFAULTS.gkLowerGuardrail,
             gkAdjustmentPercent: flat.gkAdjustmentPercent ?? ASSUMPTIONS_DEFAULTS.gkAdjustmentPercent,

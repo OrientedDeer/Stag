@@ -262,6 +262,7 @@ describe('Strategy Boundary Tests', () => {
                 returnRates: { ror: 7 },
                 withdrawalStrategy: 'Guyton Klinger',
                 withdrawalRate: 4.0,
+                withdrawalRateMode: 'manual', // pin the 4% band this story reasons about (auto would derive its own center)
                 gkUpperGuardrail: 1.2,      // Trigger at > 4.8%
                 gkLowerGuardrail: 0.8,      // Trigger at < 3.2%
                 gkAdjustmentPercent: 10,    // 10% adjustment

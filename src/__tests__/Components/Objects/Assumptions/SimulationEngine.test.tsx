@@ -521,6 +521,7 @@ describe('Simulation Engine', () => {
                 ...cleanAssumptions.investments,
                 withdrawalStrategy: 'Guyton Klinger',
                 withdrawalRate: 4,
+                withdrawalRateMode: 'manual', // these tests pin manual-rate GK mechanics (auto derives its own band center)
                 gkUpperGuardrail: 20,  // 20% above = cut
                 gkLowerGuardrail: 20,  // 20% below = increase
                 gkAdjustmentPercent: 10

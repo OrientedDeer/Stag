@@ -26,6 +26,8 @@ function makeAssumptions(overrides: {
             ...defaultAssumptions.investments,
             withdrawalStrategy: 'Guyton Klinger',
             withdrawalRate: overrides.withdrawalRate ?? 4.0,
+            // Pins MANUAL-rate suggestion mechanics; auto mode returns null by design.
+            withdrawalRateMode: 'manual',
         },
         milestones: createBuiltinMilestones(BIRTH_YEAR, RETIREMENT_AGE, 90),
     };

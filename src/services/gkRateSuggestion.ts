@@ -5,6 +5,7 @@ import {
     getRetirementAge,
 } from "../components/Objects/Assumptions/AssumptionsContext";
 import { sumInvestedAssets } from "../components/Objects/Accounts/accountUtils";
+import { fundingRate } from "./WithdrawalStrategies";
 
 export interface GKRateSuggestion {
     /**
@@ -112,21 +113,6 @@ export function getRetirementYearSpendingAndPortfolio(
 }
 
 /**
- * The rate to apply for a given implied rate: round UP to the nearest 0.1% — the
- * smallest tenth that still fully funds the planned spend (rounding to nearest
- * could land below it and leave the rate fractionally short).
- *
- * One value drives both the displayed tip and the applied rate, so they always
- * agree. It is also idempotent (ceil of a tenth is that tenth), so once applied
- * the configured rate equals it and the tip clears instead of re-firing in the
- * opposite direction. The -1e-9 epsilon absorbs IEEE-754 noise (e.g. 5.8
- * arriving as 5.800000000000001) so a clean tenth isn't nudged an extra 0.1%.
- */
-function fundingRate(impliedRate: number): number {
-    return Math.ceil(impliedRate * 10 - 1e-9) / 10;
-}
-
-/**
  * Strategy-AGNOSTIC suggested initial withdrawal rate (%): the rate the user's
  * year-1 retirement planned spending implies against the portfolio at
  * retirement, rounded UP to the nearest 0.1% so it covers the spend.
@@ -155,6 +141,37 @@ export function suggestedInitialRate(
 }
 
 /**
+ * The Guyton-Klinger AUTO-mode initial withdrawal rate (%) for a cached
+ * simulation: the rate the engine derived at retirement and stamped on the
+ * retirement-year `strategyWithdrawal.derivedInitialRate`. Falls back to
+ * computing it from the retirement year's spending/portfolio (same math the
+ * engine uses) when the stamp is absent — e.g. the cached simulation still
+ * reflects a prior strategy or manual mode. Returns `null` when the
+ * retirement year can't be found or the rate can't be derived.
+ *
+ * Intended for the UI's "Auto — currently X%" readout. Pure: takes simulation
+ * results + assumptions, no React/context.
+ */
+export function getAutoRate(
+    simulation: SimulationYear[],
+    assumptions: AssumptionsState,
+): number | null {
+    if (simulation.length === 0) return null;
+
+    const retirementYear =
+        getBirthYear(assumptions.milestones) + getRetirementAge(assumptions.milestones);
+
+    const yearData = simulation
+        .filter((y) => !y.isEndOfYearProjection)
+        .find((y) => y.year === retirementYear);
+
+    const stamped = yearData?.strategyWithdrawal?.derivedInitialRate;
+    if (stamped !== undefined) return stamped;
+
+    return suggestedInitialRate(simulation, assumptions);
+}
+
+/**
  * Compute a Guyton-Klinger initial-withdrawal-rate suggestion.
  *
  * The implied initial rate = year-1 retirement planned spending ÷ portfolio at
@@ -179,6 +196,13 @@ export function computeGKRateSuggestion(
 ): GKRateSuggestion | null {
     // Only relevant when Guyton-Klinger is the active strategy.
     if (assumptions.investments.withdrawalStrategy !== 'Guyton Klinger') {
+        return null;
+    }
+
+    // In AUTO rate mode the engine derives the initial rate from the plan
+    // itself at retirement, so the configured number can never drift from the
+    // implied rate — there is nothing to suggest.
+    if (assumptions.investments.withdrawalRateMode !== 'manual') {
         return null;
     }
 

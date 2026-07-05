@@ -37,6 +37,32 @@ export interface WithdrawalResult {
   guardrailTriggered: GuardrailTrigger;
   targetWithdrawalRate: number;   // The initial target rate (e.g., 4%)
   currentWithdrawalRate: number;  // What the withdrawal actually represents as % of portfolio
+  /**
+   * Guyton-Klinger AUTO withdrawal-rate mode only: the initial rate (%) the
+   * engine derived at the first retirement year from the plan itself
+   * ({@link fundingRate} of planned spending ÷ portfolio at retirement).
+   * Stamped on the retirement-year result and carried forward on every
+   * subsequent GK year so the guardrail band center stays fixed for the whole
+   * retirement. Absent in manual mode (and for non-GK strategies).
+   */
+  derivedInitialRate?: number;
+}
+
+/**
+ * The withdrawal rate (%) that funds a given implied rate: round UP to the
+ * nearest 0.1% — the smallest tenth that still fully funds the planned spend
+ * (rounding to nearest could land below it and leave the rate fractionally
+ * short).
+ *
+ * One value drives the GK auto-mode band center, the suggestion tip, and the
+ * click-to-apply rate, so they always agree. It is also idempotent (ceil of a
+ * tenth is that tenth), so once applied the configured rate equals it and the
+ * tip clears instead of re-firing in the opposite direction. The -1e-9 epsilon
+ * absorbs IEEE-754 noise (e.g. 5.8 arriving as 5.800000000000001) so a clean
+ * tenth isn't nudged an extra 0.1%.
+ */
+export function fundingRate(impliedRate: number): number {
+  return Math.ceil(impliedRate * 10 - 1e-9) / 10;
 }
 
 export interface GuytonKlingerParams {

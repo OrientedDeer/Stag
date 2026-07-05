@@ -134,6 +134,21 @@ export interface WithdrawalBucket {
   maxAmount?: number; // Optional cap on annual withdrawal from this bucket (e.g., to stay in a tax bracket)
 }
 
+/**
+ * The selectable withdrawal strategies, in display order. Single source of
+ * truth for both the `WithdrawalStrategy` type and the UI dropdown options —
+ * don't hardcode this list elsewhere.
+ */
+export const WITHDRAWAL_STRATEGY_OPTIONS = [
+  'None',
+  'Needs Based',
+  'Fixed Real',
+  'Percentage',
+  'Guyton Klinger',
+] as const;
+
+export type WithdrawalStrategy = (typeof WITHDRAWAL_STRATEGY_OPTIONS)[number];
+
 export interface AssumptionsState {
   macro: {
     inflationRate: number;       // e.g., 3.0
@@ -174,8 +189,21 @@ export interface AssumptionsState {
     returnRates: {
       ror: number;   // e.g., 10.0
     };
-    withdrawalStrategy: 'None' | 'Needs Based' | 'Fixed Real' | 'Percentage' | 'Guyton Klinger';
+    withdrawalStrategy: WithdrawalStrategy;
     withdrawalRate: number; // e.g., 4.0
+    /**
+     * How the Guyton-Klinger initial withdrawal rate (the guardrail band
+     * center) is chosen:
+     * - 'auto' (default): the engine derives it at the retirement year from
+     *   the plan itself — year-1 planned spending ÷ portfolio at retirement,
+     *   rounded UP to the nearest 0.1% (fundingRate) — so the band is always
+     *   centered on the user's actual plan. `withdrawalRate` is ignored by GK.
+     * - 'manual': GK uses the stored `withdrawalRate` as the band center
+     *   (legacy behavior).
+     * Optional so older saves stay valid; migrateAssumptions backfills it —
+     * 'manual' when the saved rate was customized (deliberate), else 'auto'.
+     */
+    withdrawalRateMode?: 'auto' | 'manual';
     // Guyton-Klinger guardrail settings
     gkUpperGuardrail: number;     // Default 1.2 (20% above target triggers cut)
     gkLowerGuardrail: number;     // Default 0.8 (20% below target triggers boost)
@@ -255,6 +283,8 @@ export const defaultAssumptions: AssumptionsState = {
     returnRates: { ror: 5.9 },
     withdrawalStrategy: 'Fixed Real',
     withdrawalRate: 4.0,
+    withdrawalRateMode: 'auto', // GK derives the initial rate from the plan by default
+
     gkUpperGuardrail: 1.2,      // Cut when rate > target * 1.2
     gkLowerGuardrail: 0.8,      // Boost when rate < target * 0.8
     gkAdjustmentPercent: 10,    // 10% adjustment (per actual GK rules)
@@ -360,6 +390,20 @@ export function migrateAssumptions(saved: unknown, defaults: AssumptionsState): 
     // Withdrawal tabs at `milestone.conditions.every(...)` / `.find(...)` (re-review 1).
     milestones: Array.isArray(data.milestones) ? normalizeMilestones(data.milestones as CustomMilestone[]) : [],
   };
+
+  // Migration: withdrawalRateMode predates some saves. When absent, infer the
+  // user's intent from the saved rate: a rate that differs from the default
+  // (4.0) was set deliberately — keep honoring it ('manual') so their GK band
+  // doesn't silently move. A still-default rate gets the new engine-derived
+  // 'auto' behavior. (mergeSection already backfilled 'auto' from defaults, so
+  // only the customized-rate case needs correcting here.)
+  const savedInvestments = data.investments as Record<string, unknown> | undefined;
+  if (savedInvestments && (savedInvestments.withdrawalRateMode === undefined || savedInvestments.withdrawalRateMode === null)) {
+    const savedRate = savedInvestments.withdrawalRate;
+    if (typeof savedRate === 'number' && savedRate !== defaults.investments.withdrawalRate) {
+      migrated.investments.withdrawalRateMode = 'manual';
+    }
+  }
 
   // Migration: Get legacy values from old demographics if present
   const savedDemographics = data.demographics as Record<string, unknown> | undefined;

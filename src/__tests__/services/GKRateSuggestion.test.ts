@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     computeGKRateSuggestion,
+    getAutoRate,
     getRetirementYearSpendingAndPortfolio,
     suggestedInitialRate,
 } from '../../services/gkRateSuggestion';
@@ -21,6 +22,7 @@ const RETIREMENT_YEAR = BIRTH_YEAR + RETIREMENT_AGE; // 2055
 function makeAssumptions(overrides: {
     strategy?: AssumptionsState['investments']['withdrawalStrategy'];
     withdrawalRate?: number;
+    withdrawalRateMode?: 'auto' | 'manual';
 } = {}): AssumptionsState {
     return {
         ...defaultAssumptions,
@@ -28,6 +30,10 @@ function makeAssumptions(overrides: {
             ...defaultAssumptions.investments,
             withdrawalStrategy: overrides.strategy ?? 'Guyton Klinger',
             withdrawalRate: overrides.withdrawalRate ?? 4.0,
+            // These tests pin the MANUAL-rate suggestion mechanics (the banner
+            // only exists when the user manages the rate themselves; auto mode
+            // derives it in the engine and never drifts).
+            withdrawalRateMode: overrides.withdrawalRateMode ?? 'manual',
         },
         milestones: createBuiltinMilestones(BIRTH_YEAR, RETIREMENT_AGE, 90),
     };
@@ -42,6 +48,7 @@ function makeYear(opts: {
     requiredAdjustment?: number;
     guardrailTriggered?: 'none' | 'capital-preservation' | 'prosperity';
     isEndOfYearProjection?: boolean;
+    derivedInitialRate?: number;
 }): SimulationYear {
     const strategyWithdrawal: WithdrawalResult | undefined =
         opts.initialPortfolio !== undefined
@@ -52,6 +59,7 @@ function makeYear(opts: {
                   guardrailTriggered: 'none',
                   targetWithdrawalRate: 4,
                   currentWithdrawalRate: 4,
+                  derivedInitialRate: opts.derivedInitialRate,
               }
             : undefined;
 
@@ -361,5 +369,59 @@ describe('suggestedInitialRate', () => {
     it('returns null when planned spending is non-positive', () => {
         const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 0, initialPortfolio: 1_000_000 })];
         expect(suggestedInitialRate(sim, makeAssumptions())).toBeNull();
+    });
+});
+
+describe('computeGKRateSuggestion — auto withdrawal-rate mode', () => {
+    // A sim that WOULD produce a 'raise' suggestion in manual mode:
+    // implied 5.0% vs configured 4.0%.
+    const driftedSim = [
+        makeYear({ year: RETIREMENT_YEAR, livingExpenses: 50000, initialPortfolio: 1_000_000 }),
+    ];
+
+    it('returns null in auto mode even when the configured rate has drifted', () => {
+        expect(
+            computeGKRateSuggestion(driftedSim, makeAssumptions({ withdrawalRateMode: 'auto' })),
+        ).toBeNull();
+    });
+
+    it('treats an absent mode as auto (the default) and returns null', () => {
+        const assumptions = makeAssumptions();
+        delete assumptions.investments.withdrawalRateMode;
+        expect(computeGKRateSuggestion(driftedSim, assumptions)).toBeNull();
+    });
+
+    it('still suggests in manual mode (control)', () => {
+        const result = computeGKRateSuggestion(driftedSim, makeAssumptions({ withdrawalRateMode: 'manual' }));
+        expect(result).not.toBeNull();
+        expect(result!.suggestedRate).toBe(5.0);
+    });
+});
+
+describe('getAutoRate', () => {
+    it('returns the engine-stamped derived rate from the retirement year', () => {
+        const sim = [
+            makeYear({ year: RETIREMENT_YEAR, livingExpenses: 50000, initialPortfolio: 1_000_000, derivedInitialRate: 5.3 }),
+            makeYear({ year: RETIREMENT_YEAR + 1, livingExpenses: 51000, initialPortfolio: 950_000, derivedInitialRate: 5.3 }),
+        ];
+        expect(getAutoRate(sim, makeAssumptions())).toBe(5.3);
+    });
+
+    it('falls back to computing the funding rate when no stamp exists (e.g. prior-strategy cache)', () => {
+        // 47_300 / 1M = 4.73% → ceil to 4.8% — same math suggestedInitialRate uses.
+        const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 47300, initialPortfolio: 1_000_000 })];
+        expect(getAutoRate(sim, makeAssumptions({ strategy: 'Fixed Real' }))).toBe(4.8);
+    });
+
+    it('prefers the stamp over recomputation (the stamp is what the engine actually used)', () => {
+        // Recomputation would say 4.8%, but the engine stamped 4.7%.
+        const sim = [makeYear({ year: RETIREMENT_YEAR, livingExpenses: 47300, initialPortfolio: 1_000_000, derivedInitialRate: 4.7 })];
+        expect(getAutoRate(sim, makeAssumptions())).toBe(4.7);
+    });
+
+    it('returns null when the retirement year cannot be found', () => {
+        expect(getAutoRate([], makeAssumptions())).toBeNull();
+        const noRetYear = [makeYear({ year: RETIREMENT_YEAR - 5, livingExpenses: 50000, initialPortfolio: 1_000_000 })];
+        expect(getAutoRate(noRetYear, makeAssumptions())).toBeNull();
     });
 });

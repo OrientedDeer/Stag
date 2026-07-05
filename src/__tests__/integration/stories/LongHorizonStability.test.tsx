@@ -172,6 +172,7 @@ describe('Long-Horizon Stability: Complex Scenario with Debt', () => {
             returnRates: { ror: 6 },
             withdrawalStrategy: 'Guyton Klinger',
             withdrawalRate: 4.0,
+            withdrawalRateMode: 'manual', // pin the configured 4% band (auto would derive its own center)
             autoRothConversions: true,
         },
         priorities: [{

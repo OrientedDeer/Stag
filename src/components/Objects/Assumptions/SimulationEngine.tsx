@@ -26,7 +26,7 @@ import { InvestedAccount, SavedAccount, ESPPAccount, RSUAccount, DebtAccount, De
 import { DEBT_PAYOFF_EPSILON } from "../../../services/simulation/SurplusAllocator";
 import { processRSUVesting } from "../../../services/simulation/RSUVesting";
 import { solveYear, YearSolverInput } from "../../../services/simulation/YearSolver";
-import { evaluateGuytonKlingerGuardrail, computeGKDiscretionaryAdjustment, WithdrawalResult } from "../../../services/WithdrawalStrategies";
+import { evaluateGuytonKlingerGuardrail, computeGKDiscretionaryAdjustment, fundingRate, WithdrawalResult } from "../../../services/WithdrawalStrategies";
 import { sumInvestedAssets } from "../Accounts/accountUtils";
 import { DPPolicy } from "../../../services/simulation/RothConversionDP";
 import { YearPlan } from "../../../services/simulation/types";
@@ -451,10 +451,36 @@ function simulateOneYearWithNewEngine(
         const gkPortfolio = sumInvestedAssets(accounts);
         const yearsRemaining = getLifeExpectancy(assumptions.milestones) - currentAge;
         const discretionaryBefore = calculateTotalDiscretionary(nextExpenses, year);
+
+        // AUTO withdrawal-rate mode (default): derive the guardrail band center
+        // from the plan itself at the FIRST retirement year — planned (pre-
+        // adjustment) spending ÷ portfolio at retirement, rounded UP to the
+        // nearest 0.1% (fundingRate) — then carry that derived rate forward on
+        // every subsequent year's strategyWithdrawal so the band stays fixed for
+        // the whole retirement. Both inputs are independent of the configured
+        // rate, so there is no feedback loop. Manual mode keeps the stored
+        // `withdrawalRate` untouched (legacy behavior, byte-identical).
+        let gkBandCenterRate = assumptions.investments.withdrawalRate;
+        let derivedInitialRate: number | undefined;
+        if (assumptions.investments.withdrawalRateMode !== 'manual') {
+            const carriedRate = previousSimulation.length > 0
+                ? previousSimulation[previousSimulation.length - 1].strategyWithdrawal?.derivedInitialRate
+                : undefined;
+            if (carriedRate !== undefined) {
+                derivedInitialRate = carriedRate;
+            } else if (gkPortfolio > 0 && totalLivingExpenses > 0) {
+                derivedInitialRate = fundingRate((totalLivingExpenses / gkPortfolio) * 100);
+                logs.push(`[INFO] GK auto rate: derived initial withdrawal rate ${derivedInitialRate.toFixed(1)}% from year-1 plan spending $${Math.round(totalLivingExpenses).toLocaleString()} ÷ portfolio $${Math.round(gkPortfolio).toLocaleString()} (implied ${((totalLivingExpenses / gkPortfolio) * 100).toFixed(2)}%, rounded up to nearest 0.1%)`);
+            }
+            if (derivedInitialRate !== undefined) {
+                gkBandCenterRate = derivedInitialRate;
+            }
+        }
+
         const ev = evaluateGuytonKlingerGuardrail({
             plannedSpending: totalLivingExpenses,
             portfolio: gkPortfolio,
-            withdrawalRate: assumptions.investments.withdrawalRate,
+            withdrawalRate: gkBandCenterRate,
             upperGuardrail: assumptions.investments.gkUpperGuardrail,
             lowerGuardrail: assumptions.investments.gkLowerGuardrail,
             yearsRemaining,
@@ -505,8 +531,12 @@ function simulateOneYearWithNewEngine(
             baseAmount: totalLivingExpenses,
             initialPortfolio: gkPortfolio,
             guardrailTriggered: ev.guardrailTriggered,
-            targetWithdrawalRate: assumptions.investments.withdrawalRate,
+            targetWithdrawalRate: gkBandCenterRate,
             currentWithdrawalRate: ev.planRate,
+            // AUTO mode: persist the derived band center so next year reads it
+            // back (and the UI can show "Auto — currently X%"). Undefined in
+            // manual mode, keeping that path byte-identical to before.
+            derivedInitialRate,
         };
 
         logs.push(`[INFO] Retirement withdrawal strategy: Guyton Klinger`);
