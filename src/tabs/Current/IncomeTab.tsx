@@ -7,7 +7,9 @@ import {
 	CLASS_TO_CATEGORY,
 	CATEGORY_PALETTES,
 	INCOME_CATEGORIES,
+	hasIncomeEnded,
 } from "../../components/Objects/Income/models";
+import { ChevronIcon } from "../../components/Layout/Icons/ChevronIcon";
 import IncomeCard from "../../components/Objects/Income/IncomeCard";
 import {
 	DragDropContext,
@@ -19,16 +21,24 @@ import AddIncomeModal from "../../components/Objects/Income/AddIncomeModal";
 import { ObjectsIcicleChart, tailwindToCssVar, getDistributedColors } from "../../components/Charts/ObjectsIcicleChart";
 import { Panel } from "../../components/Layout/Primitives";
 
-// Updated IncomeList to handle the base class or specific filtering
-const IncomeList = () => {
+interface IncomeListProps {
+	/** Which incomes belong to this list; drag-reorder maps back to master indices. */
+	match: (inc: AnyIncome) => boolean;
+	title?: string;        // header label (collapsible sections)
+	collapsible?: boolean; // render header as a toggle, body collapsed by default
+	dimmed?: boolean;      // visually de-emphasize cards (past/ended incomes)
+}
+
+// Mirrors ExpenseTab's ExpenseList: one master list in context, each section
+// filters it and maps drag indices back through the original positions.
+const IncomeList = ({ match, title, collapsible = false, dimmed = false }: IncomeListProps) => {
 	const { incomes } = useContext(IncomeContext);
 	const dispatch = useContext(IncomeDispatchContext);
+	const [open, setOpen] = useState(!collapsible);
 
-	// We don't filter by type anymore so it shows everything in one list
-	const listIncomes = incomes.map((inc, index) => ({
-		inc,
-		originalIndex: index,
-	}));
+	const listIncomes = incomes
+		.map((inc, index) => ({ inc, originalIndex: index }))
+		.filter(({ inc }) => match(inc));
 
 	const onDragEnd = (result: DropResult) => {
 		if (!result.destination) return;
@@ -36,17 +46,32 @@ const IncomeList = () => {
 		dispatch({
 			type: "REORDER_INCOMES",
 			payload: {
-				startIndex: result.source.index,
-				endIndex: result.destination.index,
+				startIndex: listIncomes[result.source.index].originalIndex,
+				endIndex: listIncomes[result.destination.index].originalIndex,
 			},
 		});
 	};
 
-	if (incomes.length === 0) return null;
+	if (listIncomes.length === 0) return null;
+
+	const header = collapsible ? (
+		<button
+			type="button"
+			onClick={() => setOpen((v) => !v)}
+			className="flex items-center gap-2 text-content-muted hover:text-white text-xs font-bold uppercase tracking-widest mb-3 transition-colors"
+		>
+			<ChevronIcon expanded={false} className={open ? '' : '-rotate-90'} />
+			{open ? 'Hide' : 'Show'} {title} <span className="text-content-faint">· {listIncomes.length}</span>
+		</button>
+	) : null;
 
 	return (
+		<div className={collapsible ? 'mt-6' : ''}>
+		{header}
+		{open && (
+		<div className={dimmed ? 'opacity-60' : ''}>
 		<DragDropContext onDragEnd={onDragEnd}>
-			<Droppable droppableId="income-list">
+			<Droppable droppableId={`income-list-${title ?? 'main'}`}>
 				{(provided) => (
 					<div
 						{...provided.droppableProps}
@@ -88,6 +113,9 @@ const IncomeList = () => {
 				)}
 			</Droppable>
 		</DragDropContext>
+		</div>
+		)}
+		</div>
 	);
 };
 
@@ -175,9 +203,9 @@ const TabsContent = () => {
 					)}
 				</Panel>
 
-				{/* Single List Section */}
+				{/* Single List Section (ended incomes live in the collapsed section below) */}
 				<div className="p-4">
-					<IncomeList />
+					<IncomeList match={(inc) => !hasIncomeEnded(inc)} />
 
 					<button
 						onClick={() => setIsModalOpen(true)}
@@ -189,6 +217,16 @@ const TabsContent = () => {
 					<AddIncomeModal
 						isOpen={isModalOpen}
 						onClose={() => setIsModalOpen(false)}
+					/>
+
+					{/* Past (ended) incomes — fixed end date in a past month, collapsed by
+					    default; milestone-ended incomes aren't cheaply resolvable and stay
+					    in the main list (same rule as the "ended YYYY" card hint). */}
+					<IncomeList
+						title="past incomes"
+						match={hasIncomeEnded}
+						collapsible
+						dimmed
 					/>
 				</div>
 			</div>

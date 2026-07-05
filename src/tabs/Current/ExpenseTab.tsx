@@ -19,6 +19,7 @@ import AddExpenseModal from '../../components/Objects/Expense/AddExpenseModal';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { ObjectsIcicleChart, tailwindToCssVar, getDistributedColors } from '../../components/Charts/ObjectsIcicleChart';
 import { Panel } from "../../components/Layout/Primitives";
+import { ChevronIcon } from "../../components/Layout/Icons/ChevronIcon";
 
 // Cadence sub-tabs for the expense list, mirroring the Accounts page. Weekly +
 // Monthly roll up into "Monthly"; "Annually" expenses form "Annual". "Longer
@@ -70,7 +71,7 @@ const ExpenseList = ({ title, match, collapsible = false, dimmed = false }: Expe
       onClick={() => setOpen((v) => !v)}
       className="flex items-center gap-2 text-content-muted hover:text-white text-xs font-bold uppercase tracking-widest mb-3 transition-colors"
     >
-      <span className={`transition-transform ${open ? 'rotate-90' : ''}`}>▸</span>
+      <ChevronIcon expanded={false} className={open ? '' : '-rotate-90'} />
       {open ? 'Hide' : 'Show'} {title} <span className="text-content-faint">· {filteredExpenses.length}</span>
     </button>
   ) : title ? (
