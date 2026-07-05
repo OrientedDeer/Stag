@@ -62,7 +62,11 @@ export function calculateCapitalGainsTax(
     if (gains <= 0) return 0;
 
     const fedParams = getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
-    if (!fedParams) return 0;
+    // Federal params resolve for every filing status; $0 LTCG tax would be a
+    // silent distortion, so crash loudly instead (matches YearSolver).
+    if (!fedParams) {
+        throw new Error(`No federal tax parameters for year ${year}`);
+    }
 
     const ordinaryBeforeDeduction = Math.max(0, ordinaryTaxableIncome) + fedParams.standardDeduction;
 

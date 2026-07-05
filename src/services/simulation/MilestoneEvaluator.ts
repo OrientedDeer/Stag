@@ -152,15 +152,13 @@ const GROSS_UP_DEFAULT_FILING_STATUS: FilingStatus = 'Single';
  * the standard deduction and the lower brackets — making the effective rate far
  * more accurate than the previous flat 15%, especially at modest spend levels.
  *
- * Falls back to a flat 15% gross-up if tax parameters can't be resolved for the
- * year (mirrors the previous behavior so the milestone never silently breaks).
  */
 function grossUpExpenses(netExpenses: number, year: number, filingStatus: FilingStatus): number {
-    const FALLBACK_TAX_RATE = 0.15;
-
     const fedParams = getTaxParameters(year, filingStatus, "federal");
+    // Federal params resolve for every filing status; a flat-rate fallback
+    // would silently distort the milestone — crash loudly instead.
     if (!fedParams) {
-        return netExpenses / (1 - FALLBACK_TAX_RATE);
+        throw new Error(`No federal tax parameters for year ${year}`);
     }
 
     // Fixed-point solve for gross such that gross - tax(gross) === netExpenses.

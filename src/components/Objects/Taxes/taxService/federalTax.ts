@@ -132,7 +132,11 @@ export function calculateFederalTaxFromIncomes(
     const ordinaryIncome = nonSSGross + additionalOrdinaryIncome;
 
     const fedParams = getTaxParameters(year, state.filingStatus, "federal", undefined, assumptions);
-    if (!fedParams) return 0;
+    // Federal params resolve for every filing status; $0 federal tax would be a
+    // silent distortion, so crash loudly instead (matches YearSolver).
+    if (!fedParams) {
+        throw new Error(`No federal tax parameters for year ${year}`);
+    }
 
     // Federal 65+ deductions (regular additional standard deduction + OBBBA senior
     // bonus). The OBBBA bonus phases out on MAGI, so build a MAGI proxy. MAGI for

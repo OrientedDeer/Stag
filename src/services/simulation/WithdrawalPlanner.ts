@@ -1133,8 +1133,13 @@ export function planWithdrawals(
     const sliceKeyOf = (s: AccountBalanceSnapshot): string => s.sliceKey ?? s.accountId;
     const ACA_WITHDRAWAL_BUFFER = 500; // Buffer under cliff for withdrawal LTCG
 
-    // Get tax parameters
+    // Get tax parameters. Federal always resolves (state is legitimately
+    // undefined for no-income-tax states); a hole here would previously fall
+    // back to a hardcoded 22% marginal rate — crash loudly instead.
     const fedParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
+    if (!fedParams) {
+        throw new Error(`No federal tax parameters for year ${year}`);
+    }
     const stateParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
 
     // Get LTCG rate based on current ordinary income. Delegates to the shared
@@ -1152,8 +1157,6 @@ export function planWithdrawals(
 
     // Get marginal ordinary rate
     const getMarginalRate = (ordinaryIncome: number): number => {
-        if (!fedParams) return 0.22; // Default to 22%
-
         const result = TaxService.getMarginalTaxRate(
             Math.max(0, ordinaryIncome - fedParams.standardDeduction),
             fedParams
@@ -1531,11 +1534,11 @@ export function planWithdrawals(
             case 'traditional_ira': {
                 // Compute taxable income positions and remaining std ded space
                 // Federal: uses full runningOrdinaryIncome (includes taxable SS)
-                const fedTaxable = Math.max(0, runningOrdinaryIncome - (fedParams?.standardDeduction ?? 0));
+                const fedTaxable = Math.max(0, runningOrdinaryIncome - fedParams.standardDeduction);
                 // State: excludes stateExemptIncome (e.g., taxable SS for DC)
                 const stateIncomeForBrackets = runningOrdinaryIncome - stateExemptIncome;
                 const stateTaxable = stateParams ? Math.max(0, stateIncomeForBrackets - stateParams.standardDeduction) : 0;
-                const fedStdDedSpace = Math.max(0, (fedParams?.standardDeduction ?? 0) - runningOrdinaryIncome);
+                const fedStdDedSpace = Math.max(0, fedParams.standardDeduction - runningOrdinaryIncome);
                 const stateStdDedSpace = stateParams
                     ? Math.max(0, stateParams.standardDeduction - stateIncomeForBrackets)
                     : Infinity;
@@ -1543,7 +1546,7 @@ export function planWithdrawals(
                 const result = grossUpTraditional(
                     remainingNetNeeded, currentAge,
                     fedTaxable, stateTaxable,
-                    fedParams?.brackets ?? [], stateParams?.brackets ?? null,
+                    fedParams.brackets, stateParams?.brackets ?? null,
                     fedStdDedSpace, stateStdDedSpace
                 );
                 const grossToWithdraw = Math.min(result.gross, effectiveVestedBalance);
@@ -1558,7 +1561,7 @@ export function planWithdrawals(
                     // Capped by account balance — recompute tax piecewise for actual gross
                     const taxResult = computeTaxOnGross(
                         grossToWithdraw, fedTaxable, stateTaxable,
-                        fedParams?.brackets ?? [], stateParams?.brackets ?? null,
+                        fedParams.brackets, stateParams?.brackets ?? null,
                         fedStdDedSpace, stateStdDedSpace
                     );
                     actualTax = taxResult.totalTax;

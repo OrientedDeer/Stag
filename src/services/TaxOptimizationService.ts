@@ -537,7 +537,11 @@ export function findRothConversionWindows(
             assumptions
         );
 
-        if (!fedParams) continue;
+        // Federal params resolve for every filing status; silently skipping a
+        // year would distort the analysis — crash loudly instead.
+        if (!fedParams) {
+            throw new Error(`No federal tax parameters for year ${simYear.year}`);
+        }
 
         // Ordinary taxable income in the same space as the bracket thresholds
         // (i.e. post standard deduction). getOrdinaryAGI reduces SS to its taxable
