@@ -650,6 +650,14 @@ export function buildDPYearContexts(
         const fedParams = TaxService.getTaxParameters(
             simYear.year, effTax.filingStatus, 'federal', undefined, assumptions
         );
+        // Federal params resolve for every filing status in the table; a hole
+        // here would throw in solveRetirementYear for the same year anyway.
+        // Crash loudly rather than silently dropping a DP context year (the
+        // old `continue` also skipped the prevSimYear update that #168's
+        // entering-balance tracking relies on).
+        if (!fedParams) {
+            throw new Error(`No federal tax parameters for year ${simYear.year}`);
+        }
 
         // #159: pre-retirement years get a context ONLY when they are income-GAP
         // years with material standard-deduction headroom. Year 0 is excluded
@@ -657,15 +665,12 @@ export function buildDPYearContexts(
         // execute — the bound also covers the synthetic EOY-projection row).
         const isGapYear = simYear.year < retirementYear;
         if (isGapYear) {
-            const stdDedHeadroom = fedParams
-                ? fedParams.standardDeduction - nonSSOrdinaryIncomeExclRMD
-                : 0;
+            const stdDedHeadroom = fedParams.standardDeduction - nonSSOrdinaryIncomeExclRMD;
             if (simYear.year <= baseline[0].year || stdDedHeadroom < GAP_YEAR_MIN_HEADROOM) {
                 prevSimYear = simYear;
                 continue;
             }
         }
-        if (!fedParams) continue;
 
         // Traditional non-RMD withdrawals are taxed as ordinary income but aren't
         // tracked as Income objects. Phase 2: trad-spending becomes endogenous in
