@@ -106,11 +106,6 @@ export const AssetSunburst = ({ accounts, importKey, forceExact }: AssetSunburst
       : (cat as { value?: number }).value || 0), 0
   );
 
-  // Outer-ring identity for the legend: largest accounts across all categories.
-  const topAccounts = assetSunburstData.children
-    .flatMap(cat => cat.children)
-    .sort((a, b) => b.value - a.value);
-
   return (
     <div className="bg-[var(--c-surface-raised)] rounded-xl border border-border-subtle p-4">
       <div className="flex items-center justify-between mb-2">
@@ -130,13 +125,11 @@ export const AssetSunburst = ({ accounts, importKey, forceExact }: AssetSunburst
           />
         )}
       </div>
-      {assetDrilldown ? (
+      {assetDrilldown && (
         <SunburstLegend
           entries={activeAssetData.children.map(c => ({ name: c.name, color: c.color }))}
           className="mb-1"
         />
-      ) : (
-        <SunburstLegend entries={topAccounts} max={5} label="Largest" className="mb-1" />
       )}
       <div className="h-64 relative">
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
