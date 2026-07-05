@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeFanChartYBounds } from '../../../components/Charts/FanChart';
+import { computeFanChartYBounds } from '../../../components/Charts/fanChartBounds';
 import { PercentileData, YearlyPercentile } from '../../../services/MonteCarloTypes';
 
 // Helper: build a PercentileData where every band equals `value` across `years`.

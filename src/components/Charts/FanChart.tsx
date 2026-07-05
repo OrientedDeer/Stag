@@ -1,6 +1,7 @@
 import { useMemo, useContext, useRef, useState, useEffect } from 'react';
 import { ResponsiveLine } from '@nivo/line';
 import { PercentileData, YearlyPercentile, ScenarioResult } from '../../services/MonteCarloTypes';
+import { computeFanChartYBounds } from './fanChartBounds';
 import { useChartTheme } from './useChartTheme';
 import { ChartFrame } from "./ChartFrame";
 import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
@@ -10,49 +11,18 @@ import { calculateNetWorth } from '../../tabs/Future/tabs/FutureUtils';
 const MIN_CHART_WIDTH = 300;
 
 /**
- * Compute the y-axis domain for the fan chart from the percentile values
- * (and optional deterministic line). Excludes best/worst outliers by design.
- *
- * Guards against a degenerate domain: when every plotted value is equal
- * (e.g. a $0-in-every-year portfolio), `max === min` and the multiplicative
- * padding collapses to 0, which makes d3-scale render all bands/lines as a
- * single centered horizontal line. In that case widen the domain with an
- * absolute fallback so the chart keeps a real height.
+ * Sequential single-hue ramp for the ORDERED percentile series: the median is
+ * the full-strength money hue, p25/p75 a mid step, p10/p90 the most recessive.
+ * Steps are derived by mixing the theme's money color toward the theme's
+ * surface, so the ramp stays one hue, keeps its ordering in every theme, and
+ * the legend symbols (which take the series color) are visibly distinct —
+ * previously all five series shared one green and the legend was
+ * indistinguishable.
  */
-export const computeFanChartYBounds = (
-    percentiles: PercentileData,
-    deterministicLine?: YearlyPercentile[],
-): { min: number; max: number } => {
-    const allValues: number[] = [];
-
-    // Include percentile data
-    percentiles.p10.forEach(p => allValues.push(p.netWorth));
-    percentiles.p90.forEach(p => allValues.push(p.netWorth));
-
-    // Include deterministic line if present
-    if (deterministicLine) {
-        deterministicLine.forEach(p => allValues.push(p.netWorth));
-    }
-
-    if (allValues.length === 0) {
-        return { min: 0, max: 100000 };
-    }
-
-    const min = Math.min(...allValues);
-    let max = Math.max(...allValues);
-
-    // Degenerate domain: all values equal. Widen with an absolute fallback so
-    // d3-scale doesn't collapse the bands to a centered horizontal line.
-    if (max === min) {
-        max = min + Math.max(1, Math.abs(min) * 0.1);
-    }
-
-    // Add minimal padding
-    const padding = (max - min) * 0.02;
-    return {
-        min: min - padding,
-        max: max + padding,
-    };
+const PERCENTILE_COLORS = {
+    median: 'var(--color-chart-money)',
+    mid: 'color-mix(in srgb, var(--color-chart-money) 65%, var(--c-surface-base))',
+    outer: 'color-mix(in srgb, var(--color-chart-money) 40%, var(--c-surface-base))',
 };
 
 interface FanChartProps {
@@ -111,7 +81,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
         if (percentiles.p50.length > 0) {
             lines.push({
                 id: 'Median (50th)',
-                color: 'var(--color-chart-money)',
+                color: PERCENTILE_COLORS.median,
                 data: dedupePoints(percentiles.p50.map(p => ({
                     x: p.year,
                     y: p.netWorth,
@@ -123,7 +93,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
         if (percentiles.p25.length > 0) {
             lines.push({
                 id: '25th Percentile',
-                color: 'var(--c-positive-bright)',
+                color: PERCENTILE_COLORS.mid,
                 data: dedupePoints(percentiles.p25.map(p => ({
                     x: p.year,
                     y: p.netWorth,
@@ -135,7 +105,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
         if (percentiles.p75.length > 0) {
             lines.push({
                 id: '75th Percentile',
-                color: 'var(--c-positive-bright)',
+                color: PERCENTILE_COLORS.mid,
                 data: dedupePoints(percentiles.p75.map(p => ({
                     x: p.year,
                     y: p.netWorth,
@@ -147,7 +117,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
         if (percentiles.p10.length > 0) {
             lines.push({
                 id: '10th Percentile',
-                color: 'var(--c-positive-bright)',
+                color: PERCENTILE_COLORS.outer,
                 data: dedupePoints(percentiles.p10.map(p => ({
                     x: p.year,
                     y: p.netWorth,
@@ -159,7 +129,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
         if (percentiles.p90.length > 0) {
             lines.push({
                 id: '90th Percentile',
-                color: 'var(--c-positive-bright)',
+                color: PERCENTILE_COLORS.outer,
                 data: dedupePoints(percentiles.p90.map(p => ({
                     x: p.year,
                     y: p.netWorth,
@@ -262,8 +232,13 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
         });
     }, [percentiles.p50, containerWidth]);
 
-    // Custom layer to render filled areas between percentile bands
-    const AreaLayer = ({ xScale, yScale }: any) => {
+    // Custom layer to render filled areas between percentile bands.
+    // Nivo hands custom layers its computed scales; we only need them as
+    // number -> pixel functions.
+    const AreaLayer = ({ xScale, yScale }: {
+        xScale: (value: number) => number;
+        yScale: (value: number) => number;
+    }) => {
         if (!areaData) return null;
 
         const createPath = (data: { x: number; y0: number; y1: number }[]) => {
@@ -331,7 +306,7 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
         <div ref={containerRef} style={{ height }}>
             <ChartFrame><ResponsiveLine
                 data={chartData}
-                margin={{ top: 20, right: 110, bottom: 50, left: 80 }}
+                margin={{ top: 20, right: 130, bottom: 50, left: 80 }}
                 xScale={{ type: 'linear', min: 'auto', max: 'auto' }}
                 yScale={{ type: 'linear', min: yBounds.min, max: yBounds.max }}
                 axisBottom={{
@@ -383,11 +358,13 @@ export const FanChart = ({ percentiles, deterministicLine, bestCase, worstCase, 
                         anchor: 'bottom-right',
                         direction: 'column',
                         justify: false,
-                        translateX: 100,
+                        // itemWidth must fit the longest label ("90th Percentile")
+                        // at fontSize 11 — 80px truncated it to "90th Percentil…".
+                        translateX: 125,
                         translateY: 0,
                         itemsSpacing: 2,
                         itemDirection: 'left-to-right',
-                        itemWidth: 80,
+                        itemWidth: 118,
                         itemHeight: 20,
                         itemOpacity: 0.75,
                         symbolSize: 12,

@@ -21,6 +21,14 @@ interface McHeadlineTilesProps {
     forceExact: boolean;
 }
 
+/**
+ * Median tile value color: green only when the median is actually
+ * non-negative. A negative median rendered in `text-positive` (seen live at
+ * −$275k) reads as a healthy outcome — sign decides the token.
+ */
+const getMedianColor = (value: number) =>
+    value < 0 ? 'text-negative-bright' : 'text-positive';
+
 const getSuccessRateColor = (rate: number) => {
     if (rate >= 95) return 'text-positive';
     if (rate >= 80) return 'text-warning';
@@ -79,7 +87,7 @@ export const McHeadlineTiles = ({ summary, forceExact }: McHeadlineTilesProps) =
                 <Tile
                     label="Median"
                     value={fmt(summary.percentiles.p50[summary.percentiles.p50.length - 1]?.netWorth ?? 0)}
-                    valueClassName="text-xl lg:text-2xl text-positive"
+                    valueClassName={`text-xl lg:text-2xl ${getMedianColor(summary.percentiles.p50[summary.percentiles.p50.length - 1]?.netWorth ?? 0)}`}
                     sub="50th percentile"
                 />
                 <Tile
@@ -122,7 +130,7 @@ export const McHeadlineTiles = ({ summary, forceExact }: McHeadlineTilesProps) =
                 <Tile
                     label="Median"
                     value={fmt(afterTax.p50)}
-                    valueClassName="text-xl lg:text-2xl text-positive"
+                    valueClassName={`text-xl lg:text-2xl ${getMedianColor(afterTax.p50)}`}
                     sub="50th percentile after-tax"
                 />
                 <Tile

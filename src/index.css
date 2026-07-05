@@ -329,6 +329,15 @@
   background: var(--c-border-strong);
 }
 
+/* Indeterminate progress bar (e.g. the Monte Carlo conversion-policy solve):
+   a 1/3-width segment sliding back and forth inside an overflow-hidden track.
+   Used via Tailwind arbitrary animation:
+   animate-[indeterminate-slide_1.2s_ease-in-out_infinite_alternate] */
+@keyframes indeterminate-slide {
+  from { transform: translateX(0); }
+  to   { transform: translateX(200%); }
+}
+
 @layer base {
   html, body, #root {
     background-color: var(--c-surface-base); /* themeable; default = gray-950 */

@@ -75,6 +75,55 @@ describe('McHeadlineTiles', () => {
         expect(screen.queryByText(/After-tax terminal net worth/)).not.toBeInTheDocument();
     });
 
+    it('colors a NEGATIVE after-tax median with the negative token, not green (ui-sweep)', () => {
+        const negativeMedianSummary = {
+            ...grossOnlySummary,
+            afterTaxPercentiles: { p10: -890_000, p50: -275_000, p90: 410_000 },
+        } as unknown as MonteCarloSummary;
+
+        render(<McHeadlineTiles summary={negativeMedianSummary} forceExact={false} />);
+
+        const median = screen.getByText('-$275.0K');
+        expect(median.className).toContain('text-negative-bright');
+        expect(median.className).not.toContain('text-positive');
+
+        // A positive Good Case keeps its own token untouched.
+        expect(screen.getByText('$410.0K').className).toContain('text-info');
+    });
+
+    it('keeps a non-negative after-tax median green', () => {
+        render(<McHeadlineTiles summary={afterTaxSummary} forceExact={false} />);
+
+        const median = screen.getByText('$1.20M');
+        expect(median.className).toContain('text-positive');
+        expect(median.className).not.toContain('text-negative');
+    });
+
+    it('colors a NEGATIVE gross median with the negative token in the legacy fallback', () => {
+        const negativeGrossSummary = {
+            ...grossOnlySummary,
+            percentiles: {
+                p10: [{ year: 2060, netWorth: -1_200_000 }],
+                p50: [{ year: 2060, netWorth: -350_000 }],
+                p90: [{ year: 2060, netWorth: 600_000 }],
+            },
+        } as unknown as MonteCarloSummary;
+
+        render(<McHeadlineTiles summary={negativeGrossSummary} forceExact={false} />);
+
+        const median = screen.getByText('-$350.0K');
+        expect(median.className).toContain('text-negative-bright');
+        expect(median.className).not.toContain('text-positive');
+    });
+
+    it('keeps a non-negative gross median green in the legacy fallback', () => {
+        render(<McHeadlineTiles summary={grossOnlySummary} forceExact={false} />);
+
+        const median = screen.getByText('$1.50M');
+        expect(median.className).toContain('text-positive');
+        expect(median.className).not.toContain('text-negative');
+    });
+
     it('never truncates currency values (#162 D4 — mobile clipping)', () => {
         const { container: afterTax } = render(<McHeadlineTiles summary={afterTaxSummary} forceExact={false} />);
         expect(afterTax.querySelector('.truncate')).toBeNull();

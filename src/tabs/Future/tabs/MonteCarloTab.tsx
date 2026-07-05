@@ -15,6 +15,7 @@ import { HistoricalBacktestPanel } from './HistoricalBacktestPanel';
 import { DropdownInput } from '../../../components/Layout/InputFields/DropdownInput';
 import { PercentageInput } from '../../../components/Layout/InputFields/PercentageInput';
 import { NumberInput } from '../../../components/Layout/InputFields/NumberInput';
+import { ToggleInput } from '../../../components/Layout/InputFields/ToggleInput';
 import { AlertBanner } from '../../../components/Layout/AlertBanner';
 import { McHeadlineTiles } from './McHeadlineTiles';
 import { McConversionCard } from './McConversionCard';
@@ -74,6 +75,12 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
     const forceExact = assumptions.display?.useCompactCurrency === false;
 
     const { config, summary, isRunning, progress, phase, error } = state;
+
+    // Fan-chart outlier toggle (ui-sweep): the single best run can spike far
+    // above the percentile bands and visually compress them; hiding the
+    // best/worst series lets the chart focus on the bands. Default ON keeps
+    // the long-standing behavior.
+    const [showOutlierRuns, setShowOutlierRuns] = useState(true);
     const inflationAdjusted = assumptions.macro?.inflationAdjusted ?? true;
 
     // Normalize preset - handle old values from before simplification
@@ -318,13 +325,15 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
 
                     {/* Progress Bar. During the one-time policy solve (#98) the
                         per-scenario % can't advance, so show an indeterminate
-                        pulse + label; switch to the % bar for the path loop. */}
+                        sliding segment + label (a full pulsing bar reads as
+                        "done" during a 10–20s solve); switch to the % bar for
+                        the path loop. */}
                     {isRunning && (
                         <div className="flex-1 flex items-center gap-3">
                             {phase === 'solving' ? (
                                 <>
                                     <div className="flex-1 h-2 bg-surface-input rounded-full overflow-hidden">
-                                        <div className="h-full w-full bg-positive-soft animate-pulse" />
+                                        <div className="h-full w-1/3 rounded-full bg-positive-soft animate-[indeterminate-slide_1.2s_ease-in-out_infinite_alternate]" />
                                     </div>
                                     <span className="text-content-muted text-sm">
                                         Solving conversion policy…
@@ -369,14 +378,25 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
 
             {/* Fan Chart */}
             <div className="bg-surface-overlay/50 rounded-xl p-4 border border-border-default flex-1">
-                <h3 className="text-white font-semibold mb-4">Probability Distribution</h3>
+                <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 mb-4">
+                    <h3 className="text-white font-semibold">Probability Distribution</h3>
+                    {summary && (
+                        <ToggleInput
+                            id="mc-show-outlier-runs"
+                            label="Show best/worst runs"
+                            enabled={showOutlierRuns}
+                            setEnabled={setShowOutlierRuns}
+                            tooltip="The single best and worst simulated paths are extreme outliers — the best run can spike far above the bands and compress them. Turn this off to omit those two lines."
+                        />
+                    )}
+                </div>
                 {summary ? (
                     <>
                         <FanChart
                             percentiles={summary.percentiles}
                             deterministicLine={deterministicLine}
-                            bestCase={summary.bestCase}
-                            worstCase={summary.worstCase}
+                            bestCase={showOutlierRuns ? summary.bestCase : undefined}
+                            worstCase={showOutlierRuns ? summary.worstCase : undefined}
                             height={400}
                         />
                         {/* Gross terminal percentiles (#162 D2): demoted from the headline —
