@@ -444,6 +444,7 @@ export function reconstituteBudgetMonths(rawMonths: unknown): MonthlySnapshot[] 
             return {
                 ...trans,
                 date: trans.date ? new Date(trans.date as string) : new Date(),
+                postedDate: trans.postedDate ? new Date(trans.postedDate as string) : undefined,
                 statementDate: trans.statementDate ? new Date(trans.statementDate as string) : undefined,
             } as Transaction;
         });

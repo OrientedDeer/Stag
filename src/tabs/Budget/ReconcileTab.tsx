@@ -5,7 +5,7 @@ import { DateInput } from '../../components/Layout/InputFields/DateInput';
 import { CurrencyInput } from '../../components/Layout/InputFields/CurrencyInput';
 import { DropdownInput } from '../../components/Layout/InputFields/DropdownInput';
 import { AlertBanner } from '../../components/Layout/AlertBanner';
-import { computeStatementCompare, getKnownSources } from './reconcile/reconcileUtils';
+import { computeStatementCompare, getKnownSources, statementDateOf } from './reconcile/reconcileUtils';
 
 type CompareBasis = 'charges' | 'net';
 
@@ -165,9 +165,16 @@ export default function ReconcileTab() {
                     <div className="divide-y divide-border-default max-h-96 overflow-y-auto custom-scrollbar">
                         {result.transactions.map((t) => (
                             <div key={t.id} className="px-4 py-2 flex items-center gap-4 text-sm">
+                                {/* #163: the statement axis (posted ?? date) — what the window
+                                    filters/sorts on — with the swipe date noted when it differs. */}
                                 <span className="w-16 text-content-muted">
-                                    {new Date(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                    {statementDateOf(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                 </span>
+                                {t.postedDate && (
+                                    <span className="text-xs text-content-muted whitespace-nowrap">
+                                        txn {new Date(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                    </span>
+                                )}
                                 <span className="flex-1 text-white truncate">{t.description}</span>
                                 <span className={t.amount > 0 ? 'text-positive font-medium' : 'text-white font-medium'}>
                                     {t.amount > 0 ? '+' : ''}{formatCurrency(Math.abs(t.amount), { cents: true })}

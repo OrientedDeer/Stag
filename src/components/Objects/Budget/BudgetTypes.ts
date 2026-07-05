@@ -44,6 +44,7 @@ export interface Transaction {
     expenseId?: string; // which expense category this belongs to (for expenses OR reimbursements)
     accountId?: string; // which account (credit card, checking) it came from
     source?: string; // free-text label for the card/account/statement this came from (e.g. "Rewards Card"); used for statement reconciliation
+    postedDate?: Date; // date the bank posted/settled the charge (#163) — statements cut on THIS, not `date`. Absent for pre-#163 rows and when the feed's Date already was the posted date (bank omitted transacted_at); consumers use `postedDate ?? date`.
     statementDate?: Date; // credit card statement date for timing
     isPossibleCredit?: boolean; // flag for imported positive amounts that might be credits/refunds
     isTransfer?: boolean; // flag for transfers between accounts (excluded from spending)

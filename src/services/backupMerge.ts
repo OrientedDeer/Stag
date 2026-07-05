@@ -58,6 +58,8 @@ export interface TransactionMergeReport {
     added: number;
     duplicatesSkipped: number;
     autoCategorized: number;
+    /** Existing rows (matched by id) that gained a postedDate from this batch (#163). */
+    postedDatesBackfilled: number;
     /** "YYYY-M" -> count appended */
     byMonth: Record<string, number>;
 }
@@ -102,6 +104,11 @@ export interface NewTransactionInput {
     /** Free-text account/card label this row came from (the stag-feed CSV's
      *  `Source` column). Optional — older feeds omit it. */
     source?: string;
+    /** Bank posted/settled date as 'YYYY-MM-DD' (#163, the stag-feed CSV's
+     *  trailing `Posted` column). Optional — older feeds omit it, and the feed
+     *  emits an empty cell when the bank supplied no separate posted date
+     *  (then `date` already IS the posted date). */
+    postedDate?: string;
 }
 
 export interface ApplyTransactionsOptions {
@@ -140,6 +147,11 @@ export function makeTransaction(input: NewTransactionInput): Transaction {
         isPossibleCredit,
         incomeCategory: isPossibleCredit ? (detectIncomeCategory(input.description) ?? undefined) : undefined,
         source: input.source?.trim() || undefined,
+        // #163: stored only when it adds information — consumers read
+        // `postedDate ?? date`, so an equal value is dead blob weight.
+        postedDate: input.postedDate && input.postedDate !== input.date
+            ? new Date(`${input.postedDate}T00:00:00`)
+            : undefined,
     };
 }
 
@@ -224,6 +236,7 @@ export function applyTransactions(
         added: 0,
         duplicatesSkipped: 0,
         autoCategorized: 0,
+        postedDatesBackfilled: 0,
         byMonth: {},
     };
     if (incoming.length === 0) return report;
@@ -239,6 +252,31 @@ export function applyTransactions(
     if ((opts.dedup ?? 'fuzzy') === 'id') {
         const existingIds = new Set(existing.map(e => e.id));
         toAdd = categorized.filter(t => !existingIds.has(t.id));
+
+        // #163: an id-matched re-fetch can still teach an old row its postedDate
+        // (SimpleFIN re-sends the last ~90 days, and posted dates only settle a
+        // few days after the first fetch). Update-in-place is deliberately
+        // postedDate-only — never touch date/amount/categorization the user may
+        // have edited — and only fills a hole, never overwrites.
+        const incomingPostedById = new Map(
+            categorized
+                .filter(t => t.postedDate && existingIds.has(t.id))
+                .map(t => [t.id, t.postedDate as Date])
+        );
+        if (incomingPostedById.size > 0) {
+            for (const month of blob.budget?.months ?? []) {
+                let touched = false;
+                for (const t of month.transactions ?? []) {
+                    const posted = incomingPostedById.get(t.id);
+                    if (posted && !t.postedDate) {
+                        t.postedDate = posted;
+                        report.postedDatesBackfilled++;
+                        touched = true;
+                    }
+                }
+                if (touched) month.updatedAt = new Date();
+            }
+        }
     } else {
         const dupeIds = new Set(detectDuplicates(categorized, existing).map(d => d.id));
         toAdd = categorized.filter(t => !dupeIds.has(t.id));

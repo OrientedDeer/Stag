@@ -16,6 +16,17 @@ function dateOrdinal(d: Date): number {
     return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
 }
 
+/**
+ * The date a statement files this transaction under (#163): the bank's posted
+ * date when known, else the transaction date. Statements cut on posting — a
+ * charge swiped June 30 that posts July 2 belongs to the July statement. The
+ * fallback covers pre-#163 rows and banks that send no separate posted date
+ * (for those, `date` already IS the posted date).
+ */
+export function statementDateOf(t: Transaction): Date {
+    return new Date(t.postedDate ?? t.date);
+}
+
 export interface StatementCompareInput {
     /** Source label to match (exact). Empty string matches untagged transactions. */
     source: string;
@@ -58,13 +69,15 @@ export function computeStatementCompare(
     for (const month of months) {
         for (const t of month.transactions) {
             if ((t.source || '') !== source) continue;
-            const ord = dateOrdinal(new Date(t.date));
+            // #163: statements cut on the POSTED date, so window membership and
+            // ordering use it (falling back to the transaction date).
+            const ord = dateOrdinal(statementDateOf(t));
             if (ord < startOrd || ord > endOrd) continue;
             matched.push(t);
         }
     }
 
-    matched.sort((a, b) => dateOrdinal(new Date(a.date)) - dateOrdinal(new Date(b.date)));
+    matched.sort((a, b) => dateOrdinal(statementDateOf(a)) - dateOrdinal(statementDateOf(b)));
 
     let charges = 0;
     let credits = 0;

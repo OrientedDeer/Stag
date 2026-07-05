@@ -32,9 +32,10 @@ export function csvToTransactions(csvText: string): Transaction[] {
         amount: col(headers, 'Amount'),
         source: col(headers, 'Source'),
         id: col(headers, 'Id'),
+        posted: col(headers, 'Posted'),
     };
     for (const [k, v] of Object.entries(idx)) {
-        if (k === 'source') continue; // optional — older feeds omit the Source column
+        if (k === 'source' || k === 'posted') continue; // optional — older feeds omit these trailers
         if (v === -1) throw new Error(`transactions.csv is missing the "${k}" column`);
     }
 
@@ -52,6 +53,10 @@ export function csvToTransactions(csvText: string): Transaction[] {
             skipped++;
             continue; // no stable id / unparseable amount / missing date — skip & report
         }
+        // #163: the feed emits an empty Posted cell when the bank supplied no
+        // separate posted date (Date already IS the posted date then); coerce
+        // blank → undefined so makeTransaction stores nothing.
+        const posted = idx.posted >= 0 ? (r[idx.posted] ?? '').trim() : '';
         out.push(
             makeTransaction({
                 id, // SimpleFIN's stable txn id → exact dedup on re-fetch
@@ -59,6 +64,7 @@ export function csvToTransactions(csvText: string): Transaction[] {
                 description: r[idx.description] ?? '',
                 amount,
                 source: idx.source >= 0 ? r[idx.source] : undefined, // optional per-row card/account label
+                postedDate: posted || undefined,
             }),
         );
     }
