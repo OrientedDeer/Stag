@@ -57,12 +57,10 @@ function OptimizationSummaryCardInner({
                     </svg>
                     Tax Optimization Active
                 </h3>
-                <span className={`px-2 py-0.5 text-xs rounded ${
-                    summary.phase === 'BROKERAGE_AVAILABLE' ? 'bg-accent' :
-                    summary.phase === 'BROKERAGE_TRANSITION' ? 'bg-warning-solid' :
-                    summary.phase === 'BROKERAGE_DEPLETED' ? 'bg-cat-orange-solid' :
-                    'bg-negative-solid'
-                }`}>
+                {/* Neutral informational badge: the phase just says which account mix
+                    the optimizer is drawing from — none of the phases is an error, so
+                    no warning/negative styling. */}
+                <span className="px-2 py-0.5 text-xs rounded bg-surface-overlay border border-border-default text-content-bright">
                     {summary.phase === 'BROKERAGE_AVAILABLE' ? 'Accumulation' :
                      summary.phase === 'BROKERAGE_TRANSITION' ? 'Transition' :
                      summary.phase === 'BROKERAGE_DEPLETED' ? 'Roth Phase' :

@@ -180,6 +180,73 @@ interface OverviewSliceArg {
     slice?: { points?: ReadonlyArray<{ data: OverviewPoint }> };
 }
 
+/** Minimal per-point shape the x-axis tick selector needs. */
+interface XTickPoint {
+    year: number;
+    yearLabel: string;
+    isEOY: boolean;
+}
+
+/**
+ * Select the x-axis tick labels for the net-worth chart (point scale keyed on
+ * string labels: 'Today', year strings, 'Dec YYYY').
+ *
+ * Always shows 'Today' plus the first/last regular years, and thins the rest to
+ * every Nth year based on how many fit. When thinning (step > 1), an every-Nth
+ * pick can land on the point right next to a forced tick (e.g. forced first year
+ * 2027 followed by 2028 % 2 === 0), colliding on screen — so any step-selected
+ * tick immediately adjacent (in point-scale slots, EOY points included) to the
+ * previously kept tick or to the forced last tick is dropped.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- pure tick-selection helper exported for unit testing alongside the tab component
+export function computeXTickValues(points: XTickPoint[], containerWidth: number | null | undefined): string[] | undefined {
+    if (points.length === 0) return undefined;
+
+    // Always show Today and EOY labels; apply step filter to regular years
+    const regularYears = points.filter(d => !d.isEOY && d.yearLabel !== 'Today');
+    const count = regularYears.length;
+    const mobile = (containerWidth ?? 800) < 640;
+
+    let step = 1;
+    if (mobile) {
+        if (count > 30) step = 5;
+        else if (count > 15) step = 3;
+        else if (count > 8) step = 2;
+    } else {
+        if (count > 40) step = 5;
+        else if (count > 20) step = 2;
+    }
+
+    const lastRegularIdx = points.indexOf(regularYears[count - 1]);
+    const result: string[] = [];
+    let lastKeptIdx = Number.NEGATIVE_INFINITY;
+
+    points.forEach((d, i) => {
+        // Don't tick the EOY ("Dec YYYY") points — their long labels sit
+        // right next to the adjacent year and overlap. The line still
+        // passes through them and the tooltip still identifies them as
+        // "Projected Dec YYYY".
+        if (d.isEOY) return;
+        if (d.yearLabel === 'Today') {
+            result.push(d.yearLabel);
+            lastKeptIdx = i;
+            return;
+        }
+        // For regular years, include first, last, and every Nth
+        const ri = regularYears.indexOf(d);
+        const isForced = ri === 0 || ri === count - 1;
+        if (!isForced) {
+            if (d.year % step !== 0) return;
+            // Collision guard: when thinning, skip a step tick that would sit
+            // directly beside the last kept tick or the forced last tick.
+            if (step > 1 && (i - lastKeptIdx <= 1 || lastRegularIdx - i <= 1)) return;
+        }
+        result.push(d.yearLabel);
+        lastKeptIdx = i;
+    });
+    return result;
+}
+
 export const OverviewTab = React.memo(({ simulationData }: { simulationData: SimulationYear[] }) => {
     const { assumptions } = useAssumptions();
     const { resolve } = useChartTheme();
@@ -237,43 +304,7 @@ export const OverviewTab = React.memo(({ simulationData }: { simulationData: Sim
     }, [rawData]);
 
     // Calculate x-axis tick values to prevent label overlap
-    const xTickValues = useMemo(() => {
-        if (rawData.length === 0) return undefined;
-
-        // Always show Today and EOY labels; apply step filter to regular years
-        const regularYears = rawData.filter(d => !d.isEOY && d.yearLabel !== 'Today');
-        const count = regularYears.length;
-        const mobile = (containerWidth ?? 800) < 640;
-
-        let step = 1;
-        if (mobile) {
-            if (count > 30) step = 5;
-            else if (count > 15) step = 3;
-            else if (count > 8) step = 2;
-        } else {
-            if (count > 40) step = 5;
-            else if (count > 20) step = 2;
-        }
-
-        const result: string[] = [];
-        rawData.forEach((d) => {
-            // Don't tick the EOY ("Dec YYYY") points — their long labels sit
-            // right next to the adjacent year and overlap. The line still
-            // passes through them and the tooltip still identifies them as
-            // "Projected Dec YYYY".
-            if (d.isEOY) return;
-            if (d.yearLabel === 'Today') {
-                result.push(d.yearLabel);
-                return;
-            }
-            // For regular years, include first, last, and every Nth
-            const ri = regularYears.indexOf(d);
-            if (ri === 0 || ri === regularYears.length - 1 || d.year % step === 0) {
-                result.push(d.yearLabel);
-            }
-        });
-        return result;
-    }, [rawData, containerWidth]);
+    const xTickValues = useMemo(() => computeXTickValues(rawData, containerWidth), [rawData, containerWidth]);
 
     // 5. Custom Tooltip
     const CustomTooltip = ({ slice }: OverviewSliceArg) => {

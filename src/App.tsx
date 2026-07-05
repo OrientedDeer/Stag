@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import "./index.css";
 import Sidebar from "./components/Layout/Overlays/Sidebar";
 import TopBar from "./components/Layout/Overlays/TopBar";
@@ -7,7 +7,7 @@ import AccountTab from "./tabs/Current/AccountTab";
 import IncomeTab from "./tabs/Current/IncomeTab";
 import ExpenseTab from "./tabs/Current/ExpenseTab";
 import Testing from "./tabs/Testing/Testing";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AccountProvider } from './components/Objects/Accounts/AccountContext';
 import { IncomeProvider } from './components/Objects/Income/IncomeContext';
 import { ExpenseProvider } from './components/Objects/Expense/ExpenseContext';
@@ -33,6 +33,18 @@ import GlobalKeyboardShortcuts from "./components/Layout/Overlays/GlobalKeyboard
 import { ReceiptToastProvider } from "./components/Layout/Overlays/ReceiptToast";
 import { PerformanceProfiler } from "./components/Layout/PerformanceProfiler";
 
+/** Reset the scrolled content pane on navigation. The app scrolls the inner
+ *  `#main-content` container (not `window`), so without this each page opens at
+ *  the previous page's scroll offset. */
+function ScrollToTopOnNavigate() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    // Optional call: jsdom (tests) doesn't implement Element.scrollTo.
+    document.getElementById('main-content')?.scrollTo?.({ top: 0 });
+  }, [pathname]);
+  return null;
+}
+
 export default function App() {
   const [isOpen, setIsOpen] = useState(false); // shared variable
   return (
@@ -49,6 +61,7 @@ export default function App() {
               <BudgetProvider>
               <CloudBackupProvider>
               <ReceiptToastProvider>
+              <ScrollToTopOnNavigate />
               <GlobalKeyboardShortcuts />
               <ProjectionHistoryCapture />
               <OrphanLoanReconciler />

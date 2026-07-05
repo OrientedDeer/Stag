@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { SimulationYear } from '../../../../components/Objects/Assumptions/SimulationEngine';
-import { OverviewTab } from '../../../../tabs/Future/tabs/OverviewTab';
+import { OverviewTab, computeXTickValues } from '../../../../tabs/Future/tabs/OverviewTab';
 import { DebtAccount, InvestedAccount, PropertyAccount, SavedAccount } from '../../../../components/Objects/Accounts/models';
 import { LoanExpense, MortgageExpense } from '../../../../components/Objects/Expense/models';
 import { CurrentSocialSecurityIncome, FutureSocialSecurityIncome } from '../../../../components/Objects/Income/models';
@@ -45,7 +45,7 @@ vi.mock('../../../../components/Charts/ChartTooltipPortal', () => ({
 // Mock the RangeSlider. We replace the complex slider with simple inputs
 // so we can easily trigger 'onChange' without fighting mouse events.
 vi.mock('../../../../components/Layout/InputFields/RangeSlider', () => ({
-  RangeSlider: ({ onChange, min, max }: any) => (
+  RangeSlider: ({ onChange, min, max }: { onChange: (range: [number, number]) => void; min: number; max: number }) => (
     <div data-testid="mock-slider">
       <span>Min: {min}, Max: {max}</span>
       <button
@@ -296,6 +296,57 @@ describe('OverviewTab', () => {
             mockQualifiesForSocialSecurity = false;
             render(<OverviewTab simulationData={[createMockYear(2025)]} />);
             expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
+        });
+    });
+
+    // UI sweep: the every-Nth tick filter could select a year directly beside a
+    // forced first/last tick ("Today  2027 2028  2030 …"), colliding on the axis.
+    describe('computeXTickValues (x-axis tick collision)', () => {
+        // Build the point list the chart produces: 'Today' + 'Dec YYYY' EOY pair
+        // for the baseline year, then plain year labels.
+        const buildPoints = (baselineYear: number, lastYear: number) => {
+            const points = [
+                { year: baselineYear, yearLabel: 'Today', isEOY: false },
+                { year: baselineYear, yearLabel: `Dec ${baselineYear}`, isEOY: true },
+            ];
+            for (let y = baselineYear + 1; y <= lastYear; y++) {
+                points.push({ year: y, yearLabel: String(y), isEOY: false });
+            }
+            return points;
+        };
+
+        it('never selects two ticks on adjacent points when thinning (desktop, 31 years)', () => {
+            const points = buildPoints(2026, 2057); // 31 regular years => desktop step = 2
+            const ticks = computeXTickValues(points, 800)!;
+
+            // Forced ticks survive.
+            expect(ticks).toContain('Today');
+            expect(ticks).toContain('2027'); // first regular year
+            expect(ticks).toContain('2057'); // last regular year
+            // The colliding neighbors of the forced first/last ticks are dropped:
+            // 2028 (beside forced 2027) and 2056 (beside forced 2057) are both
+            // even-year step picks under the old logic.
+            expect(ticks).not.toContain('2028');
+            expect(ticks).not.toContain('2056');
+            // EOY points are never ticked.
+            expect(ticks).not.toContain('Dec 2026');
+
+            // No two selected ticks occupy adjacent point-scale slots.
+            const labels = points.map(p => p.yearLabel);
+            const indices = ticks.map(t => labels.indexOf(t));
+            for (let i = 1; i < indices.length; i++) {
+                expect(indices[i] - indices[i - 1]).toBeGreaterThanOrEqual(2);
+            }
+        });
+
+        it('keeps every year when no thinning is needed (small range, step = 1)', () => {
+            const points = buildPoints(2026, 2031);
+            const ticks = computeXTickValues(points, 800);
+            expect(ticks).toEqual(['Today', '2027', '2028', '2029', '2030', '2031']);
+        });
+
+        it('returns undefined for empty data', () => {
+            expect(computeXTickValues([], 800)).toBeUndefined();
         });
     });
 });
