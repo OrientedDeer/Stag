@@ -1,6 +1,7 @@
 import { useCallback, useContext, useMemo } from 'react';
 import { ResponsiveBar } from '@nivo/bar';
 import { useChartTheme } from '../../components/Charts/useChartTheme';
+import { CHART_MONEY } from '../../components/Charts/chartColors';
 import { ChartFrame } from '../../components/Charts/ChartFrame';
 import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
@@ -48,10 +49,10 @@ export default function OverviewTab() {
     }, [dispatch]);
 
     // Determine whether a given month is in the future relative to today
-    const now = new Date();
     const isMonthInFuture = useCallback((m: number, y: number) => {
+        const now = new Date();
         return y > now.getFullYear() || (y === now.getFullYear() && m > now.getMonth() + 1);
-    }, [now]);
+    }, []);
 
     const currentSnapshot = useMemo(() =>
         months.find(m => m.month === selectedMonth && m.year === selectedYear),
@@ -135,8 +136,6 @@ export default function OverviewTab() {
 
     // Category spending data for bar chart (average of 6 months ending at selected month)
     const categoryData = useMemo(() => {
-        const colors = ['var(--c-negative)', 'var(--c-cat-orange)', 'var(--c-warning)', 'var(--c-positive)', 'var(--c-cat-cyan)', 'var(--c-cat-purple)', 'var(--c-cat-fuchsia-bright)', 'var(--c-cat-fuchsia)'];
-
         // Get 6 months ending at selected month
         const monthsToCheck: { month: number; year: number }[] = [];
         let m = selectedMonth;
@@ -182,12 +181,11 @@ export default function OverviewTab() {
         });
 
         const data = expenses
-            .map((exp, idx) => {
+            .map(exp => {
                 const { total, monthsWithData } = categoryTotals[exp.id];
                 return {
                     name: exp.name.length > 15 ? exp.name.slice(0, 13) + '...' : exp.name,
                     average: monthsWithData > 0 ? total / monthsWithData : 0,
-                    color: colors[idx % colors.length],
                 };
             })
             .filter(d => d.average > 0)
@@ -456,7 +454,7 @@ export default function OverviewTab() {
                             margin={chartMargin}
                             layout="horizontal"
                             valueScale={chartValueScale}
-                            colors={({ data }: { data: { color: string } }) => resolve(data.color)}
+                            colors={[resolve(CHART_MONEY)]}
                             borderRadius={4}
                             padding={0.3}
                             axisBottom={chartAxisBottom}

@@ -80,16 +80,22 @@ export default function TrendsTab() {
     const { expenses } = useContext(ExpenseContext);
     const { resolve } = useChartTheme();
 
-    // Get last 6 months of data (relative to current date or selected year)
+    // Get the last 6 COMPLETE months of data (ending at the previous month).
+    // The current in-progress month is excluded: plotting its partial spending
+    // as a full data point makes every series dive toward $0 at the last tick.
     const trendData = useMemo(() => {
         const now = new Date();
         const currentMonth = now.getMonth() + 1;
         const currentYear = now.getFullYear();
 
-        // Generate last 6 months
+        // Generate the last 6 complete months, seeded at the previous month
         const monthsToShow: { month: number; year: number; label: string }[] = [];
-        let m = currentMonth;
+        let m = currentMonth - 1;
         let y = currentYear;
+        if (m === 0) {
+            m = 12;
+            y--;
+        }
 
         for (let i = 0; i < 6; i++) {
             monthsToShow.unshift({
