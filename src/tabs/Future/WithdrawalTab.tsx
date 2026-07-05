@@ -265,40 +265,10 @@ export default function WithdrawalTab() {
         };
     }, [taxOptimizationEnabled, state.milestones, accounts, expenses, simulation]);
 
-    // Filter to only withdrawal-eligible accounts (SavedAccount, InvestedAccount, ESPPAccount, RSUAccount)
-    const eligibleAccounts = useMemo(() => accounts.filter(
-        acc => acc instanceof SavedAccount || acc instanceof InvestedAccount || acc instanceof ESPPAccount || acc instanceof RSUAccount
-    ), [accounts]);
-
-    // Sync withdrawal strategy with accounts: add new eligible accounts, drop
-    // buckets pointing at deleted accounts.
-    useEffect(() => {
-        const currentStrategy = state.withdrawalStrategy;
-
-        const missingAccounts = eligibleAccounts.filter(
-            acc => !currentStrategy.some(bucket => bucket.accountId === acc.id)
-        );
-
-        const validBuckets = currentStrategy.filter(
-            bucket => eligibleAccounts.some(acc => acc.id === bucket.accountId)
-        );
-
-        const hasNewAccounts = missingAccounts.length > 0;
-        const hasDeletedAccounts = validBuckets.length !== currentStrategy.length;
-
-        if (hasNewAccounts || hasDeletedAccounts) {
-            const newBuckets: WithdrawalBucket[] = missingAccounts.map(acc => ({
-                id: `withdrawal-${acc.id}`,
-                name: acc.name,
-                accountId: acc.id,
-            }));
-
-            dispatch({
-                type: 'SET_WITHDRAWAL_STRATEGY',
-                payload: [...validBuckets, ...newBuckets]
-            });
-        }
-    }, [eligibleAccounts, state.withdrawalStrategy, dispatch]);
+    // Bucket↔account sync happens app-wide in WithdrawalBucketReconciler (App.tsx),
+    // not on tab visit: syncing here rewrote assumptions.withdrawalStrategy (a
+    // backed-up field) the first time the tab was opened after a cloud backup,
+    // falsely lighting the "Unsaved changes" indicator.
 
     const onDragEnd = useCallback((result: DropResult) => {
         if (!result.destination) return;

@@ -70,6 +70,19 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
         revRef.current = metaRef.current.lastRev;
     }, []);
 
+    // After a restore, adopt the NEXT computed live hash as the clean baseline.
+    // The restore-time baseline is hashed from the RAW downloaded plaintext, but
+    // the live hash is computed from getBackupData() AFTER the import pipeline
+    // reshapes the data (migrateAssumptions backfills fields, reconstitute*
+    // normalizes account shapes, tax defaults merge) — so the two can differ
+    // structurally with zero user edits, pinning "Unsaved changes" on forever.
+    // Rebaselining on the first post-restore hash compares like with like.
+    // The window is time-boxed: if the restored blob is byte-identical to local
+    // state no new hash ever fires, and without the expiry the flag would
+    // silently absorb the user's NEXT real edit as "clean".
+    const rebaselineUntilRef = useRef(0);
+    const REBASELINE_WINDOW_MS = 8000;
+
     // Fired by GIS whenever Google signs the user in (interactively or via
     // silent auto-select). Resolves any pending token wait; otherwise treats it
     // as a fresh interactive sign-in (which triggers the restore prompt).
@@ -220,10 +233,14 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
             const idToken = await getValidIdToken();
             const { plaintext, rev } = await downloadBackup(config.apiEndpoint, idToken, passphrase);
             revRef.current = rev;
-            // After restore, local data matches the cloud payload - record its hash
-            // so we don't immediately flag the data as dirty.
+            // After restore, local data matches the cloud payload. Record the
+            // raw plaintext's hash as a PROVISIONAL baseline (avoids a dirty
+            // flash), then arm the rebaseline window: the import pipeline is
+            // about to reshape the data, and the first post-import live hash
+            // becomes the real baseline (see rebaselineUntilRef above).
             const hash = await hashBackupForDirtyCheck(plaintext);
             writeMeta({ lastBackupHash: hash, lastRev: rev });
+            rebaselineUntilRef.current = Date.now() + REBASELINE_WINDOW_MS;
             setState(s => ({
                 ...s,
                 restoreInProgress: false,
@@ -284,8 +301,17 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const updateCurrentDataHash = useCallback((hash: string) => {
+        // First live hash after a restore: adopt it as the clean baseline
+        // (the post-import shape is what future hashes will be compared to).
+        if (rebaselineUntilRef.current !== 0 && Date.now() < rebaselineUntilRef.current) {
+            rebaselineUntilRef.current = 0;
+            writeMeta({ lastBackupHash: hash });
+            setState(s => ({ ...s, lastBackupHash: hash, currentDataHash: hash }));
+            return;
+        }
+        rebaselineUntilRef.current = 0;
         setState(s => (s.currentDataHash === hash ? s : { ...s, currentDataHash: hash }));
-    }, []);
+    }, [writeMeta]);
 
     const clearLinkedEmail = useCallback(() => {
         revRef.current = null;

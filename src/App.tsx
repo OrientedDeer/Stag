@@ -20,6 +20,7 @@ import { AssumptionsProvider } from "./components/Objects/Assumptions/Assumption
 import { SimulationProvider } from "./components/Objects/Assumptions/SimulationContext";
 import { ProjectionHistoryCapture } from "./components/Objects/Assumptions/ProjectionHistoryCapture";
 import { OrphanLoanReconciler } from "./components/OrphanLoanReconciler";
+import { WithdrawalBucketReconciler } from "./components/WithdrawalBucketReconciler";
 import { MonteCarloProvider } from "./components/Objects/Assumptions/MonteCarloContext";
 import { ScenarioProvider } from "./components/Objects/Scenarios/ScenarioContext";
 import PriorityTab from "./tabs/Future/PriorityTab";
@@ -65,6 +66,7 @@ export default function App() {
               <GlobalKeyboardShortcuts />
               <ProjectionHistoryCapture />
               <OrphanLoanReconciler />
+              <WithdrawalBucketReconciler />
               <div className="flex h-screen">
                 <Sidebar isOpen={isOpen} onClose={() => setIsOpen(true)}/>
                 <div className="flex flex-col flex-1 overflow-hidden">
