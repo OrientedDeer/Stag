@@ -349,8 +349,9 @@ export const FinancialRatiosTab: React.FC<FinancialRatiosTabProps> = React.memo(
               description="How your key metrics change over time"
             />
             <div className="bg-surface-overlay/50 rounded-xl border border-border-default overflow-hidden">
+              <div className="max-h-96 overflow-y-auto">
               <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-surface-overlay">
                   <tr className="border-b border-border-default">
                     <th className="text-left p-3 text-content-muted font-medium">Year</th>
                     <th className="text-right p-3 text-content-muted font-medium">Savings Rate</th>
@@ -360,7 +361,7 @@ export const FinancialRatiosTab: React.FC<FinancialRatiosTabProps> = React.memo(
                   </tr>
                 </thead>
                 <tbody>
-                  {trends.slice(0, 10).map((trend) => (
+                  {trends.map((trend) => (
                     <tr
                       key={trend.year}
                       className={`border-b border-border-default/50 ${
@@ -384,11 +385,7 @@ export const FinancialRatiosTab: React.FC<FinancialRatiosTabProps> = React.memo(
                   ))}
                 </tbody>
               </table>
-              {trends.length > 10 && (
-                <div className="p-3 text-center text-content-muted text-sm">
-                  Showing first 10 years of {trends.length} total
-                </div>
-              )}
+              </div>
             </div>
           </section>
         )}

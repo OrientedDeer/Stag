@@ -26,6 +26,12 @@ interface SliceArg {
     slice?: { points?: ReadonlyArray<{ data: AfterTaxPoint }> };
 }
 
+/** Sub-1% shares keep a decimal — toFixed(0) rendered a 0.4% haircut as "(0%)". */
+function formatPctShare(fraction: number): string {
+    const pct = fraction * 100;
+    return pct < 1 ? `${pct.toFixed(1)}%` : `${pct.toFixed(0)}%`;
+}
+
 /**
  * Nominal net worth vs. after-tax net worth over the projection (#68). The gap
  * between the two lines is the deferred tax still owed on tax-deferred balances
@@ -151,9 +157,9 @@ export function AfterTaxNetWorthChart({ simulationData }: { simulationData: Simu
             {headline && (
                 <AlertBanner severity="info" size="sm" title="Not all of it is yours to spend">
                     <p className="text-sm">
-                        By {headline.year}, about{' '}
+                        By {headline.year}, in future dollars, about{' '}
                         <span className="font-semibold text-info-bright">{formatCompactCurrency(headline.deferredTax, { forceExact })}</span>{' '}
-                        ({(headline.pct * 100).toFixed(0)}%) of your{' '}
+                        ({formatPctShare(headline.pct)}) of your{' '}
                         {formatCompactCurrency(headline.netWorth, { forceExact })} net worth is taxes you haven't paid yet —
                         leaving <span className="font-semibold text-info-bright">{formatCompactCurrency(headline.afterTax, { forceExact })}</span> after-tax.
                         {headline.deferredOrdinaryTax > 0 ? (

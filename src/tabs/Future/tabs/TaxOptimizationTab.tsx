@@ -120,9 +120,9 @@ const TaxProjectionTable = ({ projections, forceExact }: {
                     </button>
                 )}
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-96 overflow-y-auto">
                 <table className="w-full text-sm">
-                    <thead className="bg-surface-raised/50">
+                    <thead className="sticky top-0 z-10 bg-surface-raised">
                         <tr>
                             <th className="px-4 py-3 text-left text-content-muted">Year</th>
                             <th className="px-4 py-3 text-left text-content-muted">Age</th>
@@ -330,9 +330,9 @@ const ConversionPlanSummary = ({ plan, autoEnabled, forceExact }: {
                     </div>
                 </div>
 
-                <div className="overflow-x-auto rounded-lg border border-border-default">
+                <div className="overflow-x-auto max-h-96 overflow-y-auto rounded-lg border border-border-default">
                     <table className="w-full text-sm">
-                        <thead className="bg-surface-raised/50">
+                        <thead className="sticky top-0 z-10 bg-surface-raised">
                             <tr>
                                 <th className="px-3 py-2 text-left text-content-muted">Year</th>
                                 <th className="px-3 py-2 text-left text-content-muted">Age</th>

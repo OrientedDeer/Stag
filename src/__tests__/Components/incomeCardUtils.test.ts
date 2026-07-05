@@ -12,6 +12,7 @@ import {
     getNonVestingRSUReason,
     getIncomeNonVestingRSUReason,
     classifyNonVestingRSU,
+    getIncomeTimingHint,
 } from '../../components/Objects/Income/incomeCardUtils';
 import {
     WorkIncome,
@@ -667,5 +668,41 @@ describe('getNonVestingRSUReason (#132 results-surface predicate)', () => {
             expect(getRSUPriceValidationMessage(w, accts)).not.toBeNull();
             expect(getIncomeNonVestingRSUReason(w, accts)).toBe('no-price');
         });
+    });
+});
+
+describe('getIncomeTimingHint (future-start / ended badge)', () => {
+    const y = new Date().getFullYear();
+
+    it('returns "starts YYYY" for a future-dated start', () => {
+        const w = makeWorkIncome();
+        w.startDate = new Date(y + 9, 0, 1);
+        expect(getIncomeTimingHint(w)).toBe(`starts ${y + 9}`);
+    });
+
+    it('returns null for an active source (started, open-ended)', () => {
+        const w = makeWorkIncome();
+        w.startDate = new Date(y - 3, 0, 1);
+        expect(getIncomeTimingHint(w)).toBeNull();
+    });
+
+    it('returns null when no fixed dates are set (milestone-gated start is skipped)', () => {
+        const w = makeWorkIncome();
+        w.startMilestoneId = 'ms-retire';
+        expect(getIncomeTimingHint(w)).toBeNull();
+    });
+
+    it('returns "ended YYYY" when the fixed end date is past', () => {
+        const w = makeWorkIncome();
+        w.startDate = new Date(y - 10, 0, 1);
+        w.end_date = new Date(y - 2, 5, 15);
+        expect(getIncomeTimingHint(w)).toBe(`ended ${y - 2}`);
+    });
+
+    it('returns null for an end date still in the future', () => {
+        const w = makeWorkIncome();
+        w.startDate = new Date(y - 1, 0, 1);
+        w.end_date = new Date(y + 2, 5, 15);
+        expect(getIncomeTimingHint(w)).toBeNull();
     });
 });

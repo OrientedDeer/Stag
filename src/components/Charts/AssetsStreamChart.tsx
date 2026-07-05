@@ -13,7 +13,7 @@ const MIN_CHART_WIDTH = 300;
 // --- Types ---
 export interface AssetStreamData {
   year: number;
-  [key: string]: any; 
+  [key: string]: number;
 }
 
 interface AssetsStreamChartProps {
@@ -105,7 +105,7 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
     },
   };
 
-  const CustomTooltip = ({ slice }: any) => {
+  const CustomTooltip = ({ slice }: { slice: { index: number } }) => {
     const yearData = filteredData[slice.index];
     if (!yearData) return null;
 
@@ -203,6 +203,19 @@ export const AssetsStreamChart: React.FC<AssetsStreamChartProps> = ({
             <button onClick={() => setTooltipSort('stack')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${tooltipSort === 'stack' ? 'bg-surface-hover text-white' : 'text-content-muted'}`} title="Sort tooltip by chart stacking order">By Chart</button>
           </div>
         </div>
+      </div>
+
+      {/* Series legend — the stacked bands are otherwise only identifiable via hover. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 mb-2">
+        {keys.map((key) => (
+          <span key={key} className="inline-flex items-center gap-1.5 text-xs text-content-muted">
+            <span
+              className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
+              style={{ backgroundColor: (colors && colors[key]) ? colors[key] : 'var(--c-content-default)' }}
+            />
+            {key}
+          </span>
+        ))}
       </div>
 
       <div className="flex-1 min-h-0 relative">

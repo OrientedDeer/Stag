@@ -93,6 +93,29 @@ export function getFrequencyDisplay(income: AnyIncome, simResolvedPensionBenefit
 }
 
 /**
+ * Timing hint for the collapsed card header. A future-dated income renders the
+ * same "$X/yr" as a live one — and is silently absent from the Income Breakdown
+ * above — so flag it with "starts YYYY"; an income whose fixed end date has
+ * passed gets "ended YYYY". Returns null for an active source. Milestone-gated
+ * starts (no fixed startDate) are skipped — not cheaply resolvable. Month
+ * granularity matches isWindowActiveInCurrentMonth/hasWindowEnded.
+ */
+export function getIncomeTimingHint(income: AnyIncome): string | null {
+    const today = new Date();
+    const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    if (income.startDate) {
+        const s = income.startDate;
+        if (new Date(s.getFullYear(), s.getMonth(), 1) > currentMonthStart) {
+            return `starts ${s.getFullYear()}`;
+        }
+    }
+    if (income.end_date && hasWindowEnded({ startDate: income.startDate, endDate: income.end_date })) {
+        return `ended ${income.end_date.getFullYear()}`;
+    }
+    return null;
+}
+
+/**
  * The simulation-resolved annual benefit + High-3 for a FERS/CSRS pension whose
  * High-3 is auto-calculated. The engine never writes these back onto the editable
  * IncomeContext object — it computes them on a fresh projected pension instance in

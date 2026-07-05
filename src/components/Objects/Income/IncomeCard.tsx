@@ -1,4 +1,4 @@
-import { memo, useContext, useEffect, useCallback, useState, useMemo, ReactElement } from 'react';
+import { memo, useContext, useEffect, useCallback, useMemo, ReactElement } from 'react';
 import {
     AnyIncome,
     WorkIncome,
@@ -32,6 +32,7 @@ import {
     getSimResolvedPension,
     rsuGrantNeedsAccount,
     esppGrantNeedsAccount,
+    getIncomeTimingHint,
 } from './incomeCardUtils';
 import { SimulationContext } from '../Assumptions/SimulationContext';
 import { useSSAEarningsImport } from './useSSAEarningsImport';
@@ -49,24 +50,16 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
     const { simulation } = useContext(SimulationContext);
     const { state: assumptions, dispatch: assumptionsDispatch } = useContext(AssumptionsContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
-    const [dateError, setDateError] = useState<string | undefined>();
+    // Purely derived from the two date fields — no state/effect needed.
+    const dateError =
+        income.startDate && income.end_date && income.end_date < income.startDate
+            ? 'End date must be after start date'
+            : undefined;
 
     const { fileInputRef: ssaFileInputRef, onFileChange: onSSAFileChange } = useSSAEarningsImport({
         milestones: assumptions.milestones,
         dispatch: assumptionsDispatch,
     });
-
-    const validateDates = useCallback((start: Date | undefined, end: Date | undefined) => {
-        if (start && end && end < start) {
-            setDateError('End date must be after start date');
-        } else {
-            setDateError(undefined);
-        }
-    }, []);
-
-    useEffect(() => {
-        validateDates(income.startDate, income.end_date);
-    }, [income.startDate, income.end_date, validateDates]);
 
     const handleFieldUpdate = useCallback(
         (field: AllIncomeKeys, value: unknown) => {
@@ -228,6 +221,22 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
         </span>
     ) : undefined;
 
+    // Timing hint: a not-yet-started or already-ended income otherwise looks
+    // identical to a live one in the list (and is absent from the breakdown above).
+    const timingHint = getIncomeTimingHint(income);
+    const timingBadge = timingHint ? (
+        <span className="rounded-full border border-border-default bg-surface-overlay/50 px-2 py-0.5 text-xs text-content-muted whitespace-nowrap">
+            {timingHint}
+        </span>
+    ) : undefined;
+
+    const badge = (missingAccountBadge || timingBadge) ? (
+        <span className="inline-flex items-center gap-1.5">
+            {missingAccountBadge}
+            {timingBadge}
+        </span>
+    ) : undefined;
+
     return (
         <ExpandableCard
             name={income.name}
@@ -237,7 +246,7 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
             frequencySuffix={getFrequencyDisplay(income, simResolvedPension?.benefit)}
             headerContent={headerContent}
             headerActions={headerActions}
-            badge={missingAccountBadge}
+            badge={badge}
             ariaLabelType="income"
         >
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 bg-[var(--c-surface-raised)] p-6 rounded-xl border border-border-subtle">
