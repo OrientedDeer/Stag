@@ -5,6 +5,8 @@ import { AnyIncome, WorkIncome } from '../Objects/Income/models';
 import { AnyAccount } from '../Objects/Accounts/models';
 import { useChartTheme } from './useChartTheme';
 import { ChartFrame } from "./ChartFrame";
+import { SunburstLegend } from './SunburstLegend';
+import { contrastInk, sunburstItemShade } from './chartColors';
 import { PriorityBucket, getBucketTargetBalance } from '../Objects/Assumptions/AssumptionsContext';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 
@@ -37,18 +39,21 @@ const getExpenseCategory = (exp: AnyExpense): string => {
   return 'Other';
 };
 
+// Fixed categorical slot per category (never cycled), drawn from the themeable
+// series palette so every theme keeps slices distinct. The old map mixed status
+// colors (Food=green, Transportation=yellow, Healthcare=red) with three
+// near-identical purples (Housing/Entertainment/Dependents/Debt). Slots 3 (the
+// elite theme's money gold — Savings uses --color-chart-money) and near-twin
+// hue pairs within each theme are deliberately avoided; adjacency validated
+// with the palette checker in both themes.
 const categoryColors: Record<string, string> = {
-  'Housing': 'var(--color-chart-series-5)',
-  'Food': 'var(--c-positive-soft)',
-  'Transportation': 'var(--c-warning-soft)',
-  'Healthcare': 'var(--c-negative-soft)',
+  'Housing': 'var(--color-chart-series-1)',
+  'Food': 'var(--color-chart-series-2)',
+  'Transportation': 'var(--color-chart-series-4)',
+  'Healthcare': 'var(--color-chart-series-7)',
   'Entertainment': 'var(--color-chart-series-8)',
-  'Utilities': 'var(--c-accent-soft)',
-  'Insurance': 'var(--c-cat-cyan-soft)',
-  'Debt': 'var(--c-cat-fuchsia)',
-  // Distinct from Savings, which uses --color-chart-money (== series-3, #ffc030,
-  // on the default theme) — using series-3 here made both slices the same gold.
-  'Dependents': 'var(--c-cat-purple)',
+  'Debt': 'var(--color-chart-series-11)',
+  'Dependents': 'var(--color-chart-series-10)',
   'Other': 'var(--c-content-subtle)',
   'Savings': 'var(--color-chart-money)',
 };
@@ -212,8 +217,23 @@ export const SpendingSunburst = ({
       }
     }
 
-    return { name: 'Spending', children };
-  }, [expenses, year, startAge, incomes, showSavings, showTaxes, grossIncome, totalExpenses, totalTaxes, monthlyExpenses, annualFedTax, annualStateTax, annualFicaTax, priorities, accounts]);
+    // Outer ring: give each item its own tint of the category color (largest
+    // first, spread across the ramp) so adjacent siblings are distinguishable —
+    // a single uniform childColor modifier rendered every sibling identically.
+    const shaded = children.map(cat => {
+      const base = resolve(cat.color);
+      const items = [...cat.children].sort((a, b) => b.value - a.value);
+      return {
+        ...cat,
+        children: items.map((item, i) => ({
+          ...item,
+          color: sunburstItemShade(base, i, items.length),
+        })),
+      };
+    });
+
+    return { name: 'Spending', children: shaded };
+  }, [expenses, year, startAge, incomes, showSavings, showTaxes, grossIncome, totalExpenses, totalTaxes, monthlyExpenses, annualFedTax, annualStateTax, annualFicaTax, priorities, accounts, resolve]);
 
   const activeSpendingData = useMemo(() => {
     if (!spendingDrilldown) return spendingSunburstData;
@@ -222,9 +242,8 @@ export const SpendingSunburst = ({
     return {
       name: cat.name,
       children: cat.children.map(item => ({
-        ...item,
-        color: cat.color,
-        children: [] as { name: string; value: number }[],
+        ...item, // keeps the item's own ramp tint
+        children: [] as { name: string; value: number; color?: string }[],
       })),
     };
   }, [spendingSunburstData, spendingDrilldown]);
@@ -274,6 +293,15 @@ export const SpendingSunburst = ({
           </div>
         )}
       </div>
+      <SunburstLegend
+        entries={activeSpendingData.children.map(c => ({ name: c.name, color: c.color }))}
+        className="mb-1"
+      />
+      {!spendingDrilldown && (
+        <p className="text-[10px] text-content-faint mb-1">
+          Inner ring: category · outer ring: expense · labels show % of total · click a category to drill in
+        </p>
+      )}
       <div className="h-64 relative">
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
           <span className="text-sm font-bold text-content-emphasis">
@@ -289,18 +317,13 @@ export const SpendingSunburst = ({
           cornerRadius={3}
           borderWidth={1}
           borderColor={{ theme: 'background' }}
-          colors={(node) => {
-            let current = node;
-            while (current.depth > 1 && current.parent) {
-              current = current.parent;
-            }
-            const catColor = (current.data as { color?: string })?.color;
-            return resolve(catColor || 'var(--c-content-subtle)');
-          }}
-          childColor={{ from: 'color', modifiers: [['brighter', 0.3]] }}
+          // Every datum (category AND item) carries its own color — items get a
+          // spread tint ramp — so parent inheritance is disabled.
+          inheritColorFromParent={false}
+          colors={(node) => resolve((node.data as { color?: string })?.color || 'var(--c-content-subtle)')}
           enableArcLabels={true}
-          arcLabelsSkipAngle={15}
-          arcLabelsTextColor="#fff"
+          arcLabelsSkipAngle={18}
+          arcLabelsTextColor={(d) => contrastInk(d.color)}
           arcLabel={(node) => `${((node.value / activeTotal) * 100).toFixed(0)}%`}
           onClick={(node) => {
             if (!spendingDrilldown && node.depth === 1) {
@@ -309,7 +332,7 @@ export const SpendingSunburst = ({
           }}
           tooltip={({ id, value }) => (
             <div className="bg-surface-raised px-3 py-2 rounded-lg border border-border-default shadow-lg">
-              <p className="text-sm font-semibold text-white">{String(id)}</p>
+              <p className="text-sm font-semibold text-content-strong">{String(id)}</p>
               <p className="text-sm text-content-default">{formatCompactCurrency(value, { forceExact })}/yr</p>
             </div>
           )}

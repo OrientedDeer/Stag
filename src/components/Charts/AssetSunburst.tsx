@@ -4,6 +4,8 @@ import { AnyAccount, SavedAccount, InvestedAccount, ESPPAccount, RSUAccount, Pro
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 import { useChartTheme } from './useChartTheme';
 import { ChartFrame } from "./ChartFrame";
+import { SunburstLegend } from './SunburstLegend';
+import { contrastInk, sunburstItemShade } from './chartColors';
 
 interface AssetSunburstProps {
   accounts: AnyAccount[];
@@ -20,10 +22,13 @@ const getAccountCategory = (acc: AnyAccount): string => {
   return 'Other';
 };
 
+// Fixed categorical slots from the themeable series palette (same 1/2/4 trio as
+// the tax donut): the old purple-500/blue-500/status-yellow mix read as
+// near-identical purples plus an alarm color. Slot 3 (elite money gold) skipped.
 const accountCategoryColors: Record<string, string> = {
-  'Cash': 'var(--c-cat-purple-soft)',
-  'Invested': 'var(--c-accent-soft)',
-  'Property': 'var(--c-warning-soft)',
+  'Invested': 'var(--color-chart-series-1)',
+  'Cash': 'var(--color-chart-series-2)',
+  'Property': 'var(--color-chart-series-4)',
   'Other': 'var(--c-content-subtle)',
 };
 
@@ -62,8 +67,23 @@ export const AssetSunburst = ({ accounts, importKey, forceExact }: AssetSunburst
         return sumB - sumA;
       });
 
-    return { name: 'Assets', children };
-  }, [accounts]);
+    // Outer ring: per-account tint ramp of the category color (largest first)
+    // so adjacent accounts are distinguishable — the old uniform childColor
+    // modifier rendered every account of a category the exact same shade.
+    const shaded = children.map(cat => {
+      const base = resolve(cat.color);
+      const items = [...cat.children].sort((a, b) => b.value - a.value);
+      return {
+        ...cat,
+        children: items.map((item, i) => ({
+          ...item,
+          color: sunburstItemShade(base, i, items.length),
+        })),
+      };
+    });
+
+    return { name: 'Assets', children: shaded };
+  }, [accounts, resolve]);
 
   const activeAssetData = useMemo(() => {
     if (!assetDrilldown) return assetSunburstData;
@@ -72,9 +92,8 @@ export const AssetSunburst = ({ accounts, importKey, forceExact }: AssetSunburst
     return {
       name: cat.name,
       children: cat.children.map(item => ({
-        ...item,
-        color: cat.color,
-        children: [] as { name: string; value: number }[],
+        ...item, // keeps the item's own ramp tint
+        children: [] as { name: string; value: number; color?: string }[],
       })),
     };
   }, [assetSunburstData, assetDrilldown]);
@@ -84,8 +103,13 @@ export const AssetSunburst = ({ accounts, importKey, forceExact }: AssetSunburst
   const activeTotal = activeAssetData.children.reduce(
     (sum, cat) => sum + (cat.children?.length
       ? cat.children.reduce((s, i) => s + i.value, 0)
-      : (cat as any).value || 0), 0
+      : (cat as { value?: number }).value || 0), 0
   );
+
+  // Outer-ring identity for the legend: largest accounts across all categories.
+  const topAccounts = assetSunburstData.children
+    .flatMap(cat => cat.children)
+    .sort((a, b) => b.value - a.value);
 
   return (
     <div className="bg-[var(--c-surface-raised)] rounded-xl border border-border-subtle p-4">
@@ -100,19 +124,25 @@ export const AssetSunburst = ({ accounts, importKey, forceExact }: AssetSunburst
           ) : 'Asset Breakdown'}
         </h2>
         {!assetDrilldown && (
-          <div className="flex flex-wrap gap-2 justify-end">
-            {assetSunburstData.children.map(cat => (
-              <div key={cat.name} className="flex items-center gap-1 text-xs text-content-muted">
-                <span
-                  className="w-2 h-2 rounded-full"
-                  style={{ backgroundColor: (cat as any).color || 'var(--c-content-subtle)' }}
-                />
-                {cat.name}
-              </div>
-            ))}
-          </div>
+          <SunburstLegend
+            entries={assetSunburstData.children.map(cat => ({ name: cat.name, color: cat.color }))}
+            className="justify-end"
+          />
         )}
       </div>
+      {assetDrilldown ? (
+        <SunburstLegend
+          entries={activeAssetData.children.map(c => ({ name: c.name, color: c.color }))}
+          className="mb-1"
+        />
+      ) : (
+        <>
+          <SunburstLegend entries={topAccounts} max={5} label="Largest" className="mb-1" />
+          <p className="text-[10px] text-content-faint mb-1">
+            Inner ring: type · outer ring: account · labels show % of total · click a type to drill in
+          </p>
+        </>
+      )}
       <div className="h-64 relative">
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
           <span className="text-sm font-bold text-content-emphasis">
@@ -128,19 +158,13 @@ export const AssetSunburst = ({ accounts, importKey, forceExact }: AssetSunburst
           cornerRadius={3}
           borderWidth={1}
           borderColor={{ theme: 'background' }}
-          colors={(node) => {
-            let current = node;
-            while (current.depth > 1 && current.parent) {
-              current = current.parent;
-            }
-            const catColor = (current.data as any)?.color;
-            // resolve var()->concrete color (childColor modifier + d3 need it)
-            return resolve(catColor || 'var(--c-content-subtle)');
-          }}
-          childColor={{ from: 'color', modifiers: [['brighter', 0.3]] }}
+          // Every datum (category AND account) carries its own color — accounts
+          // get a spread tint ramp — so parent inheritance is disabled.
+          inheritColorFromParent={false}
+          colors={(node) => resolve((node.data as { color?: string })?.color || 'var(--c-content-subtle)')}
           enableArcLabels={true}
-          arcLabelsSkipAngle={15}
-          arcLabelsTextColor="#fff"
+          arcLabelsSkipAngle={18}
+          arcLabelsTextColor={(d) => contrastInk(d.color)}
           arcLabel={(node) => `${((node.value / activeTotal) * 100).toFixed(0)}%`}
           onClick={(node) => {
             if (!assetDrilldown && node.depth === 1) {
@@ -149,7 +173,7 @@ export const AssetSunburst = ({ accounts, importKey, forceExact }: AssetSunburst
           }}
           tooltip={({ id, value }) => (
             <div className="bg-surface-raised px-3 py-2 rounded-lg border border-border-default shadow-lg">
-              <p className="text-sm font-semibold text-white">{String(id)}</p>
+              <p className="text-sm font-semibold text-content-strong">{String(id)}</p>
               <p className="text-sm text-content-default">{formatCompactCurrency(value, { forceExact })}</p>
             </div>
           )}

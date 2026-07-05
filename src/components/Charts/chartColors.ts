@@ -23,6 +23,59 @@ export function colorMapForKeys(keys: string[]): Record<string, string> {
   return map;
 }
 
+/** Parse a concrete color (hex or rgb/rgba) to [r, g, b] 0–255; null if unparseable. */
+function parseColorChannels(color: string): [number, number, number] | null {
+  const hex = color.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (hex) {
+    const h = hex[1];
+    const full = h.length === 3 ? h.split("").map(c => c + c).join("") : h;
+    return [
+      parseInt(full.slice(0, 2), 16),
+      parseInt(full.slice(2, 4), 16),
+      parseInt(full.slice(4, 6), 16),
+    ];
+  }
+  const rgb = color.match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i);
+  if (rgb) return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
+  return null;
+}
+
+/** Lighten a resolved color toward white by `t` (0..1). Pass-through if unparseable. */
+export function lightenColor(color: string, t: number): string {
+  const channels = parseColorChannels(color);
+  if (!channels) return color;
+  const [r, g, b] = channels.map(c => Math.round(c + (255 - c) * t));
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+/**
+ * Shade for the i-th of `count` sibling arcs in a sunburst outer ring: a ramp
+ * of progressively lighter tints of the parent category color, so adjacent
+ * siblings stay distinguishable (a single uniform "brighter" modifier renders
+ * every sibling the exact same color). Largest-first data order keeps the
+ * biggest slice closest to the category's own color.
+ */
+export function sunburstItemShade(base: string, index: number, count: number): string {
+  const step = Math.min(0.45 / Math.max(count - 1, 1), 0.18);
+  return lightenColor(base, 0.1 + index * step);
+}
+
+/**
+ * Readable label ink for text drawn ON a colored mark: near-black on light
+ * marks, white on dark ones (WCAG relative-luminance crossover ~0.2). Keeps
+ * arc labels legible on pale slices (cream/amber) where hardcoded #fff fails.
+ */
+export function contrastInk(color: string): string {
+  const channels = parseColorChannels(color);
+  if (!channels) return "#ffffff";
+  const [r, g, b] = channels.map(c => {
+    const v = c / 255;
+    return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  });
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return luminance > 0.2 ? "#0b1220" : "#ffffff";
+}
+
 /**
  * Resolve a CSS `var(--x)` color string to a concrete `rgb(...)` value.
  *
