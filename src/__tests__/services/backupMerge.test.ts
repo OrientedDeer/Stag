@@ -162,6 +162,50 @@ describe('applyTransactions', () => {
         expect((row.postedDate as Date).getDate()).toBe(22);
     });
 
+    it('reconciles the derived spending totals after merging (blob leaves consistent)', () => {
+        // The overnight stag-feed merge must write blobs whose `spending` cache
+        // already matches the transactions — otherwise the app's auto-reconcile
+        // rewrites it on load and falsely lights "Unsaved changes".
+        const blob = v2Blob();
+        const incoming: Transaction[] = [
+            txn({ id: 'n2', date: '2026-01-09', amount: -18.5, description: 'WHOLE FOODS MARKET' }),
+        ];
+
+        const report = applyTransactions(blob, incoming);
+
+        const jan = blob.budget!.months.find(m => m.month === 1 && m.year === 2026)!;
+        // n2 was auto-categorized to 'groceries' by the rule; the derived total follows.
+        expect(jan.spending['groceries']).toBe(18.5);
+        expect(report.monthsSpendingReconciled).toBe(1);
+    });
+
+    it('deletes stale spending categories with no matching transactions during merge', () => {
+        const blob = v2Blob();
+        const jan = blob.budget!.months.find(m => m.month === 1 && m.year === 2026)!;
+        jan.spending['recategorized-away'] = 50; // stale cache from an older code path
+
+        applyTransactions(blob, [
+            txn({ id: 'n9', date: '2026-01-11', amount: -5, description: 'COFFEE', expenseId: 'food' }),
+        ]);
+
+        expect(jan.spending['recategorized-away']).toBeUndefined();
+        expect(jan.spending['food']).toBe(5);
+    });
+
+    it('reports zero reconciled months when a re-run merges nothing new', () => {
+        const blob = v2Blob();
+        applyTransactions(blob, [
+            txn({ id: 'n2', date: '2026-01-09', amount: -18.5, description: 'WHOLE FOODS MARKET' }),
+        ]);
+
+        // Same batch again: all duplicates, spending already consistent.
+        const rerun = applyTransactions(blob, [
+            txn({ id: 'n2b', date: '2026-01-09', amount: -18.5, description: 'WHOLE FOODS MARKET' }),
+        ]);
+        expect(rerun.added).toBe(0);
+        expect(rerun.monthsSpendingReconciled).toBe(0);
+    });
+
     it('preserves source through categorize → dedup → month-bucket', () => {
         const blob = v2Blob();
         const incoming = [

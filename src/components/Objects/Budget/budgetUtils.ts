@@ -538,6 +538,49 @@ export function calculateCategoryTotalsFromTransactions(
     return categoryTotals;
 }
 
+/** One spending correction: `amount: null` means "delete the stale entry". */
+export interface SpendingReconciliationDiff {
+    expenseId: string;
+    amount: number | null;
+}
+
+/**
+ * The auto-reconcile decision core, shared by the app (BudgetSpendingReconciler /
+ * useAutoReconcile) and the headless stag-feed importer (backupMerge) so the two
+ * can't drift: given a month's transactions and its stored per-category
+ * `spending` record, return the corrections needed to make the stored record
+ * match the transaction-derived totals. Empty array = already in sync.
+ *
+ * Mirrors useAutoReconcile exactly: months with no transactions are left alone;
+ * a category is rewritten when it drifts by more than a cent; a stored non-zero
+ * category with no matching transactions is deleted.
+ */
+export function computeSpendingReconciliation(
+    transactions: Transaction[] | undefined,
+    spending: Record<string, number>,
+): SpendingReconciliationDiff[] {
+    if (!transactions || transactions.length === 0) return [];
+
+    const categoryTotals = calculateCategoryTotalsFromTransactions(transactions);
+    const diffs: SpendingReconciliationDiff[] = [];
+
+    Object.entries(categoryTotals).forEach(([expenseId, { gross, reimbursements }]) => {
+        const netSpending = gross - reimbursements;
+        const currentAmount = spending[expenseId] ?? 0;
+        if (Math.abs(currentAmount - netSpending) > 0.01) {
+            diffs.push({ expenseId, amount: netSpending });
+        }
+    });
+
+    Object.keys(spending).forEach(expenseId => {
+        if (!categoryTotals[expenseId] && spending[expenseId] !== 0) {
+            diffs.push({ expenseId, amount: null });
+        }
+    });
+
+    return diffs;
+}
+
 // ============================================================================
 // Transaction Sorting
 // ============================================================================

@@ -22,6 +22,7 @@
  */
 
 import { applyCategories, detectDuplicates, detectIncomeCategory } from './CSVImportService';
+import { computeSpendingReconciliation } from '../components/Objects/Budget/budgetUtils';
 import { autoMatchAccount } from './simplefinBalances';
 import { generateId } from '../utils/id';
 import { formatDateForInput } from '../utils/formatters';
@@ -60,6 +61,8 @@ export interface TransactionMergeReport {
     autoCategorized: number;
     /** Existing rows (matched by id) that gained a postedDate from this batch (#163). */
     postedDatesBackfilled: number;
+    /** Months whose derived `spending` totals were rewritten to match their transactions. */
+    monthsSpendingReconciled: number;
     /** "YYYY-M" -> count appended */
     byMonth: Record<string, number>;
 }
@@ -237,6 +240,7 @@ export function applyTransactions(
         duplicatesSkipped: 0,
         autoCategorized: 0,
         postedDatesBackfilled: 0,
+        monthsSpendingReconciled: 0,
         byMonth: {},
     };
     if (incoming.length === 0) return report;
@@ -300,6 +304,24 @@ export function applyTransactions(
         snapshot.updatedAt = new Date();
         report.byMonth[key] = txns.length;
         report.added += txns.length;
+    }
+
+    // Keep the derived `spending` cache consistent with the transactions we just
+    // wrote — the SAME reconciliation the app runs (shared helper), applied over
+    // every month so an overnight-merged blob never carries drift for the app
+    // (or the "Unsaved changes" hash) to discover later.
+    for (const month of blob.budget?.months ?? []) {
+        const diffs = computeSpendingReconciliation(month.transactions, month.spending);
+        if (diffs.length === 0) continue;
+        for (const { expenseId, amount } of diffs) {
+            if (amount === null) {
+                delete month.spending[expenseId];
+            } else {
+                month.spending[expenseId] = amount;
+            }
+        }
+        month.updatedAt = new Date();
+        report.monthsSpendingReconciled++;
     }
 
     return report;
