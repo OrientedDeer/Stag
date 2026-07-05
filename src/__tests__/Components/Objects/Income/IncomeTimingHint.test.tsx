@@ -14,7 +14,7 @@ import { WorkIncome } from '../../../../components/Objects/Income/models';
 
 function makeIncome(startDate?: Date, endDate?: Date): WorkIncome {
     const inc = new WorkIncome(
-        'inc-1', 'Future Job', 140_000, 'Annually', 'Yes',
+        'inc-1', 'Future Job', 100_000, 'Annually', 'Yes',
         0, 0, 0, 0, '', null, 'FIXED', undefined, undefined, 0
     );
     inc.startDate = startDate;
