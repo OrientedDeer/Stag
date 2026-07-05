@@ -1,7 +1,6 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
 import { formatMonthYear, navigateMonth } from '../../components/Objects/Budget/budgetUtils';
-import { useAutoReconcile } from '../../hooks/useAutoReconcile';
 import { useSubTabDeepLink } from '../../hooks/useSubTabDeepLink';
 import { useSubTabKeyboardNav } from '../../hooks/useKeyboardShortcuts';
 import SpendingTab from './SpendingTab';
@@ -16,10 +15,11 @@ import { Panel, Button } from "../../components/Layout/Primitives";
 const tabs = ['Overview', 'Spending', 'Transactions', 'Reconcile', 'History', 'Trends', 'Settings'];
 
 export default function BudgetTab() {
-    const { months, selectedMonth, selectedYear, dispatch } = useContext(BudgetContext);
+    const { selectedMonth, selectedYear, dispatch } = useContext(BudgetContext);
 
-    // Auto-reconcile - sync spending with transaction totals (runs once for all sub-tabs)
-    useAutoReconcile(months, dispatch);
+    // Transaction→spending auto-reconcile runs app-wide in BudgetSpendingReconciler
+    // (App.tsx), not on tab visit — visiting a tab must never write backed-up state
+    // (it falsely lit the "Unsaved changes" cloud indicator).
     const [activeTab, setActiveTab] = useState(() => {
         const saved = localStorage.getItem('stag_budget_tab');
         return saved && tabs.includes(saved) ? saved : 'Overview';

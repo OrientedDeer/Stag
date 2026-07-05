@@ -21,6 +21,8 @@ import { SimulationProvider } from "./components/Objects/Assumptions/SimulationC
 import { ProjectionHistoryCapture } from "./components/Objects/Assumptions/ProjectionHistoryCapture";
 import { OrphanLoanReconciler } from "./components/OrphanLoanReconciler";
 import { WithdrawalBucketReconciler } from "./components/WithdrawalBucketReconciler";
+import { BudgetSpendingReconciler } from "./components/BudgetSpendingReconciler";
+import { GoalPriorityReconciler } from "./components/GoalPriorityReconciler";
 import { MonteCarloProvider } from "./components/Objects/Assumptions/MonteCarloContext";
 import { ScenarioProvider } from "./components/Objects/Scenarios/ScenarioContext";
 import PriorityTab from "./tabs/Future/PriorityTab";
@@ -67,6 +69,8 @@ export default function App() {
               <ProjectionHistoryCapture />
               <OrphanLoanReconciler />
               <WithdrawalBucketReconciler />
+              <BudgetSpendingReconciler />
+              <GoalPriorityReconciler />
               <div className="flex h-screen">
                 <Sidebar isOpen={isOpen} onClose={() => setIsOpen(true)}/>
                 <div className="flex flex-col flex-1 overflow-hidden">

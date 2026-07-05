@@ -1,4 +1,4 @@
-import { useState, useContext, useMemo, useCallback, useEffect } from 'react';
+import { useState, useContext, useMemo, useCallback } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { AssumptionsContext, PriorityBucket, CapType, getBirthYear, getBucketTargetBalance } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
@@ -220,18 +220,9 @@ export default function PriorityTab() {
         }
     }, [year, state.milestones]);
 
-    // Legacy migration: goals used to create a savings-priority bucket here.
-    // Goal funding is now a committed transfer inside the simulation (counted
-    // with living expenses), so any surviving goal-fund bucket is removed —
-    // it would only confuse the allocation view (the sim already zeroes them).
-    const goalFundIds = useMemo(() =>
-        new Set(expenses.filter(e => isLongTermGoal(e) && e.goalAccountId).map(e => e.goalAccountId!)),
-    [expenses]);
-    useEffect(() => {
-        state.priorities
-            .filter(p => p.accountId && goalFundIds.has(p.accountId))
-            .forEach(p => dispatch({ type: 'REMOVE_PRIORITY', payload: p.id }));
-    }, [state.priorities, goalFundIds, dispatch]);
+    // Legacy goal-fund priority buckets are pruned app-wide in
+    // GoalPriorityReconciler (App.tsx), not on tab visit — visiting a tab must
+    // never write backed-up state (it falsely lit "Unsaved changes").
 
     // Buckets that can never receive surplus: the waterfall runs top-down and a
     // REMAINDER bucket takes everything left, so anything below the first
