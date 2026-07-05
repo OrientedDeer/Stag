@@ -136,12 +136,7 @@ export const AssetSunburst = ({ accounts, importKey, forceExact }: AssetSunburst
           className="mb-1"
         />
       ) : (
-        <>
-          <SunburstLegend entries={topAccounts} max={5} label="Largest" className="mb-1" />
-          <p className="text-[10px] text-content-faint mb-1">
-            Inner ring: type · outer ring: account · labels show % of total · click a type to drill in
-          </p>
-        </>
+        <SunburstLegend entries={topAccounts} max={5} label="Largest" className="mb-1" />
       )}
       <div className="h-64 relative">
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">

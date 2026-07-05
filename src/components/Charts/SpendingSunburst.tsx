@@ -297,11 +297,6 @@ export const SpendingSunburst = ({
         entries={activeSpendingData.children.map(c => ({ name: c.name, color: c.color }))}
         className="mb-1"
       />
-      {!spendingDrilldown && (
-        <p className="text-[10px] text-content-faint mb-1">
-          Inner ring: category · outer ring: expense · labels show % of total · click a category to drill in
-        </p>
-      )}
       <div className="h-64 relative">
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
           <span className="text-sm font-bold text-content-emphasis">
