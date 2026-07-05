@@ -55,7 +55,7 @@ const scenarioReducer = (state: ScenarioState, action: ScenarioAction): Scenario
                 error: null
             };
 
-        case 'SAVE_SCENARIO':
+        case 'SAVE_SCENARIO': {
             const existingIndex = state.scenarios.findIndex(
                 s => s.metadata.id === action.payload.metadata.id
             );
@@ -69,6 +69,7 @@ const scenarioReducer = (state: ScenarioState, action: ScenarioAction): Scenario
                 scenarios: [...state.scenarios, action.payload],
                 error: null
             };
+        }
 
         case 'DELETE_SCENARIO':
             return {
@@ -168,7 +169,7 @@ interface ScenarioContextProps {
     ) => void;
     deleteScenario: (id: string) => void;
     renameScenario: (id: string, newName: string) => void;
-    updateScenarioAssumptions: (id: string, assumptions: any) => void;
+    updateScenarioAssumptions: (id: string, assumptions: Partial<AssumptionsState>) => void;
     exportScenario: (id: string) => void;
     importScenario: (file: File) => Promise<void>;
     selectBaseline: (id: string | null) => void;
@@ -303,7 +304,7 @@ export const ScenarioProvider = ({ children }: { children: ReactNode }) => {
     /**
      * Update a scenario's assumptions
      */
-    const updateScenarioAssumptions = useCallback((id: string, assumptions: any) => {
+    const updateScenarioAssumptions = useCallback((id: string, assumptions: Partial<AssumptionsState>) => {
         try {
             const scenario = state.scenarios.find(s => s.metadata.id === id);
             if (!scenario) {
@@ -425,6 +426,15 @@ export const ScenarioProvider = ({ children }: { children: ReactNode }) => {
                     ...defaultAssumptions.investments.returnRates,
                     ...((inputs.assumptions?.investments && inputs.assumptions.investments.returnRates) || {}),
                 },
+                // Pre-withdrawalRateMode scenario blobs: same inference as
+                // migrateAssumptions — a customized GK rate was deliberate, so
+                // it runs manual; the default rate gets the auto default.
+                withdrawalRateMode:
+                    inputs.assumptions?.investments?.withdrawalRateMode
+                    ?? (typeof inputs.assumptions?.investments?.withdrawalRate === 'number'
+                        && inputs.assumptions.investments.withdrawalRate !== defaultAssumptions.investments.withdrawalRate
+                        ? 'manual'
+                        : defaultAssumptions.investments.withdrawalRateMode),
             },
             demographics: { ...defaultAssumptions.demographics, ...(inputs.assumptions?.demographics || {}) },
             priorities: inputs.assumptions?.priorities || defaultAssumptions.priorities
