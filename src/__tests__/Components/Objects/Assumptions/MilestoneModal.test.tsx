@@ -11,6 +11,8 @@ import { PassiveIncome } from '../../../../components/Objects/Income/models';
 import type { AnyExpense } from '../../../../components/Objects/Expense/models';
 import { FoodExpense, OtherExpense } from '../../../../components/Objects/Expense/models';
 
+import type { CustomMilestone } from '../../../../services/simulation/types';
+
 const CUSTOM_ID = 'MILE-TEST-1';
 
 const baseState: AssumptionsState = {
@@ -26,15 +28,20 @@ function renderModal({
     expenses = [],
     milestoneReachYears,
     birthYear,
+    extraMilestones = [],
 }: {
     incomes?: AnyIncome[];
     expenses?: AnyExpense[];
     milestoneReachYears?: Map<string, number>;
     birthYear?: number;
+    extraMilestones?: CustomMilestone[];
 } = {}) {
     const dispatch = vi.fn();
+    const state: AssumptionsState = extraMilestones.length
+        ? { ...baseState, milestones: [...baseState.milestones, ...extraMilestones] }
+        : baseState;
     render(
-        <AssumptionsContext.Provider value={{ state: baseState, dispatch }}>
+        <AssumptionsContext.Provider value={{ state, dispatch }}>
             <IncomeContext.Provider value={{ incomes }}>
                 <ExpenseContext.Provider value={{ expenses }}>
                     <MilestoneModal
@@ -49,6 +56,36 @@ function renderModal({
     );
     return { dispatch };
 }
+
+describe('MilestoneModal custom-only list', () => {
+    it('titles the list view "Custom Milestones" and lists only custom milestones', () => {
+        renderModal();
+
+        expect(screen.getByRole('heading', { name: 'Custom Milestones' })).toBeInTheDocument();
+        expect(screen.getByText('Coast FIRE')).toBeInTheDocument();
+
+        // Built-ins are edited inline on the Assumptions tab, not here
+        expect(screen.queryByText('Birth')).not.toBeInTheDocument();
+        expect(screen.queryByText('Retire')).not.toBeInTheDocument();
+        expect(screen.queryByText('End of Plan')).not.toBeInTheDocument();
+    });
+
+    it('shows the empty state when only built-in milestones exist', () => {
+        const dispatch = vi.fn();
+        render(
+            <AssumptionsContext.Provider value={{ state: defaultAssumptions, dispatch }}>
+                <IncomeContext.Provider value={{ incomes: [] }}>
+                    <ExpenseContext.Provider value={{ expenses: [] }}>
+                        <MilestoneModal isOpen={true} onClose={() => {}} />
+                    </ExpenseContext.Provider>
+                </IncomeContext.Provider>
+            </AssumptionsContext.Provider>
+        );
+
+        expect(screen.getByText('No custom milestones yet.')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Add Milestone/ })).toBeInTheDocument();
+    });
+});
 
 describe('MilestoneModal delete impact summary', () => {
     it('deletes an unreferenced milestone immediately without a confirmation dialog', () => {
@@ -148,10 +185,47 @@ describe('MilestoneModal reach-year display', () => {
             milestoneReachYears: new Map(),
             birthYear: 1987,
         });
-        // baseState carries built-in milestones too; none are in the empty
-        // reach map, so every listed milestone shows the "not reached" copy.
-        expect(screen.getAllByText('Not reached within plan').length).toBeGreaterThan(0);
+        // Only the custom milestone is listed; it's not in the empty reach map.
+        expect(screen.getByText('Not reached within plan')).toBeInTheDocument();
         expect(screen.queryByText(/→ reached/)).not.toBeInTheDocument();
+    });
+
+    it('shows "In the past" for an unreached milestone whose YEAR condition predates the plan start', () => {
+        renderModal({
+            milestoneReachYears: new Map(),
+            birthYear: 1987,
+            extraMilestones: [
+                { id: 'MILE-PAST-YEAR', name: 'Graduated', conditions: [{ type: 'YEAR', operator: '=', value: 2009 }] },
+            ],
+        });
+        expect(screen.getByText('In the past')).toBeInTheDocument();
+        // The open-ended custom milestone still reads as not reached
+        expect(screen.getByText('Not reached within plan')).toBeInTheDocument();
+    });
+
+    it('shows "In the past" for an unreached AGE <= condition below the current age', () => {
+        const currentYear = new Date().getFullYear();
+        renderModal({
+            milestoneReachYears: new Map(),
+            birthYear: currentYear - 40, // currently age 40
+            extraMilestones: [
+                { id: 'MILE-PAST-AGE', name: 'Early years', conditions: [{ type: 'AGE', operator: '<=', value: 30 }] },
+            ],
+        });
+        expect(screen.getByText('In the past')).toBeInTheDocument();
+    });
+
+    it('keeps "Not reached within plan" for an unreached future-facing YEAR condition', () => {
+        const currentYear = new Date().getFullYear();
+        renderModal({
+            milestoneReachYears: new Map(),
+            birthYear: 1987,
+            extraMilestones: [
+                { id: 'MILE-FUTURE-YEAR', name: 'Far future', conditions: [{ type: 'YEAR', operator: '>=', value: currentYear + 80 }] },
+            ],
+        });
+        expect(screen.getAllByText('Not reached within plan')).toHaveLength(2);
+        expect(screen.queryByText('In the past')).not.toBeInTheDocument();
     });
 
     it('tags the number of expenses and incomes that trigger off the milestone', () => {

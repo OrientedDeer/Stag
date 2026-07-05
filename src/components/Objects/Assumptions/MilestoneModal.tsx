@@ -1,5 +1,5 @@
 import React, { useState, useContext } from "react";
-import { AssumptionsContext, isBuiltinMilestone, BUILTIN_MILESTONE_IDS } from "./AssumptionsContext";
+import { AssumptionsContext, isBuiltinMilestone } from "./AssumptionsContext";
 import { IncomeContext } from "../Income/IncomeContext";
 import { ExpenseContext } from "../Expense/ExpenseContext";
 import { CustomMilestone, MilestoneCondition, MilestoneConditionType, MilestoneOperator, MilestoneValueType } from "../../../services/simulation/types";
@@ -77,6 +77,9 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose, milest
     const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
     const milestones = state.milestones || [];
+    // The three built-ins (Birth / Retire / End of Plan) are edited inline on
+    // the Assumptions tab (PlanBasicsSection); this modal manages customs only.
+    const customMilestones = milestones.filter(m => !isBuiltinMilestone(m.id));
 
     // Objects whose start/end trigger points at this milestone. Deleting the
     // milestone makes those references dangle; TriggerSelector then silently
@@ -179,21 +182,39 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose, milest
     const isMonetaryCondition = (type: MilestoneConditionType) =>
         type === 'NET_WORTH' || type === 'LIQUID_NET_WORTH' || type === 'TOTAL_DEBT';
 
-    // Get locked condition type for built-in milestones (only Birth and End of Plan are locked)
-    const getLockedConditionType = (milestoneId: string | null): MilestoneConditionType | null => {
-        if (!milestoneId) return null;
-        switch (milestoneId) {
-            case BUILTIN_MILESTONE_IDS.BIRTH:
-                return 'YEAR';
-            case BUILTIN_MILESTONE_IDS.END_OF_PLAN:
-                return 'AGE';
+    // The simulation projects forward from the current calendar year, so any
+    // milestone it never reaches whose YEAR/AGE condition can only hold BEFORE
+    // this year didn't "miss the plan" — it happened in the past.
+    const planStartYear = new Date().getFullYear();
+
+    // Last calendar year at which a condition could still be satisfied, or
+    // Infinity when that can't be determined statically (monetary conditions,
+    // relative value types, open-ended '>='/'>' operators, unknown birth year).
+    const lastSatisfiableYear = (cond: MilestoneCondition): number => {
+        if (cond.valueType && cond.valueType !== 'FIXED') return Infinity;
+        let thresholdYear: number;
+        if (cond.type === 'YEAR') {
+            thresholdYear = cond.value;
+        } else if (cond.type === 'AGE' && birthYear !== undefined) {
+            thresholdYear = birthYear + cond.value;
+        } else {
+            return Infinity;
+        }
+        switch (cond.operator) {
+            case '=':
+            case '<=':
+                return thresholdYear;
+            case '<':
+                return thresholdYear - 1;
             default:
-                return null;
+                return Infinity; // '>=' and '>' stay satisfiable forever
         }
     };
 
-    const lockedConditionType = getLockedConditionType(editingId);
-    const isBuiltinEdit = editingId ? isBuiltinMilestone(editingId) : false;
+    // Conditions AND together, so if any one of them stopped being satisfiable
+    // before the plan starts, the milestone as a whole lies in the past.
+    const isInThePast = (milestone: CustomMilestone): boolean =>
+        milestone.conditions.some(c => lastSatisfiableYear(c) < planStartYear);
 
     // Get milestones available for reference (excluding the one being edited)
     const getReferenceMilestones = () =>
@@ -240,21 +261,21 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose, milest
                 onKeyDown={handleKeyDown}
             >
                 <h2 id="milestone-modal-title" className="text-xl font-bold mb-4 border-b border-border-subtle pb-3">
-                    {view === 'list' ? 'Milestones' : editingId ? 'Edit Milestone' : 'New Milestone'}
+                    {view === 'list' ? 'Custom Milestones' : editingId ? 'Edit Milestone' : 'New Milestone'}
                 </h2>
 
                 {view === 'list' ? (
                     <div className="space-y-4">
-                        {milestones.length === 0 ? (
+                        {customMilestones.length === 0 ? (
                             <div className="text-center py-8">
-                                <p className="text-content-muted mb-4">No milestones defined yet.</p>
+                                <p className="text-content-muted mb-4">No custom milestones yet.</p>
                                 <p className="text-content-subtle text-sm">
                                     Milestones let you trigger income or expense changes based on financial goals like reaching Coast FIRE or becoming debt-free.
                                 </p>
                             </div>
                         ) : (
                             <div className="space-y-2">
-                                {milestones.map(milestone => (
+                                {customMilestones.map(milestone => (
                                     <div
                                         key={milestone.id}
                                         className="flex items-center justify-between p-3 bg-surface-overlay rounded-lg border border-border-default"
@@ -282,7 +303,7 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose, milest
                                                             </span>
                                                         ) : (
                                                             <span className="text-xs text-content-subtle italic">
-                                                                Not reached within plan
+                                                                {isInThePast(milestone) ? 'In the past' : 'Not reached within plan'}
                                                             </span>
                                                         )}
                                                         {triggerCount > 0 && (
@@ -304,17 +325,15 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose, milest
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                                                 </svg>
                                             </button>
-                                            {!isBuiltinMilestone(milestone.id) && (
-                                                <button
-                                                    onClick={() => handleDelete(milestone.id)}
-                                                    className="p-1.5 text-content-muted hover:text-negative hover:bg-surface-input rounded transition-colors"
-                                                    title="Delete milestone"
-                                                >
-                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                    </svg>
-                                                </button>
-                                            )}
+                                            <button
+                                                onClick={() => handleDelete(milestone.id)}
+                                                className="p-1.5 text-content-muted hover:text-negative hover:bg-surface-input rounded transition-colors"
+                                                title="Delete milestone"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                </svg>
+                                            </button>
                                         </div>
                                     </div>
                                 ))}
@@ -341,173 +360,132 @@ const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose, milest
                     </div>
                 ) : (
                     <form onSubmit={handleSave} className="space-y-4">
-                        {editingId && isBuiltinMilestone(editingId) ? (
-                            <div>
-                                <span className="block text-xs sm:text-sm text-content-muted font-medium mb-0.5 uppercase tracking-wide">
-                                    Milestone Name
-                                </span>
-                                <div className="bg-surface-raised border border-border-default rounded-md px-3 py-2">
-                                    <div className="text-white text-md font-semibold flex items-center gap-2">
-                                        {form.name}
-                                        <span className="text-xs text-content-subtle font-normal">(built-in)</span>
-                                    </div>
-                                </div>
-                            </div>
-                        ) : (
-                            <NameInput
-                                label="Milestone Name"
-                                id={editingId || 'new-milestone'}
-                                value={form.name}
-                                onChange={(val) => setForm(prev => ({ ...prev, name: val }))}
-                                placeholder="e.g., Coast FIRE, Debt Free"
-                            />
-                        )}
+                        <NameInput
+                            label="Milestone Name"
+                            id={editingId || 'new-milestone'}
+                            value={form.name}
+                            onChange={(val) => setForm(prev => ({ ...prev, name: val }))}
+                            placeholder="e.g., Coast FIRE, Debt Free"
+                        />
 
                         <div className="space-y-3">
-                            {(!isBuiltinEdit || !lockedConditionType) && (
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium text-content-default">Conditions</span>
-                                    {!isBuiltinEdit && <span className="text-xs text-content-subtle">All conditions must be met (AND logic)</span>}
-                                </div>
-                            )}
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium text-content-default">Conditions</span>
+                                <span className="text-xs text-content-subtle">All conditions must be met (AND logic)</span>
+                            </div>
 
-                            {/* Simplified view for built-in milestones */}
-                            {isBuiltinEdit && lockedConditionType ? (
-                                <div className="p-3 bg-surface-overlay rounded-lg border border-border-default">
-                                    <div className="flex items-center gap-3">
-                                        <span className="text-content-muted text-sm">
-                                            {lockedConditionType === 'YEAR' ? 'Year' : 'Age'} =
-                                        </span>
-                                        <div className="w-24">
-                                            <NumberInput
+                            {form.conditions.map((condition, index) => (
+                                <div key={index} className="p-3 bg-surface-overlay rounded-lg border border-border-default space-y-2">
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex-1 grid grid-cols-[1fr_70px_minmax(120px,1fr)_1fr] gap-2 items-end">
+                                            {/* Left side: what we're measuring */}
+                                            <DropdownInput
                                                 label=""
-                                                value={form.conditions[0]?.value || 0}
-                                                onChange={(val) => updateCondition(0, 'value', val)}
+                                                value={condition.type}
+                                                options={CONDITION_TYPE_OPTIONS}
+                                                onChange={(val) => {
+                                                    updateCondition(index, 'type', val as MilestoneConditionType);
+                                                    // Auto-correct '=' to '>=' when switching to monetary type
+                                                    const isMon = val === 'NET_WORTH' || val === 'LIQUID_NET_WORTH' || val === 'TOTAL_DEBT';
+                                                    if (isMon && condition.operator === '=') {
+                                                        updateCondition(index, 'operator', '>=');
+                                                    }
+                                                }}
+                                            />
+                                            {/* Operator */}
+                                            <DropdownInput
+                                                label=""
+                                                value={condition.operator}
+                                                options={getOperatorOptions(condition.type)}
+                                                onChange={(val) => updateCondition(index, 'operator', val as MilestoneOperator)}
+                                            />
+                                            {/* Value */}
+                                            {isMonetaryCondition(condition.type) && (condition.valueType || 'FIXED') === 'FIXED' ? (
+                                                <CurrencyInput
+                                                    label=""
+                                                    value={condition.value}
+                                                    onChange={(val) => updateCondition(index, 'value', val)}
+                                                />
+                                            ) : (
+                                                <NumberInput
+                                                    label=""
+                                                    value={condition.value}
+                                                    onChange={(val) => updateCondition(index, 'value', val)}
+                                                />
+                                            )}
+                                            {/* Value type: Fixed, × Expenses, + Milestone */}
+                                            <DropdownInput
+                                                label=""
+                                                value={condition.valueType || 'FIXED'}
+                                                options={VALUE_TYPE_OPTIONS}
+                                                onChange={(val) => {
+                                                    updateCondition(index, 'valueType', val as MilestoneValueType);
+                                                    // Clear reference milestone when not using MILESTONE_PLUS
+                                                    if (val !== 'MILESTONE_PLUS') {
+                                                        updateCondition(index, 'referenceMilestoneId', undefined);
+                                                    }
+                                                }}
                                             />
                                         </div>
+                                        {form.conditions.length > 1 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => removeCondition(index)}
+                                                className="p-1.5 text-content-muted hover:text-negative hover:bg-surface-input rounded transition-colors"
+                                                title="Remove condition"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                </svg>
+                                            </button>
+                                        )}
                                     </div>
-                                </div>
-                            ) : (
-                                /* Full condition editor for custom milestones */
-                                <>
-                                    {form.conditions.map((condition, index) => (
-                                        <div key={index} className="p-3 bg-surface-overlay rounded-lg border border-border-default space-y-2">
-                                            <div className="flex items-center gap-2">
-                                                <div className="flex-1 grid grid-cols-[1fr_70px_minmax(120px,1fr)_1fr] gap-2 items-end">
-                                                    {/* Left side: what we're measuring */}
-                                                    <DropdownInput
-                                                        label=""
-                                                        value={condition.type}
-                                                        options={CONDITION_TYPE_OPTIONS}
-                                                        onChange={(val) => {
-                                                            updateCondition(index, 'type', val as MilestoneConditionType);
-                                                            // Auto-correct '=' to '>=' when switching to monetary type
-                                                            const isMon = val === 'NET_WORTH' || val === 'LIQUID_NET_WORTH' || val === 'TOTAL_DEBT';
-                                                            if (isMon && condition.operator === '=') {
-                                                                updateCondition(index, 'operator', '>=');
-                                                            }
-                                                        }}
-                                                    />
-                                                    {/* Operator */}
-                                                    <DropdownInput
-                                                        label=""
-                                                        value={condition.operator}
-                                                        options={getOperatorOptions(condition.type)}
-                                                        onChange={(val) => updateCondition(index, 'operator', val as MilestoneOperator)}
-                                                    />
-                                                    {/* Value */}
-                                                    {isMonetaryCondition(condition.type) && (condition.valueType || 'FIXED') === 'FIXED' ? (
-                                                        <CurrencyInput
-                                                            label=""
-                                                            value={condition.value}
-                                                            onChange={(val) => updateCondition(index, 'value', val)}
-                                                        />
-                                                    ) : (
-                                                        <NumberInput
-                                                            label=""
-                                                            value={condition.value}
-                                                            onChange={(val) => updateCondition(index, 'value', val)}
-                                                        />
-                                                    )}
-                                                    {/* Value type: Fixed, × Expenses, + Milestone */}
-                                                    <DropdownInput
-                                                        label=""
-                                                        value={condition.valueType || 'FIXED'}
-                                                        options={VALUE_TYPE_OPTIONS}
-                                                        onChange={(val) => {
-                                                            updateCondition(index, 'valueType', val as MilestoneValueType);
-                                                            // Clear reference milestone when not using MILESTONE_PLUS
-                                                            if (val !== 'MILESTONE_PLUS') {
-                                                                updateCondition(index, 'referenceMilestoneId', undefined);
-                                                            }
-                                                        }}
-                                                    />
-                                                </div>
-                                                {form.conditions.length > 1 && !isBuiltinEdit && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removeCondition(index)}
-                                                        className="p-1.5 text-content-muted hover:text-negative hover:bg-surface-input rounded transition-colors"
-                                                        title="Remove condition"
-                                                    >
-                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                                        </svg>
-                                                    </button>
-                                                )}
-                                            </div>
-                                            {/* Reference milestone dropdown for MILESTONE_PLUS */}
-                                            {condition.valueType === 'MILESTONE_PLUS' && (
-                                                <div className="pl-2">
-                                                    <DropdownInput
-                                                        label="Reference Milestone"
-                                                        value={condition.referenceMilestoneId || ''}
-                                                        options={[
-                                                            { value: '', label: 'Select a milestone...' },
-                                                            ...getReferenceMilestones().map(m => ({ value: m.id, label: m.name }))
-                                                        ]}
-                                                        onChange={(val) => updateCondition(index, 'referenceMilestoneId', val || undefined)}
-                                                    />
-                                                    {getReferenceMilestones().length === 0 && (
-                                                        <p className="text-xs text-warning mt-1">
-                                                            Create other milestones first to use "+ Milestone"
-                                                        </p>
-                                                    )}
-                                                </div>
+                                    {/* Reference milestone dropdown for MILESTONE_PLUS */}
+                                    {condition.valueType === 'MILESTONE_PLUS' && (
+                                        <div className="pl-2">
+                                            <DropdownInput
+                                                label="Reference Milestone"
+                                                value={condition.referenceMilestoneId || ''}
+                                                options={[
+                                                    { value: '', label: 'Select a milestone...' },
+                                                    ...getReferenceMilestones().map(m => ({ value: m.id, label: m.name }))
+                                                ]}
+                                                onChange={(val) => updateCondition(index, 'referenceMilestoneId', val || undefined)}
+                                            />
+                                            {getReferenceMilestones().length === 0 && (
+                                                <p className="text-xs text-warning mt-1">
+                                                    Create other milestones first to use "+ Milestone"
+                                                </p>
                                             )}
-                                            {/* Preview of what this condition means */}
-                                            <p className="text-xs text-content-subtle pl-1">
-                                                {formatConditionDisplay(condition)}
-                                            </p>
                                         </div>
-                                    ))}
-
-                                    {!isBuiltinEdit && (
-                                        <button
-                                            type="button"
-                                            onClick={addCondition}
-                                            className="w-full p-2 border border-dashed border-border-strong rounded-lg text-content-muted hover:text-white hover:border-border-faint transition-colors text-sm"
-                                        >
-                                            + Add Another Condition
-                                        </button>
                                     )}
-                                </>
-                            )}
+                                    {/* Preview of what this condition means */}
+                                    <p className="text-xs text-content-subtle pl-1">
+                                        {formatConditionDisplay(condition)}
+                                    </p>
+                                </div>
+                            ))}
+
+                            <button
+                                type="button"
+                                onClick={addCondition}
+                                className="w-full p-2 border border-dashed border-border-strong rounded-lg text-content-muted hover:text-white hover:border-border-faint transition-colors text-sm"
+                            >
+                                + Add Another Condition
+                            </button>
                         </div>
 
-                        {/* Example milestones info - only show for custom milestones */}
-                        {!isBuiltinEdit && (
-                            <div className="bg-info-tint/20 border border-info-strong/50 rounded-lg p-3 text-xs">
-                                <div className="font-semibold text-info-bright mb-2">Example Milestones</div>
-                                <ul className="text-content-muted space-y-1">
-                                    <li><span className="text-content-default">FI (4% Rule):</span> Net Worth {">="} 25 × Expenses</li>
-                                    <li><span className="text-content-default">FI (w/ taxes):</span> Net Worth {">="} 25 × Expenses (w/ tax)</li>
-                                    <li><span className="text-content-default">Coast FIRE:</span> Net Worth {">="} $750,000 (Fixed)</li>
-                                    <li><span className="text-content-default">Debt Free:</span> Total Debt {"<="} $0 (Fixed)</li>
-                                </ul>
-                                <p className="text-content-subtle mt-2">"× Expenses" uses living expenses only. "× Expenses (w/ tax)" grosses up by ~15% for taxes.</p>
-                            </div>
-                        )}
+                        {/* Example milestones info */}
+                        <div className="bg-info-tint/20 border border-info-strong/50 rounded-lg p-3 text-xs">
+                            <div className="font-semibold text-info-bright mb-2">Example Milestones</div>
+                            <ul className="text-content-muted space-y-1">
+                                <li><span className="text-content-default">FI (4% Rule):</span> Net Worth {">="} 25 × Expenses</li>
+                                <li><span className="text-content-default">FI (w/ taxes):</span> Net Worth {">="} 25 × Expenses (w/ tax)</li>
+                                <li><span className="text-content-default">Coast FIRE:</span> Net Worth {">="} $750,000 (Fixed)</li>
+                                <li><span className="text-content-default">Debt Free:</span> Total Debt {"<="} $0 (Fixed)</li>
+                            </ul>
+                            <p className="text-content-subtle mt-2">"× Expenses" uses living expenses only. "× Expenses (w/ tax)" grosses up by ~15% for taxes.</p>
+                        </div>
 
                         <div className="flex justify-between pt-4 border-t border-border-subtle">
                             <Button
