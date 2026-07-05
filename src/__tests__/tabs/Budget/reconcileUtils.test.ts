@@ -92,6 +92,33 @@ describe('computeStatementCompare', () => {
         expect(computeStatementCompare(months, { source: '' }).transactions.map(t => t.id)).toEqual(['untagged']);
     });
 
+    it('windows and sorts on postedDate when present, falling back to date (#163)', () => {
+        // Swiped June 30, posted July 2 — belongs to a July 1–31 statement.
+        const straddler = txn({
+            id: 'straddler', date: new Date(2026, 5, 30), postedDate: new Date(2026, 6, 2),
+            amount: -50, source: 'Rewards Card',
+        });
+        // Posted-date-less row (pre-#163 or bank sent no transacted_at): date IS the posted date.
+        const plain = txn({ id: 'plain', date: new Date(2026, 6, 10), amount: -20, source: 'Rewards Card' });
+        const months = [
+            snapshot(6, 2026, [straddler]),
+            snapshot(7, 2026, [plain]),
+        ];
+
+        // June window: the straddler posted in July, so it must NOT appear.
+        const june = computeStatementCompare(months, {
+            source: 'Rewards Card', start: new Date(2026, 5, 1), end: new Date(2026, 5, 30),
+        });
+        expect(june.count).toBe(0);
+
+        // July window: both rows, ordered by posted basis (Jul 2 before Jul 10).
+        const july = computeStatementCompare(months, {
+            source: 'Rewards Card', start: new Date(2026, 6, 1), end: new Date(2026, 6, 31),
+        });
+        expect(july.transactions.map(t => t.id)).toEqual(['straddler', 'plain']);
+        expect(july.charges).toBe(70);
+    });
+
     it('returns zeros when nothing matches', () => {
         const months = [snapshot(1, 2026, [txn({ id: 'a', date: new Date(2026, 0, 5), amount: -10, source: 'Rewards Card' })])];
         const r = computeStatementCompare(months, { source: 'Nope' });

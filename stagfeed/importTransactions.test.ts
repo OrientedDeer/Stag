@@ -207,6 +207,48 @@ describe('csvToTransactions — malformed Date rows (issue #3)', () => {
     });
 });
 
+// #163: the feed appends a trailing Posted column (bank posted/settled date)
+// after Id. Statements cut on posting, so Stag stores it as
+// Transaction.postedDate; the parser must tolerate the column being absent
+// (older feed) and blank (bank sent no separate posted date — Date already IS
+// the posted date then, and Stag's consumers fall back to `date`).
+describe('csvToTransactions — trailing Posted column (#163)', () => {
+    const HEADER_POSTED = `${HEADER},Posted`;
+
+    it('parses Posted into postedDate; blank cell and posted==date store nothing', () => {
+        const csv = `${HEADER_POSTED}\n`
+            + `2026-06-30,Seat fee,-30,Card,tx-1,2026-07-02\n` // swipe/post straddle
+            + `2026-07-03,Coffee,-4.50,Card,tx-2,\n`           // bank sent no posted
+            + `2026-07-05,Lunch,-12,Card,tx-3,2026-07-05`;     // posted == date: no info
+        const txns = csvToTransactionsShared(csv);
+        expect(txns).toHaveLength(3);
+        const [straddle, blank, same] = txns;
+        expect((straddle.postedDate as Date).getMonth()).toBe(6); // July, local midnight
+        expect((straddle.postedDate as Date).getDate()).toBe(2);
+        expect(blank.postedDate).toBeUndefined();
+        expect(same.postedDate).toBeUndefined();
+    });
+
+    it('tolerates an older feed CSV without the Posted column', () => {
+        const csv = `${HEADER}\n2026-06-30,Seat fee,-30,Card,tx-1`;
+        const txns = csvToTransactionsShared(csv);
+        expect(txns).toHaveLength(1);
+        expect(txns[0].postedDate).toBeUndefined();
+    });
+
+    it('a re-fetch backfills postedDate into a previously-merged blob row', () => {
+        const blob = emptyBlob();
+        // First fetch: not yet posted.
+        applyTransactions(blob, csvToTransactionsShared(`${HEADER_POSTED}\n2026-06-30,Seat fee,-30,Card,tx-1,`), { dedup: 'id' });
+        // Re-fetch a few days later: same id, posted date now known.
+        const report = applyTransactions(blob, csvToTransactionsShared(`${HEADER_POSTED}\n2026-06-30,Seat fee,-30,Card,tx-1,2026-07-02`), { dedup: 'id' });
+        expect(report.added).toBe(0);
+        expect(report.postedDatesBackfilled).toBe(1);
+        const row = blob.budget!.months.flatMap(m => m.transactions).find(t => t.id === 'tx-1')!;
+        expect((row.postedDate as Date).getDate()).toBe(2);
+    });
+});
+
 // The shared flagReasonCounts summarizes flags as counts-by-reason for routine
 // logs, so real account names / SimpleFIN keys (BalanceFlag.account) never reach
 // stdout (journald/cron-mail/CI) in cleartext — only the non-sensitive reason enum

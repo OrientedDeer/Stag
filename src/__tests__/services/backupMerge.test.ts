@@ -123,6 +123,45 @@ describe('applyTransactions', () => {
             .toBeUndefined();
     });
 
+    it('makeTransaction stores a local-midnight postedDate only when it differs from date (#163)', () => {
+        const differs = makeTransaction({ id: 'a', date: '2026-06-30', amount: -20, description: 'STORE', postedDate: '2026-07-02' });
+        expect((differs.postedDate as Date).getMonth()).toBe(6); // July, local midnight
+        expect((differs.postedDate as Date).getDate()).toBe(2);
+        // Equal value adds no information — consumers read `postedDate ?? date`.
+        expect(makeTransaction({ id: 'b', date: '2026-06-30', amount: -20, description: 'STORE', postedDate: '2026-06-30' }).postedDate)
+            .toBeUndefined();
+        expect(makeTransaction({ id: 'c', date: '2026-06-30', amount: -20, description: 'STORE' }).postedDate)
+            .toBeUndefined();
+    });
+
+    it('id-dedup backfills postedDate onto an existing row without touching anything else (#163)', () => {
+        const blob = v2Blob();
+        // First fetch: fresh swipe, the bank has not posted it yet.
+        const first = makeTransaction({ id: 'sf-200', date: '2026-01-20', amount: -30, description: 'AIRLINE SEAT FEE' });
+        applyTransactions(blob, [first], { dedup: 'id' });
+        const jan = blob.budget!.months.find(m => m.month === 1 && m.year === 2026)!;
+        const row = jan.transactions.find(t => t.id === 'sf-200')!;
+        row.expenseId = 'travel'; // the user categorizes it in the app meanwhile
+        expect(row.postedDate).toBeUndefined();
+
+        // Re-fetch inside the SimpleFIN window: same id, now carrying a posted date.
+        const refetch = makeTransaction({ id: 'sf-200', date: '2026-01-20', amount: -30, description: 'AIRLINE SEAT FEE', postedDate: '2026-01-22' });
+        const report = applyTransactions(blob, [refetch], { dedup: 'id' });
+
+        expect(report.added).toBe(0);
+        expect(report.duplicatesSkipped).toBe(1);
+        expect(report.postedDatesBackfilled).toBe(1);
+        expect((row.postedDate as Date).getDate()).toBe(22);
+        expect(row.expenseId).toBe('travel'); // user's categorization untouched
+        expect(jan.transactions).toHaveLength(2); // e1 + sf-200; nothing re-added
+
+        // Fill-only: a later fetch never overwrites an already-known posted date.
+        const third = makeTransaction({ id: 'sf-200', date: '2026-01-20', amount: -30, description: 'AIRLINE SEAT FEE', postedDate: '2026-01-23' });
+        const again = applyTransactions(blob, [third], { dedup: 'id' });
+        expect(again.postedDatesBackfilled).toBe(0);
+        expect((row.postedDate as Date).getDate()).toBe(22);
+    });
+
     it('preserves source through categorize → dedup → month-bucket', () => {
         const blob = v2Blob();
         const incoming = [
