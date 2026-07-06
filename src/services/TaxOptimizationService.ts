@@ -504,6 +504,46 @@ export function getOrdinaryAGI(
 }
 
 /**
+ * Combined federal + state ORDINARY marginal rate for a simulation year, computed
+ * on getOrdinaryAGI — so it correctly folds in RMDs, non-RMD Traditional
+ * withdrawals, and the taxable portion of Social Security that a raw
+ * getGrossIncome() base omits. FICA is intentionally excluded: these comparisons
+ * are about ordinary-income tax on deferred dollars (401k / RMD), which never face
+ * FICA on the way out and don't avoid it going in.
+ *
+ * This is the ONE shared add-back base for the RMD-pressure / switchover /
+ * allocation diagnostics — previously each hand-rolled a getGrossIncome() base and
+ * silently dropped the RMD, reading the pre-RMD bracket (e.g. 12%) for a retiree
+ * whose RMD actually lands in the 22% bracket (#184).
+ *
+ * Returns federal, state, combined (fed+state) and federal headroom — the same
+ * shape callers previously read from getCombinedMarginalRate(..., includesFICA=false).
+ */
+export function getOrdinaryMarginalRate(
+    simYear: SimulationYear,
+    age: number,
+    taxState: TaxState,
+    assumptions: AssumptionsState,
+    includeConversion = false,
+): { federal: number; state: number; combined: number; federalHeadroom: number } {
+    const agi = getOrdinaryAGI(simYear, age, taxState.filingStatus, includeConversion);
+    const fedParams = TaxService.getTaxParameters(simYear.year, taxState.filingStatus, 'federal', undefined, assumptions);
+    const stateParams = TaxService.getTaxParameters(simYear.year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
+    const fed = fedParams
+        ? TaxService.getMarginalTaxRate(Math.max(0, agi - (fedParams.standardDeduction || 0)), fedParams)
+        : { rate: 0, headroom: Infinity };
+    const state = stateParams
+        ? TaxService.getMarginalTaxRate(Math.max(0, agi - (stateParams.standardDeduction || 0)), stateParams)
+        : { rate: 0, headroom: Infinity };
+    return {
+        federal: fed.rate,
+        state: state.rate,
+        combined: fed.rate + state.rate,
+        federalHeadroom: fed.headroom,
+    };
+}
+
+/**
  * Find years with low marginal rates suitable for Roth conversions.
  * Calculates optimal conversion amount based on retirement tax rate.
  */
@@ -522,6 +562,9 @@ export function findRothConversionWindows(
     const retirementTaxRate = Math.max(MIN_CONVERSION_TARGET_RATE, calculatedRate);
 
     for (const simYear of simulation) {
+        // Skip the synthetic end-of-year projection row so it doesn't add a
+        // duplicate conversion opportunity for the final year.
+        if (simYear.isEndOfYearProjection) continue;
         const age = simYear.year - birthYear;
 
         // Only consider post-retirement years (when income typically drops)
@@ -610,6 +653,9 @@ export function generateTaxProjections(
     const retirementAge = getRetirementAge(assumptions.milestones);
 
     for (const simYear of simulation) {
+        // Skip the synthetic end-of-year projection row — it duplicates the final
+        // year and would emit a second chart point / opportunity for it.
+        if (simYear.isEndOfYearProjection) continue;
         const age = simYear.year - getBirthYear(assumptions.milestones);
 
         // Build a complete tax base for the year so the effective rate is meaningful.
@@ -660,28 +706,33 @@ export function generateTaxProjections(
         // no FICA marginal. See analyzeTaxSituation.
         const includesFICA = earnedBase > 0;
 
-        const marginal = TaxService.getCombinedMarginalRate(
-            incomeFromObjects,
-            preTaxDeductions,
-            taxState,
-            simYear.year,
-            assumptions,
-            includesFICA,
-            earnedBase,
-            ssCoveredEarnedBase
-        );
+        // Federal + state marginal on the ORDINARY income base (RMDs / non-RMD
+        // Traditional withdrawals / taxable SS folded in via getOrdinaryAGI). The old
+        // getGrossIncome base omitted the RMD, understating the retirement bracket and
+        // mis-badging an $80k-withdrawal + $30k-SS retiree as "low tax — good for Roth"
+        // though the RMD sits them in the 22% bracket (#184).
+        const ordinaryMarginal = getOrdinaryMarginalRate(simYear, age, taxState, assumptions);
+
+        // FICA marginal keys off earned WAGES in working years; reuse the shared
+        // helper's FICA logic. RMDs / SS aren't FICA-taxed, so it drops out in retirement.
+        const ficaRate = includesFICA
+            ? TaxService.getCombinedMarginalRate(
+                incomeFromObjects, preTaxDeductions, taxState, simYear.year,
+                assumptions, true, earnedBase, ssCoveredEarnedBase,
+            ).fica
+            : 0;
 
         const isRetired = age >= retirementAge;
         // Low tax year: retired and in 12% or lower federal bracket
-        const isLowTaxYear = isRetired && marginal.federal <= 0.12;
+        const isLowTaxYear = isRetired && ordinaryMarginal.federal <= 0.12;
 
         projections.push({
             year: simYear.year,
             age,
             grossIncome,
             effectiveRate,
-            marginalRate: marginal.combined,
-            federalBracket: marginal.federal * 100,
+            marginalRate: ordinaryMarginal.combined + ficaRate,
+            federalBracket: ordinaryMarginal.federal * 100,
             isRetired,
             isLowTaxYear
         });
@@ -772,22 +823,18 @@ function analyzeRMDTaxPressure(
     const estimatedFirstRMD = rmdSimYear.rmdDetails?.totalRMD
         ?? (tradBalanceAtRMD / getDistributionPeriod(rmdStartAge));
 
-    // Current year (first sim year) marginal — exclude FICA so it's comparable to retirement
+    // Current year (first sim year) marginal — fed+state ordinary base, no FICA so
+    // it's comparable to the RMD-age rate.
     const currentSimYear = simulation[0];
     const currentAge = currentSimYear.year - birthYear;
-    const currentGross = TaxService.getGrossIncome(currentSimYear.incomes, currentSimYear.year);
-    const currentPreTax = TaxService.getPreTaxExemptions(currentSimYear.incomes, currentSimYear.year, currentAge);
-    const currentMarginal = TaxService.getCombinedMarginalRate(
-        currentGross, currentPreTax, taxState, currentSimYear.year, assumptions, false
-    );
+    const currentMarginal = getOrdinaryMarginalRate(currentSimYear, currentAge, taxState, assumptions);
 
-    // RMD-age marginal — also exclude FICA (RMDs/SS aren't FICA-taxed)
+    // RMD-age marginal — getOrdinaryAGI folds the actual RMD into the base, so this
+    // reads the bracket the RMD lands in (e.g. 22%), not the pre-RMD bracket (12%).
+    // The old getGrossIncome base excluded the RMD, suppressing the Roth-401(k)
+    // recommendation for exactly the large-Traditional profile it exists to warn (#184).
     const rmdAge = rmdSimYear.year - birthYear;
-    const rmdGross = TaxService.getGrossIncome(rmdSimYear.incomes, rmdSimYear.year);
-    const rmdPreTax = TaxService.getPreTaxExemptions(rmdSimYear.incomes, rmdSimYear.year, rmdAge);
-    const rmdMarginal = TaxService.getCombinedMarginalRate(
-        rmdGross, rmdPreTax, taxState, rmdSimYear.year, assumptions, false
-    );
+    const rmdMarginal = getOrdinaryMarginalRate(rmdSimYear, rmdAge, taxState, assumptions);
 
     const federalBracketGap = rmdMarginal.federal - currentMarginal.federal;
     const hasPressure = federalBracketGap >= RMD_PRESSURE_MIN_GAP;
@@ -849,6 +896,8 @@ function findSwitchoverYear(
     // Collect Traditional 401k contributions per working year
     const contributions: { year: number; age: number; amount: number; fvAtRMD: number }[] = [];
     for (const simYear of simulation) {
+        // Skip the synthetic end-of-year projection row.
+        if (simYear.isEndOfYearProjection) continue;
         const age = simYear.year - birthYear;
         if (age >= rmdStartAge) break;
         const tradContrib = getTraditional401kElection(simYear, age);
@@ -870,10 +919,18 @@ function findSwitchoverYear(
         return { year: null, age: null, estimatedTaxImpact: null, redirectedContributions: null };
     }
 
+    // Ordinary taxable income at RMD age INCLUDING the RMD: getOrdinaryAGI folds in
+    // the actual RMD (and taxable SS) that getGrossIncome omits. Because the RMD is
+    // now part of rmdTaxableIncome, subtracting the first RMD once below recovers the
+    // non-RMD income coherently. The old base excluded the RMD yet still subtracted
+    // it — a double-subtract that floored nonRMDTaxableIncome to 0 whenever it dipped
+    // below the first RMD, overstating targetRMD/targetBalance (~26.5x) so the
+    // switchover landed too late or spuriously reported "already below target" (#184).
     const rmdAge = rmdSimYear.year - birthYear;
-    const rmdGross = TaxService.getGrossIncome(rmdSimYear.incomes, rmdSimYear.year);
-    const rmdPreTax = TaxService.getPreTaxExemptions(rmdSimYear.incomes, rmdSimYear.year, rmdAge);
-    const rmdTaxableIncome = Math.max(0, rmdGross - rmdPreTax - fedParams.standardDeduction);
+    const rmdTaxableIncome = Math.max(
+        0,
+        getOrdinaryAGI(rmdSimYear, rmdAge, taxState.filingStatus) - fedParams.standardDeduction
+    );
 
     // The current first-RMD is part of rmdTaxableIncome. Estimate non-RMD income.
     const currentFirstRMD = rmdSimYear.rmdDetails?.totalRMD
@@ -1084,11 +1141,7 @@ export function analyzeRothPreTaxAllocation(
     if (total <= 0) return null;
 
     // Today's marginal rate (fed + state, no FICA — 401(k) contributions don't avoid FICA)
-    const currentGross = TaxService.getGrossIncome(currentSimYear.incomes, currentSimYear.year);
-    const currentPreTax = TaxService.getPreTaxExemptions(currentSimYear.incomes, currentSimYear.year, age);
-    const currentMarginal = TaxService.getCombinedMarginalRate(
-        currentGross, currentPreTax, taxState, currentSimYear.year, assumptions, false
-    );
+    const currentMarginal = getOrdinaryMarginalRate(currentSimYear, age, taxState, assumptions);
 
     // Future rate: prefer first RMD year. Fall back to median retirement rate.
     const rmdStartAge = getRMDStartAge(birthYear);
@@ -1097,13 +1150,13 @@ export function analyzeRothPreTaxAllocation(
     let futureRate: number;
     let futureRateBasis: RothPreTaxAllocation['futureRateBasis'];
     if (rmdSimYear) {
+        // Include the RMD in the future-rate base (getOrdinaryAGI folds it in) so a
+        // retiree drawing a large Traditional balance is priced at the bracket the RMD
+        // actually lands in — not the pre-RMD bracket. Without it, an $80k-withdrawal +
+        // $30k-SS retiree read a low future rate and the allocation verdict wrongly
+        // favored pre-tax over Roth (#184).
         const rmdAge = rmdSimYear.year - birthYear;
-        const rmdGross = TaxService.getGrossIncome(rmdSimYear.incomes, rmdSimYear.year);
-        const rmdPreTax = TaxService.getPreTaxExemptions(rmdSimYear.incomes, rmdSimYear.year, rmdAge);
-        const rmdMarginal = TaxService.getCombinedMarginalRate(
-            rmdGross, rmdPreTax, taxState, rmdSimYear.year, assumptions, false
-        );
-        futureRate = rmdMarginal.combined;
+        futureRate = getOrdinaryMarginalRate(rmdSimYear, rmdAge, taxState, assumptions).combined;
         futureRateBasis = 'rmd-year';
     } else {
         const retirementAge = getRetirementAge(assumptions.milestones);
@@ -1216,6 +1269,9 @@ export function analyzeConversionPlan(
     let totalTaxCost = 0;
     for (let i = 0; i < simulation.length; i++) {
         const simYear = simulation[i];
+        // Skip the synthetic end-of-year projection row so its conversion isn't
+        // double-counted as a duplicate schedule entry / chart point.
+        if (simYear.isEndOfYearProjection) continue;
         const conv = simYear.rothConversion;
         if (!conv || conv.amount <= 0) continue;
 

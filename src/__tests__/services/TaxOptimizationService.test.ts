@@ -17,9 +17,11 @@ import {
     getProjectedRMDMarginalRate,
     findRothConversionWindows,
     getOrdinaryAGI,
+    getOrdinaryMarginalRate,
     getIncomeThresholdForRate,
     generateTaxProjections,
     analyzeConversionPlan,
+    analyzeRothPreTaxAllocation,
     TaxAnalysis,
     // Helper functions
     get401kContributions,
@@ -886,6 +888,50 @@ describe('getOrdinaryAGI', () => {
     });
 });
 
+describe('getOrdinaryMarginalRate (#184 shared add-back base)', () => {
+    const taxState = createTestTaxState({ filingStatus: 'Single', stateResidency: 'FL' }); // no state tax
+    const assumptions = createTestAssumptions({ birthYear: 1970 });
+
+    it('reads the RMD-inclusive bracket, not the pre-RMD one', () => {
+        // A retiree whose income OBJECTS are $0 but who takes a $200k RMD faces the
+        // 22% federal bracket. The old getGrossIncome base saw $0 and read 10%/0%.
+        const simYear = createMockSimulationYear({ year: 2043, incomes: [], rmdWithdrawn: 200000 });
+        const withRMD = getOrdinaryMarginalRate(simYear, 73, taxState, assumptions);
+
+        const noRMD = createMockSimulationYear({ year: 2043, incomes: [] });
+        const withoutRMD = getOrdinaryMarginalRate(noRMD, 73, taxState, assumptions);
+
+        expect(withRMD.federal).toBeGreaterThan(withoutRMD.federal);
+        expect(withRMD.federal).toBeGreaterThanOrEqual(0.22);
+    });
+});
+
+describe('analyzeRothPreTaxAllocation (#184 future-rate includes RMD)', () => {
+    const taxState = createTestTaxState({ filingStatus: 'Single', stateResidency: 'FL' });
+    const birthYear = 1970;
+    const assumptions = createTestAssumptions({ birthYear, retirementAge: 65 });
+
+    it('prices the future rate at the RMD-year bracket the RMD actually lands in', () => {
+        // Current working year with a Traditional 401(k) contribution, and a future RMD
+        // year carrying a large RMD. The future rate must reflect the RMD (22%+), so a
+        // low-current-rate worker is told to lean Roth — not read a phantom-low future
+        // rate that favors pre-tax (the old getGrossIncome base omitted the RMD).
+        const work = new WorkIncome(
+            'w1', 'Job', 60000, 'Annually', 'Yes',
+            10000, 0, 0, 0, '', null, 'FIXED',
+            new Date(`${birthYear + 40}-01-01`), new Date(`${birthYear + 40}-12-31`)
+        );
+        const currentYear = createMockSimulationYear({ year: birthYear + 40, incomes: [work] });
+        const rmdYear = createMockSimulationYear({ year: birthYear + 75, incomes: [], rmdWithdrawn: 200000 });
+
+        const result = analyzeRothPreTaxAllocation([currentYear, rmdYear], assumptions, taxState);
+        expect(result).not.toBeNull();
+        expect(result!.futureRateBasis).toBe('rmd-year');
+        // RMD of $200k → well into the 22%+ federal bracket, above any phantom-low future rate.
+        expect(result!.futureRate).toBeGreaterThanOrEqual(0.22);
+    });
+});
+
 describe('findRothConversionWindows', () => {
     const birthYear = 1970;
     const retirementAge = 65;
@@ -1270,6 +1316,37 @@ describe('generateTaxProjections', () => {
             if (result[0].federalBracket > 12) {
                 expect(result[0].isLowTaxYear).toBe(false);
             }
+        });
+
+        it('is NOT low-tax when a large RMD pushes the bracket above 12% (#184)', () => {
+            const rmdYear = birthYear + 75; // retired, RMD age
+            // Income OBJECTS are modest ($30k SS) — but a large $200k RMD (filtered out of
+            // simYear.incomes, carried in rmdDetails) lands the year well above the 12% bracket.
+            // The old getGrossIncome base omitted the RMD and mis-badged this "low tax".
+            const ss = new CurrentSocialSecurityIncome(
+                'ss1', 'Social Security', 30000, 'Annually',
+                new Date(`${rmdYear}-01-01`), new Date(`${rmdYear}-12-31`)
+            );
+            const simulation = [
+                createMockSimulationYear({ year: rmdYear, incomes: [ss], rmdWithdrawn: 200000 }),
+            ];
+
+            const result = generateTaxProjections(simulation, assumptions, taxState);
+
+            expect(result[0].isRetired).toBe(true);
+            expect(result[0].federalBracket).toBeGreaterThan(12);
+            expect(result[0].isLowTaxYear).toBe(false);
+        });
+
+        it('skips the synthetic end-of-year projection row (#184)', () => {
+            const retirementYear = birthYear + retirementAge;
+            const real = createMockSimulationYear({ year: retirementYear });
+            const eoy = createMockSimulationYear({ year: retirementYear });
+            eoy.isEndOfYearProjection = true;
+            const result = generateTaxProjections([real, eoy], assumptions, taxState);
+            // Only the real row is projected — the EOY duplicate is dropped.
+            expect(result).toHaveLength(1);
+            expect(result[0].year).toBe(retirementYear);
         });
     });
 
