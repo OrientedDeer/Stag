@@ -273,12 +273,28 @@ export default function WithdrawalTab() {
     const onDragEnd = useCallback((result: DropResult) => {
         if (!result.destination) return;
         if (result.destination.index === result.source.index) return;
-        const items = Array.from(state.withdrawalStrategy);
+        const current = stateRef.current;
+        const items = Array.from(current.withdrawalStrategy);
         const [reorderedItem] = items.splice(result.source.index, 1);
         items.splice(result.destination.index, 0, reorderedItem);
-        dispatch({ type: 'SET_WITHDRAWAL_STRATEGY', payload: items });
-        showReceipt({ message: 'Withdrawal order changed — projection updated' });
-    }, [state.withdrawalStrategy, dispatch, showReceipt]);
+        setIsRecalculating(true);
+        // Recalculate BEFORE committing the new order (mirrors onAutoSort) so the
+        // projection and per-bucket timeline chips actually reflect the drag — the
+        // toast previously claimed "projection updated" while the simulation stayed
+        // stale until a Future-tab visit. With Tax Opt ON the optimizer picks the
+        // order so results are unchanged; with Tax Opt OFF this is the mode that
+        // executes the literal order, so the recalc is what makes the drag matter.
+        buildSimulation({ ...current, withdrawalStrategy: items }).then(({ sim, hash }) => {
+            dispatch({ type: 'SET_WITHDRAWAL_STRATEGY', payload: items });
+            dispatchSimulation({ type: 'SET_SIMULATION_WITH_HASH', payload: { simulation: sim, inputHash: hash } });
+            showReceipt({ message: 'Withdrawal order changed — projection updated' });
+            setIsRecalculating(false);
+        }).catch(err => {
+            if (err instanceof JointSearchSupersededError) return;
+            showReceipt({ message: 'Could not reorder the withdrawal order — please try again.' });
+            setIsRecalculating(false);
+        });
+    }, [dispatch, dispatchSimulation, buildSimulation, showReceipt]);
 
     // Derive, per account, the year it is first tapped and the year it depletes,
     // directly from the cached simulation — this is what makes the burn-order

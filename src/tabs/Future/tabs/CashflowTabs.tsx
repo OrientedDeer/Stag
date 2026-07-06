@@ -7,6 +7,7 @@ import type { SankeyImbalance } from '../../../components/Charts/CashflowSankey'
 import type { SimulationYear } from '../../../services/simulation/types';
 import { getAcaCliffThreshold } from '../../../services/simulation/TaxOptimizedWithdrawal';
 import { calculateNetWorth, formatCompactCurrency } from './FutureUtils';
+import { totalTaxesOf } from '../../../components/Charts/taxTotals';
 import { Panel } from "../../../components/Layout/Primitives";
 
 const CashflowSankey = lazy(() =>
@@ -74,7 +75,12 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: Sim
     // mapped the same way YearSolver derives `acaFiling`.
     const acaFiling = taxState.filingStatus === 'Married Filing Jointly' ? 'married_filing_jointly' : 'single';
     const acaCliff = getAcaCliffThreshold(acaFiling, previewYear);
-    const nonConversionMAGI = yearData.cashflow.totalIncome - conversionAmount;
+    // MAGI (not cashflow.totalIncome) is what the ACA cliff is measured against:
+    // totalIncome excludes Traditional/RMD withdrawals and realized gains, so a
+    // retiree living entirely off withdrawals showed $0 here and the banner stayed
+    // silent for the exact scenario it warns about. Subtract the Roth conversion so
+    // this reflects withdrawal-driven income alone (conversions have their own banner).
+    const nonConversionMAGI = (yearData.magi ?? 0) - conversionAmount;
     const retirementAge = getRetirementAge(assumptions.milestones);
     const withdrawalExceedsACA = acaAware && age >= retirementAge && age < 65 && !acaConversionLimited && nonConversionMAGI > acaCliff;
 
@@ -255,7 +261,7 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: Sim
                     </div>
                     <div>
                         <span className="font-bold text-content-muted">Taxes:</span>
-                        <span className="text-negative"> {formatCurrency((yearData.taxDetails.fed || 0) + (yearData.taxDetails.state || 0) + (yearData.taxDetails.fica || 0))}</span>
+                        <span className="text-negative"> {formatCurrency(totalTaxesOf(yearData.taxDetails))}</span>
                     </div>
                     <div>
                         <span className="font-bold text-content-muted">Expenses:</span>

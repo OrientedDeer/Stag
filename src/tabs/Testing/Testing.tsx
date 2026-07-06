@@ -91,7 +91,10 @@ const toCurrencyShort = (num: number) =>
 // ============================================================================
 // COPY-FRIENDLY TEXT SUMMARY
 // ============================================================================
-function generateYearSummaryText(simYear: SimulationYear, age: number, accountsContext: AnyAccount[]): string {
+// Exported for unit testing (dev-tool summary logic). Not a component, so the
+// fast-refresh "only export components" rule doesn't meaningfully apply here.
+// eslint-disable-next-line react-refresh/only-export-components
+export function generateYearSummaryText(simYear: SimulationYear, age: number, accountsContext: AnyAccount[]): string {
     const fmt = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
     const lines: string[] = [];
 
@@ -111,7 +114,9 @@ function generateYearSummaryText(simYear: SimulationYear, age: number, accountsC
         const type = isInvested ? (acc as InvestedAccount).taxType :
             isESPP ? 'ESPP' : isRSU ? 'RSU' : isSaved ? 'Savings' : isDebt ? 'Debt' : isProperty ? 'Property' : 'Unknown';
         lines.push(`  ${acc.name} (${type}): ${fmt(acc.amount)}`);
-        totalBalance += acc.amount;
+        // Debt is a liability — subtract it so "Total" reads as net worth, not a
+        // sum that inflates by every loan balance.
+        totalBalance += isDebt ? -acc.amount : acc.amount;
     }
     lines.push(`  Total: ${fmt(totalBalance)}`);
     lines.push('');
@@ -122,12 +127,16 @@ function generateYearSummaryText(simYear: SimulationYear, age: number, accountsC
         const className = (inc as { className?: string }).className || inc.constructor.name;
         const amount = inc.getProratedAnnual(inc.amount, simYear.year);
         if (inc instanceof WorkIncome) {
+            // preTax401k/roth401k/match/insurance/hsa are PER-PERIOD fields; annualize
+            // them (like the salary line above) so they aren't shown as if annual next
+            // to the annual Work total.
+            const annual = (v: number) => inc.getProratedAnnual(v, simYear.year);
             const parts: string[] = [];
-            if (inc.preTax401k > 0) parts.push(`preTax401k: ${fmt(inc.preTax401k)}`);
-            if (inc.roth401k > 0) parts.push(`roth401k: ${fmt(inc.roth401k)}`);
-            if (inc.employerMatch > 0) parts.push(`match: ${fmt(inc.employerMatch)}`);
-            if (inc.insurance > 0) parts.push(`insurance: ${fmt(inc.insurance)}`);
-            if (inc.hsaContribution > 0) parts.push(`hsa: ${fmt(inc.hsaContribution)}`);
+            if (inc.preTax401k > 0) parts.push(`preTax401k: ${fmt(annual(inc.preTax401k))}`);
+            if (inc.roth401k > 0) parts.push(`roth401k: ${fmt(annual(inc.roth401k))}`);
+            if (inc.employerMatch > 0) parts.push(`match: ${fmt(annual(inc.employerMatch))}`);
+            if (inc.insurance > 0) parts.push(`insurance: ${fmt(annual(inc.insurance))}`);
+            if (inc.hsaContribution > 0) parts.push(`hsa: ${fmt(annual(inc.hsaContribution))}`);
             const detail = parts.length > 0 ? ` (${parts.join(', ')})` : '';
             lines.push(`  Work: ${inc.name} — ${fmt(amount)}${detail}`);
         } else if (isSocialSecurity(inc)) {

@@ -205,20 +205,25 @@ export default function PriorityTab() {
     const getAccountContributionLimit = useCallback((account: AnyAccount): number | null => {
         if (!(account instanceof InvestedAccount)) return null;
         const age = year - getBirthYear(state.milestones);
+        // Match SpendingTab: HSA coverage follows filing status (MFJ → family,
+        // ~$8,550 vs ~$4,300 self-only), and all limits honor the inflation-adjusted
+        // setting so PriorityTab's caps agree with SpendingTab's goals.
+        const inflationAdjusted = state.macro.inflationAdjusted;
+        const hsaCoverage = taxState.filingStatus === 'Married Filing Jointly' ? 'family' : 'individual';
 
         switch (account.taxType) {
             case 'Traditional 401k':
             case 'Roth 401k':
-                return get401kLimit(year, age);
+                return get401kLimit(year, age, inflationAdjusted);
             case 'Traditional IRA':
             case 'Roth IRA':
-                return getIRALimit(year, age);
+                return getIRALimit(year, age, inflationAdjusted);
             case 'HSA':
-                return getHSALimit(year, age, 'individual');
+                return getHSALimit(year, age, hsaCoverage, inflationAdjusted);
             default:
                 return null;
         }
-    }, [year, state.milestones]);
+    }, [year, state.milestones, state.macro.inflationAdjusted, taxState.filingStatus]);
 
     // Legacy goal-fund priority buckets are pruned app-wide in
     // GoalPriorityReconciler (App.tsx), not on tab visit — visiting a tab must
@@ -592,14 +597,18 @@ export default function PriorityTab() {
                     break;
                 }
                 case 'MAX': {
-                    // Prefer the stored cap; otherwise fall back to the account's
-                    // live IRS limit (401k/IRA/HSA) rather than a stale hardcoded
-                    // $23k. An account with no contribution limit (e.g. a taxable
-                    // brokerage, capValue persisted as 0) plans $0 and is flagged
-                    // as needing a cap — the engine doesn't deduct a phantom max.
+                    // MAX means "fill to the current IRS limit", so the LIVE limit
+                    // (401k/IRA/HSA, coverage-aware) is the source of truth — the
+                    // persisted capValue is only a cache and can be stale (e.g. an
+                    // HSA bucket saved with the self-only ~$4,300 before the filing
+                    // status was set to MFJ). Recompute on render rather than writing
+                    // back (opening a tab must never dirty backed-up state). Only fall
+                    // back to the stored cap when there's no live limit; an account
+                    // with no contribution limit (a taxable brokerage, capValue 0)
+                    // then plans $0 and is flagged as needing a cap.
                     const maxAccount = item.accountId ? accountById.get(item.accountId) : undefined; // [7]
                     const liveLimit = maxAccount ? getAccountContributionLimit(maxAccount) : null;
-                    const annualLimit = item.capValue || liveLimit || 0;
+                    const annualLimit = liveLimit || item.capValue || 0;
                     const monthlyLimit = annualLimit / 12;
                     cost = Math.max(0, monthlyLimit);
                     label = 'Max out (IRS annual limit)';

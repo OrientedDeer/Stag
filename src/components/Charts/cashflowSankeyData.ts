@@ -9,6 +9,7 @@ import { WorkIncome, AnyIncome, PassiveIncome } from '../Objects/Income/models';
 import { MortgageExpense, AnyExpense, CLASS_TO_CATEGORY } from '../Objects/Expense/models';
 import { AnyAccount, InvestedAccount, DebtAccount, DeficitDebtAccount } from '../Objects/Accounts/models';
 import { CashflowDetail } from '../../services/simulation/types';
+import { totalTaxesOf } from './taxTotals';
 
 // Minimum threshold for including a value in the chart (avoids $0 nodes)
 const MIN_DISPLAY_THRESHOLD = 0.005;
@@ -297,7 +298,7 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
         const totalReinvested = reinvestedIncomeItems.reduce((s, i) => s + i.net, 0);
 
         const mortgageInterestAndEscrow = totalMortgagePayment - totalPrincipal;
-        const totalTaxes = taxes.fed + taxes.state + taxes.fica + (taxes.capitalGains || 0) + (taxes.withdrawalOrdinaryTax || 0) + (taxes.niit || 0) + (taxes.irmaa || 0) + (taxes.aca || 0);
+        const totalTaxes = totalTaxesOf(taxes);
         const totalBucketSavings = Object.values(bucketAllocations).reduce((a, b) => a + b, 0);
 
         // Brokerage LTCG paid out of the gross-up never lands as user cash — the

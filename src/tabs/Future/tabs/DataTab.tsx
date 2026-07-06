@@ -13,6 +13,7 @@ import { MonteCarloContext } from '../../../components/Objects/Assumptions/Monte
 import { exportToExcel, ExportData } from '../../../services/ExcelExportService';
 import { captureChart, collectReportData, generatePDFReport } from '../../../services/PDFReportService';
 import { formatCompactCurrency, formatCurrency, getNetWorthBreakdown } from './FutureUtils';
+import { totalTaxesOf } from '../../../components/Charts/taxTotals';
 
 import { Button } from "../../../components/Layout/Primitives";
 interface DataTabProps {
@@ -21,7 +22,6 @@ interface DataTabProps {
 }
 
 export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, birthYear }) => {
-    const startAge = new Date().getFullYear() - birthYear;
     const { state: assumptions } = useContext(AssumptionsContext);
     const { accounts } = useContext(AccountContext);
     const { incomes } = useContext(IncomeContext);
@@ -39,13 +39,13 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
     const pdfChartData = useMemo(() => {
         return [{
             id: 'Net Worth',
-            data: simulationData.map((year, index) => ({
+            data: simulationData.map((year) => ({
                 x: year.year,
                 y: getNetWorthBreakdown(year.accounts).vested,
-                age: startAge + index,
+                age: year.year - birthYear,
             }))
         }];
-    }, [simulationData, startAge]);
+    }, [simulationData, birthYear]);
 
     // Calculate x-axis tick values to prevent label overlap
     const xTickValues = useMemo(() => {
@@ -95,8 +95,11 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
 
     // 1. Prepare Table Data (Summary View)
     const tableData = useMemo(() => {
-        return simulationData.map((year, index) => {
-            const totalTaxes = year.taxDetails.fed + year.taxDetails.state + year.taxDetails.fica;
+        return simulationData.map((year) => {
+            // Sum ALL tax components (fed/state/FICA + withdrawal ordinary, cap-gains,
+            // NIIT, IRMAA, ACA) so a retiree drawing a Traditional IRA doesn't show ~$0
+            // taxes. Single-sourced with the Sankey and CSV via totalTaxesOf.
+            const totalTaxes = totalTaxesOf(year.taxDetails);
             // Pass the row's year so amounts that are year-aware (e.g. a loan's
             // payment capped by amortization in its payoff year, date proration)
             // match what the charts and the simulation itself report.
@@ -133,7 +136,10 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
 
             return {
                 year: year.year,
-                age: startAge + index,
+                // Derive age from the row's calendar year, not the array index — with
+                // priorYearMode the array starts a year early, so index-based ages were
+                // off by one for every row (table, CSV, and PDF chart).
+                age: year.year - birthYear,
                 grossIncome: year.cashflow.totalIncome,
                 effectiveTaxRate,
                 totalTaxes,
@@ -144,46 +150,60 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
                 netWorth: vested,
             };
         });
-    }, [simulationData, startAge]);
+    }, [simulationData, birthYear]);
 
     // 2. Detailed CSV Generator
     const handleExportCSV = () => {
         if (simulationData.length === 0) return;
 
-        // Step A: Collect ALL unique headers across the simulation
-        const accountKeys = new Set<string>();
-        const expenseKeys = new Set<string>();
-        const incomeKeys = new Set<string>();
+        // RFC-4180 field escaping: quote any value containing a comma, quote, or
+        // newline (a comma in an account/expense name would otherwise shift every
+        // column right for that row).
+        const csvField = (v: string | number) => {
+            const s = String(v);
+            return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        };
+
+        // Step A: Collect ALL detail columns across the simulation, keyed by item id
+        // (id -> display name). Keying by id — not name — keeps same-named accounts,
+        // incomes, or expenses as distinct columns instead of silently collapsing them.
+        const accountCols = new Map<string, string>();
+        const expenseCols = new Map<string, string>();
+        const incomeCols = new Map<string, string>();
 
         simulationData.forEach(year => {
-            year.accounts.forEach(acc => accountKeys.add(acc.name));
-            year.expenses.forEach(exp => expenseKeys.add(exp.name));
-            year.incomes.forEach(inc => incomeKeys.add(inc.name));
+            year.accounts.forEach(acc => accountCols.set(acc.id, acc.name));
+            year.expenses.forEach(exp => expenseCols.set(exp.id, exp.name));
+            year.incomes.forEach(inc => incomeCols.set(inc.id, inc.name));
         });
 
-        const sortedAccKeys = Array.from(accountKeys).sort();
-        const sortedExpKeys = Array.from(expenseKeys).sort();
-        const sortedIncKeys = Array.from(incomeKeys).sort();
+        // Sort columns by display name for a stable, readable layout; id ties break
+        // deterministically so two same-named items keep a fixed order.
+        const byName = (a: [string, string], b: [string, string]) =>
+            a[1].localeCompare(b[1]) || a[0].localeCompare(b[0]);
+        const sortedIncCols = Array.from(incomeCols.entries()).sort(byName);
+        const sortedExpCols = Array.from(expenseCols.entries()).sort(byName);
+        const sortedAccCols = Array.from(accountCols.entries()).sort(byName);
 
         // Step B: Build Header Row
         const headers = [
             "Year", "Age",
             "Net Worth", "Total Assets", "Total Debt", "Unvested",
             "Gross Income", "Total Taxes", "Total Expenses",
-            ...sortedIncKeys.map(k => `INC: ${k}`),
-            ...sortedExpKeys.map(k => `EXP: ${k}`),
-            ...sortedAccKeys.map(k => `ACC: ${k}`)
+            ...sortedIncCols.map(([, name]) => `INC: ${name}`),
+            ...sortedExpCols.map(([, name]) => `EXP: ${name}`),
+            ...sortedAccCols.map(([, name]) => `ACC: ${name}`)
         ];
 
-        const csvRows = [headers.join(',')];
+        const csvRows = [headers.map(csvField).join(',')];
 
         // Step C: Build Data Rows
-        simulationData.forEach((year, index) => {
+        simulationData.forEach((year) => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const row: any[] = [];
-            
+
             row.push(year.year);
-            row.push(startAge + index);
+            row.push(year.year - birthYear);
 
             // Net Worth is VESTED (#143); Total Assets / Total Debt stay gross. All four
             // columns share the SAME account-side basis as getNetWorthBreakdown, so the
@@ -199,22 +219,24 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
             row.push(unvested);
 
             row.push(year.cashflow.totalIncome);
-            const tax = year.taxDetails.fed + year.taxDetails.state + year.taxDetails.fica;
-            row.push(tax);
-            row.push(year.cashflow.totalExpense); 
+            // Full 8-component tax sum (matches the table + Sankey), not just fed/state/FICA.
+            row.push(totalTaxesOf(year.taxDetails));
+            row.push(year.cashflow.totalExpense);
 
-            // Detailed Columns
-            const incMap = new Map(year.incomes.map(i => [i.name, i.amount]));
-            sortedIncKeys.forEach(key => row.push(incMap.get(key) || 0));
+            // Detailed Columns — keyed by id. Income is annualized (a $3,000 bi-weekly
+            // salary must export as its ~$78k annual, not the per-period amount) so it
+            // sits alongside the annual Gross Income column consistently.
+            const incMap = new Map(year.incomes.map(i => [i.id, i.getAnnualAmount(year.year)]));
+            sortedIncCols.forEach(([id]) => row.push(incMap.get(id) || 0));
 
             // Year-aware for the same reason as the table's livingExpenses sum.
-            const expMap = new Map(year.expenses.map(e => [e.name, e.getAnnualAmount(year.year)]));
-            sortedExpKeys.forEach(key => row.push(expMap.get(key) || 0));
+            const expMap = new Map(year.expenses.map(e => [e.id, e.getAnnualAmount(year.year)]));
+            sortedExpCols.forEach(([id]) => row.push(expMap.get(id) || 0));
 
-            const accMap = new Map(year.accounts.map(a => [a.name, a.amount]));
-            sortedAccKeys.forEach(key => row.push(accMap.get(key) || 0));
+            const accMap = new Map(year.accounts.map(a => [a.id, a.amount]));
+            sortedAccCols.forEach(([id]) => row.push(accMap.get(id) || 0));
 
-            csvRows.push(row.join(','));
+            csvRows.push(row.map(csvField).join(','));
         });
 
         const csvString = csvRows.join('\n');
