@@ -89,6 +89,43 @@ function getFederalSeniorDeduction(
 }
 
 /**
+ * Effective STANDARD-path deduction for a given year: the base standard deduction
+ * plus BOTH federal 65+ add-ons (the permanent regular additional standard
+ * deduction AND the OBBBA senior bonus, phased on `magiProxy`).
+ *
+ * Exists so the year-by-year simulation engine (YearSolver / RothConversionDP),
+ * which computes tax by calling `calculateTotalFederalTax` directly with
+ * `fedParams.standardDeduction`, gets the SAME senior deduction the year-0
+ * Taxes-tab orchestrator (`calculateFederalTaxFromIncomes`) already applies —
+ * closing the year-0-vs-projection asymmetry (#191) where a 65+ retiree saw the
+ * senior deduction on the Taxes tab but not in any projected year. The engine
+ * only ever takes the STANDARD path, so this folds both add-ons into one figure
+ * it can drop into `fedParams.standardDeduction`.
+ *
+ * `magiProxy` (≈ AGI) drives only the OBBBA-bonus phaseout; the regular add-on is
+ * unconditional for a senior filer. Callers that can't cheaply build a full MAGI
+ * may pass a pre-withdrawal proxy — the regular add-on (the dominant dollar
+ * effect) is unaffected and the bonus phaseout degrades gracefully.
+ *
+ * @param fedParams - Federal tax parameters (carry the senior fields)
+ * @param filingStatus - Filing status (drives the MFJ per-person doubling)
+ * @param age - Taxpayer age in the tax year (undefined ⇒ base deduction only)
+ * @param year - Tax year (gates the OBBBA bonus to 2025–2028)
+ * @param magiProxy - MAGI proxy (≈ AGI) for the OBBBA bonus phaseout
+ * @returns base standard deduction + regular 65+ add-on + (phased) OBBBA bonus
+ */
+export function getEffectiveStandardDeduction(
+    fedParams: TaxParameters,
+    filingStatus: FilingStatus,
+    age: number | undefined,
+    year: number,
+    magiProxy: number,
+): number {
+    const senior = getFederalSeniorDeduction(fedParams, filingStatus, age, year, magiProxy);
+    return fedParams.standardDeduction + senior.regular + senior.bonus;
+}
+
+/**
  * Calculate federal tax from income/expense objects using calculateTotalFederalTax.
  *
  * Orchestrates the full federal tax computation: extracts values from incomes

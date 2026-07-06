@@ -310,8 +310,10 @@ describe('rate-equality sign structure — convert below the exit rate: win; abo
 //    TOTAL monotonicity is therefore not a theorem of this model; the directional core
 //    that survives is the forward SHIFT, asserted as the passing test below.
 //
-//    The property test is retained as `it.fails` (NOT weakened): if a future optimizer
+//    The property test was retained as `it.fails` (NOT weakened): if a future optimizer
 //    change makes it pass, vitest will flag it and the finding should be re-examined.
+//    THAT HAPPENED with #191 (senior deductions priced by the DP) — see the history
+//    note on the test itself; it now runs as a normal passing pin.
 // ===========================================================================
 
 interface MonoFixture { ssAnnual: number; total: number; preClaimTotal: number; }
@@ -344,9 +346,24 @@ describe('SS-monotonicity — directional properties of the chosen conversions',
         expect(high.ssAnnual).toBeGreaterThan(low.ssAnnual + 10_000);
     });
 
-    // THE REVIEW'S PROPERTY, KNOWN-FAILING (see the block comment). Slack $25k = search-grid
-    // quantization only; the observed violation is ≈ $230k, an order of magnitude beyond it.
-    it.fails('KNOWN-FALSE as stated: high-SS total conversions ≥ low-SS total', () => {
+    // THE REVIEW'S PROPERTY. Slack $25k = search-grid quantization only.
+    //
+    // HISTORY: from 2026-07-02 (fp-review F12) this was pinned as `it.fails` — the
+    // optimizer violated it by ≈ $230k (low-SS ≈ $723k vs high-SS ≈ $493k), and the
+    // violation was adjudicated economically correct (the torpedo is a TWO-SIDED
+    // cost; see the block comment above). The `it.fails` sentinel said: if a future
+    // optimizer change makes this pass, re-examine.
+    //
+    // RE-EXAMINED 2026-07-06 (#191): once the DP prices the 65+ senior deductions
+    // (regular add-on + OBBBA bonus) that the engine actually bills, both
+    // households' retirement-year 0%-space grows and total conversions jump
+    // (low-SS ≈ $1,009k, high-SS ≈ $1,209k) — and the property now holds with
+    // ≈ +$200k of margin, as decisively as it used to fail. TOTAL monotonicity is
+    // still NOT a theorem of this model (the block comment's two-sided-torpedo
+    // economics stand); this pin is fixture-specific. If it flips again under a
+    // future optimizer change, re-adjudicate rather than blindly restoring
+    // `it.fails`.
+    it('high-SS total conversions ≥ low-SS total (holds since #191; see history above)', () => {
         const { low, high } = monoFixtures();
         expect(high.total, `low-SS total=${Math.round(low.total)} high-SS total=${Math.round(high.total)}`)
             .toBeGreaterThanOrEqual(low.total - 25_000);

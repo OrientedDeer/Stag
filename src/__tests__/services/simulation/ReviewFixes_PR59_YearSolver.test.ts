@@ -72,15 +72,20 @@ describe('PR #59 #2 — ESPP ordinary income participates in the convergence che
         );
         const savings = new SavedAccount('savings-1', 'Savings', 5_000, 2.0);
 
-        // Already-claimed SS: $40k/yr, started in 2022.
+        // Already-claimed SS: $40k/yr, started in 2024 (claimed early at 62).
         const ss = new SocialSecurityIncome(
-            'ss-1', 'Social Security', SS_BENEFITS, 'Annually', 67, undefined,
-            new Date(2022, 0, 1),
+            'ss-1', 'Social Security', SS_BENEFITS, 'Annually', 62, undefined,
+            new Date(2024, 0, 1),
         );
 
         const assumptions: AssumptionsState = {
             ...defaultAssumptions,
-            milestones: createBuiltinMilestones(1955, 60, 95), // age 70 in 2025, retired
+            // Age 63 in 2025 (retired, pre-65): keeps the filer OUT of the #191
+            // senior-deduction range so this test isolates its own finding — the
+            // ESPP convergence bug is age-independent, and at 65+ the effective
+            // standard deduction now (correctly) zeroes this scenario's federal
+            // tax, which would blunt the "materially positive" oracle below.
+            milestones: createBuiltinMilestones(1962, 60, 95),
             macro: { ...defaultAssumptions.macro, inflationAdjusted: false },
             investments: {
                 ...defaultAssumptions.investments,
@@ -103,7 +108,7 @@ describe('PR #59 #2 — ESPP ordinary income participates in the convergence che
 
         return {
             year: YEAR,
-            currentAge: 70,
+            currentAge: 63,
             isRetired: true,
             incomes: [ss],
             expenses: [new OtherExpense('living-1', 'Living', 100_000, 'Annually', new Date(2020, 0, 1))],

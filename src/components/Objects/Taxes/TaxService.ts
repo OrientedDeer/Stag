@@ -36,7 +36,7 @@ export {
     calculateTax,
     type TotalFederalTaxResult,
 } from "./taxService/bracketTax";
-export { calculateFederalTaxFromIncomes } from "./taxService/federalTax";
+export { calculateFederalTaxFromIncomes, getEffectiveStandardDeduction } from "./taxService/federalTax";
 export { calculateStateTax, calculateUnifiedStateTax } from "./taxService/stateTax";
 export { calculateFicaTax } from "./taxService/ficaTax";
 export { calculateCapitalGainsTax } from "./taxService/capitalGainsTax";

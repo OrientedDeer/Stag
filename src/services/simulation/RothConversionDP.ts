@@ -711,6 +711,33 @@ export function buildDPYearContexts(
             simYear.year, effTax.filingStatus, 'state', effTax.stateResidency, assumptions
         );
 
+        // #191: the DP prices each cell with computeYearTax → calculateTotalFederalTax,
+        // which reads only fedParams.standardDeduction and NEVER the senior add-ons
+        // (the year-0 orchestrator applies those, so the DP previously optimized
+        // against a raw-standard-deduction tax the engine doesn't actually bill a 65+
+        // filer — biasing conversion headroom). Bake the same effective standard
+        // deduction the engine (YearSolver) uses into the stored context so the DP's
+        // objective matches the executed tax. MAGI proxy for the OBBBA-bonus phaseout
+        // = non-SS ordinary (already net of pre-tax deferrals, #186) + LTCG + taxable
+        // SS. Non-senior years (incl. every pre-65 gap year) resolve to the raw
+        // standard deduction — byte-for-byte unchanged.
+        const effectiveFedParams = {
+            ...fedParams,
+            standardDeduction: TaxService.getEffectiveStandardDeduction(
+                fedParams,
+                effTax.filingStatus,
+                age,
+                simYear.year,
+                nonSSOrdinaryIncomeExclRMD + ltcgIncome +
+                    TaxService.getTaxableSocialSecurityBenefits(
+                        ssBenefits,
+                        nonSSOrdinaryIncomeExclRMD + ltcgIncome,
+                        0,
+                        effTax.filingStatus,
+                    ),
+            ),
+        };
+
         // ACA cliff applies pre-65 only (Medicare eligibility starts at 65).
         // #159: never on gap-year contexts — the engine's working-year path
         // assumes employer coverage and charges no ACA repayment (YearSolver
@@ -848,7 +875,7 @@ export function buildDPYearContexts(
             ssBenefits,
             ltcgIncome,
             filingStatus: effTax.filingStatus,
-            fedParams,
+            fedParams: effectiveFedParams,
             stateParams: stateParams ?? null,
             acaOptions,
             irmaaSurchargeForMAGI,

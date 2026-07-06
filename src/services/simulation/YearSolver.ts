@@ -1500,7 +1500,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     const decisions: DecisionLogEntry[] = [];
 
     // Get tax parameters
-    const fedParams = TaxService.getTaxParameters(
+    const rawFedParams = TaxService.getTaxParameters(
         input.year,
         input.taxState.filingStatus,
         'federal',
@@ -1515,7 +1515,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         input.assumptions
     );
 
-    if (!fedParams) {
+    if (!rawFedParams) {
         throw new Error(`No federal tax parameters for year ${input.year}`);
     }
 
@@ -1592,6 +1592,29 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
             0, // taxExemptInterest
             input.taxState.filingStatus
         );
+
+    // #191: fold the federal 65+ senior deductions (permanent additional standard
+    // deduction + OBBBA senior bonus) into the standard deduction for this year, so
+    // every downstream tax / bracket-headroom / conversion-cap computation matches
+    // the year-0 Taxes-tab orchestrator instead of taxing seniors on the raw
+    // standard deduction. The engine only ever takes the standard path, so both
+    // add-ons collapse into `standardDeduction`. `baseOrdinaryIncome` (non-SS
+    // ordinary + taxable SS, pre-withdrawal) is the MAGI proxy for the bonus
+    // phaseout — it excludes not-yet-known withdrawals/conversions/gains, matching
+    // the situation the retiree enters the year in; the phaseout-free regular add-on
+    // (the dominant dollar effect) is unaffected by the proxy's approximation.
+    // Non-senior years (age < seniorAge) resolve to the raw standard deduction, so
+    // working-age projections are byte-for-byte unchanged.
+    const fedParams = {
+        ...rawFedParams,
+        standardDeduction: TaxService.getEffectiveStandardDeduction(
+            rawFedParams,
+            input.taxState.filingStatus,
+            input.currentAge,
+            input.year,
+            baseOrdinaryIncome,
+        ),
+    };
 
     // Initial surplus estimate (for determining if conversion tax can be paid from surplus).
     // Note: classifyIncome adds rmdAmount to spendable, so we don't add it again here.
@@ -2338,7 +2361,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
     const decisions: DecisionLogEntry[] = [];
 
     // Get tax parameters
-    const fedParams = TaxService.getTaxParameters(
+    const rawFedParams = TaxService.getTaxParameters(
         input.year,
         input.taxState.filingStatus,
         'federal',
@@ -2353,7 +2376,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         input.assumptions
     );
 
-    if (!fedParams) {
+    if (!rawFedParams) {
         throw new Error(`No federal tax parameters for year ${input.year}`);
     }
 
@@ -2372,6 +2395,28 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
 
     // Include reinvested income in tax base - it's taxable even though it's not spendable
     const taxableOrdinaryBase = incomeClassification.classified.spendable + incomeClassification.classified.reinvested;
+
+    // #191: fold the federal 65+ senior deductions into the standard deduction (see
+    // the matching note in solveRetirementYear). Working years are usually pre-65, so
+    // this is a no-op for most scenarios; a 65+ still-working filer now gets parity
+    // with the year-0 orchestrator. MAGI proxy for the OBBBA bonus phaseout = non-SS
+    // ordinary (net of pre-tax deferrals) + taxable SS.
+    const fedParams = {
+        ...rawFedParams,
+        standardDeduction: TaxService.getEffectiveStandardDeduction(
+            rawFedParams,
+            input.taxState.filingStatus,
+            input.currentAge,
+            input.year,
+            Math.max(0, taxableOrdinaryBase - socialSecurityBenefits - preTaxDeductions) +
+                TaxService.getTaxableSocialSecurityBenefits(
+                    socialSecurityBenefits,
+                    taxableOrdinaryBase - socialSecurityBenefits,
+                    0,
+                    input.taxState.filingStatus,
+                ),
+        ),
+    };
 
     // -------------------------------------------------------------------------
     // #159: DP-planned Roth conversion in a WORKING year.
