@@ -136,11 +136,18 @@ export function projectIncomes(
 
                     // Auto-compute the FERS MRA-to-62 supplement on activation. Auto
                     // pensions leave `fersSupplement` at its default 0, so deriving it
-                    // here mirrors the model's getSupplement(): estimatedSSAt62 is stored
-                    // as an ANNUAL figure and divided by 12 to feed the monthly-input
-                    // calculateFERSSupplement. The model's increment() COLA-grows this
-                    // value and zeroes it at 62, so it only needs to be correct now.
-                    const supplement = inc.retirementAge < 62
+                    // here mirrors the model's calculateSupplement(): estimatedSSAt62 is
+                    // stored as an ANNUAL figure and divided by 12 to feed the
+                    // monthly-input calculateFERSSupplement. The model's increment()
+                    // COLA-grows this value and zeroes it at 62.
+                    //
+                    // Gate exactly as calculateSupplement() does, plus a currentAge < 62
+                    // guard this activation path needs that increment() would otherwise
+                    // enforce: (1) retirementAge < 62 (bridge to 62 only), (2)
+                    // reductionPercent === 0 — MRA+10 (reduced-annuity) retirees do NOT get
+                    // the supplement, and (3) currentAge < 62 — a late-activation year past
+                    // 62 (plan starting at/after 62) is already past the bridge, so pay $0.
+                    const supplement = (inc.retirementAge < 62 && eligibility.reductionPercent === 0 && currentAge < 62)
                         ? calculateFERSSupplement(inc.yearsOfService, inc.estimatedSSAt62 / 12)
                         : 0;
 
@@ -223,11 +230,29 @@ export function projectIncomes(
         }
 
         if (inc instanceof FutureSocialSecurityIncome) {
-            // Recalculate PIA every year until claiming age so it reflects growing earnings history.
-            // After claiming age (or if already activated), fall through to inc.increment() for COLA.
-            // Only enter this block if: (before claiming) OR (at claiming and not yet activated)
-            const shouldRecalculate = currentAge < inc.claimingAge ||
-                (currentAge === inc.claimingAge && inc.calculatedPIA === 0);
+            // Recalculate PIA before claiming (reflect growing earnings history) and
+            // activate it once at/after claiming age. After activation, fall through to
+            // inc.increment() for COLA.
+            //
+            // Enter this block to ACTIVATE when calculatedPIA is still 0 AND either:
+            //   • currentAge === claimingAge — the normal first-reach activation year, OR
+            //   • currentAge  >  claimingAge AND projectedPIA === 0 — a claimant already
+            //     PAST their claiming age when the plan starts (e.g. a 64-year-old who
+            //     claimed at 63). The projection loop runs currentAge = startAge+1,
+            //     startAge+2, … so the exact `=== claimingAge` year is never hit and the
+            //     benefit would otherwise pay $0 forever. projectedPIA === 0 means it was
+            //     never projected/activated (mirrors the FERS/CSRS late-start fix above).
+            //
+            // Deliberately EXCLUDED: an already-activated benefit that the earnings test
+            // fully withheld this-or-a-prior year (calculatedPIA === 0 but projectedPIA > 0
+            // and currentAge > claimingAge). Re-running AIME every withheld year would drop
+            // COLA continuity; instead it falls through to increment() (which COLA-grows
+            // projectedPIA) and the earnings-test pass below rebuilds the payable from
+            // projectedPIA — restoring the benefit once earnings fall.
+            const activatingNow = inc.calculatedPIA === 0 &&
+                (currentAge === inc.claimingAge ||
+                    (currentAge > inc.claimingAge && inc.projectedPIA === 0));
+            const shouldRecalculate = currentAge < inc.claimingAge || activatingNow;
 
             if (shouldRecalculate) {
                 try {
@@ -253,8 +278,10 @@ export function projectIncomes(
                     logs.push(`Social Security PIA calculated: $${adjustedMonthlyBenefit.toFixed(2)}/month (claiming at age ${inc.claimingAge})`);
                     logs.push(`  AIME: $${aimeCalc.aime.toFixed(2)}, PIA: $${aimeCalc.pia.toFixed(2)}${fundingPercent < 1 ? `, Funding: ${fundingPercent * 100}%` : ''}`);
 
-                    if (currentAge === inc.claimingAge) {
-                        // At claiming age - activate the income
+                    if (currentAge >= inc.claimingAge) {
+                        // At/after claiming age - activate the income (fires once via the
+                        // calculatedPIA === 0 guard above; a late plan start activates in
+                        // its first simulated year).
                         // Set both calculatedPIA (feeds amount) and projectedPIA
                         const endDate = new Date(
                             birthYear + getLifeExpectancy(assumptions.milestones),
@@ -309,27 +336,33 @@ export function projectIncomes(
 
     // Apply earnings test to FutureSocialSecurityIncome if claiming before FRA
     const incomesWithEarningsTest = nextIncomes.map(inc => {
-        if (inc instanceof FutureSocialSecurityIncome && inc.calculatedPIA > 0) {
+        // Apply the earnings test to an ACTIVATED FutureSocialSecurityIncome only
+        // (currentAge >= claimingAge — a pre-claiming income has calculatedPIA=0 and must
+        // stay inactive). Gate on projectedPIA too, not just calculatedPIA: a year fully
+        // withheld by the earnings test stores calculatedPIA=0, and the old
+        // `calculatedPIA > 0` gate then locked the benefit at $0 for LIFE (nothing ever
+        // re-entered this block to restore it). projectedPIA is the full, COLA-grown PIA
+        // and survives a full withholding, so it's the reliable "this SS benefit is
+        // active" signal.
+        if (
+            inc instanceof FutureSocialSecurityIncome &&
+            currentAge >= inc.claimingAge &&
+            (inc.calculatedPIA > 0 || inc.projectedPIA > 0)
+        ) {
             const birthYear = getBirthYear(assumptions.milestones);
             const fra = getFRA(birthYear);
 
-            if (currentAge < fra) {
+            // Full, un-reduced monthly PIA. The earnings-test withholding is based on the
+            // FULL benefit, NOT the running `inc.amount` (= calculatedPIA × 12): the rebuild
+            // below stores the reduced monthly benefit back into calculatedPIA, so computing
+            // off inc.amount would re-apply withholding to an already-reduced base and ratchet
+            // the payable DOWN every year. projectedPIA is set equal to calculatedPIA at
+            // activation and COLA-grown in lockstep, so it stays the full benefit. Fall back
+            // to inc.amount/12 only when projectedPIA is unset (0).
+            const fullMonthlyPIA = inc.projectedPIA > 0 ? inc.projectedPIA : inc.amount / 12;
+
+            if (currentAge < fra && fullMonthlyPIA > 0) {
                 const earnedIncome = TaxService.getEarnedIncome(nextIncomes, year);
-                // Base the earnings-test withholding on the FULL benefit, NOT the running
-                // `inc.amount`. inc.amount = calculatedPIA × 12, and the earnings-test
-                // rebuild below stores the reduced monthly benefit back into calculatedPIA;
-                // next year's increment() carries that reduced value forward. If we
-                // recomputed off inc.amount each year, the withholding would re-apply to an
-                // already-reduced base and the payable would ratchet DOWN every year.
-                //
-                // projectedPIA is the full, un-reduced monthly PIA — set equal to
-                // calculatedPIA at activation (see the activation branch above) and
-                // COLA-grown in lockstep by increment() — so it stays the full benefit
-                // across years and yields a STABLE reduction (full − withheld). It is
-                // monthly, so ×12 to match inc.amount's annual basis. Fall back to
-                // inc.amount when projectedPIA is unset (0), e.g. an income constructed
-                // without it, so the single-year reduction still applies in that case.
-                const fullMonthlyPIA = inc.projectedPIA > 0 ? inc.projectedPIA : inc.amount / 12;
                 const annualSSBenefit = inc.getProratedAnnual(fullMonthlyPIA * 12, year);
                 const wageGrowthRate = assumptions.macro.inflationRate / 100;
                 const inflationAdjusted = assumptions.macro.inflationAdjusted;
@@ -345,6 +378,9 @@ export function projectIncomes(
                 );
 
                 if (earningsTest.appliesTest && earningsTest.amountWithheld > 0) {
+                    // This year's benefit is (fully or partly) withheld. Payable is always
+                    // rebuilt off the FULL benefit (via fullMonthlyPIA above), so the
+                    // withholding never compounds year-over-year.
                     const monthlyReduced = earningsTest.reducedBenefit / 12;
 
                     logs.push(`[WARN] Earnings test applied: SS benefit reduced from $${(annualSSBenefit/12).toFixed(2)}/month to $${monthlyReduced.toFixed(2)}/month`);
@@ -365,6 +401,27 @@ export function projectIncomes(
                         inc.projectedPIA
                     );
                 }
+            }
+
+            // No withholding this year (earnings fell, or currentAge is now >= FRA where
+            // the earnings test no longer applies). SSA resumes the full unreduced payment,
+            // so restore calculatedPIA to the full monthly PIA. This is what recovers a
+            // benefit that a PRIOR year's earnings test reduced or zeroed — including past
+            // FRA. A never-reduced benefit already has calculatedPIA === fullMonthlyPIA
+            // (projectedPIA is grown in lockstep), so this is a no-op / byte-identical for it.
+            if (inc.projectedPIA > 0 && inc.calculatedPIA !== fullMonthlyPIA) {
+                return new FutureSocialSecurityIncome(
+                    inc.id,
+                    inc.name,
+                    inc.claimingAge,
+                    fullMonthlyPIA,
+                    inc.calculationYear,
+                    inc.startDate,
+                    inc.end_date,
+                    inc.startMilestoneId,
+                    inc.endMilestoneId,
+                    inc.projectedPIA
+                );
             }
         }
         return inc;

@@ -1134,5 +1134,225 @@ describe('IncomeProjection', () => {
                 expect(result.interestIncomes).toHaveLength(0);
             });
         });
+
+        // -----------------------------------------------------------------
+        // #172: SS activation, earnings-test perma-zero, FERS supplement gate
+        // -----------------------------------------------------------------
+        describe('#172 Social Security late activation', () => {
+            it('activates when already PAST claiming age at plan start (=== year never hit)', () => {
+                // A claimant already past their claiming age when the plan starts: the
+                // projection loop runs currentAge = startAge+1, startAge+2, … so it never
+                // sees currentAge === claimingAge and the benefit would pay $0 forever.
+                // calculatedPIA=0 AND projectedPIA=0 marks a never-activated benefit.
+                const ssIncome = new FutureSocialSecurityIncome(
+                    'ss1', 'Social Security', 63, 0, 0 // claim at 63, not yet calculated, projectedPIA=0
+                );
+
+                const previousSimulation: SimulationYear[] = [];
+                for (let year = 2010; year <= 2024; year++) {
+                    previousSimulation.push(createSimulationYear(year, [
+                        createWorkIncome('work1', 'Job', 80000)
+                    ]));
+                }
+
+                const assumptions = createTestAssumptions({ birthYear: 1961, retirementAge: 63 });
+                const logs: string[] = [];
+
+                const result = projectIncomes(
+                    2025,
+                    [ssIncome],
+                    [],
+                    assumptions,
+                    previousSimulation,
+                    64, // currentAge > claimingAge (63) — the === year was skipped
+                    true,
+                    logs
+                );
+
+                const updated = result.nextIncomes.find(i => i.id === 'ss1') as FutureSocialSecurityIncome;
+                // Before the fix this stayed 0 (increment only COLA-grows a 0).
+                expect(updated.calculatedPIA).toBeGreaterThan(0);
+                expect(logs.some(l => l.includes('Social Security PIA calculated'))).toBe(true);
+            });
+        });
+
+        describe('#172 Earnings test does not zero the benefit for life', () => {
+            it('restores the full benefit once earnings fall (activated year previously fully withheld)', () => {
+                // Real engine shape: a year the earnings test FULLY withholds stores
+                // calculatedPIA=0 but preserves projectedPIA (the full monthly PIA). The old
+                // gate required calculatedPIA > 0, so nothing ever restored the benefit — it
+                // stayed $0 for life. With earnings gone this year, it must be restored.
+                const withheldSS = new FutureSocialSecurityIncome(
+                    'ss1', 'Social Security',
+                    62,      // claimingAge
+                    0,       // calculatedPIA = 0 (fully withheld last year)
+                    2027,    // calculationYear
+                    new Date(2027, 0, 1),
+                    new Date(2050, 11, 31),
+                    undefined, undefined,
+                    2000     // projectedPIA = full monthly benefit (survives withholding)
+                );
+
+                const assumptions = createTestAssumptions({ birthYear: 1965, retirementAge: 62 }); // FRA 67, no inflation
+                const logs: string[] = [];
+
+                const result = projectIncomes(
+                    2029,
+                    [withheldSS], // NO work income this year → no withholding
+                    [],
+                    assumptions,
+                    [],
+                    64, // still before FRA (67), past claiming age
+                    false,
+                    logs
+                );
+
+                const updated = result.nextIncomes.find(i => i.id === 'ss1') as FutureSocialSecurityIncome;
+                // Restored to the full monthly PIA (COLA=0 with inflationAdjusted=false → exactly 2000).
+                expect(updated.calculatedPIA).toBeCloseTo(2000, 2);
+                expect(updated.projectedPIA).toBeCloseTo(2000, 2);
+            });
+
+            it('a fully-withheld year zeroes payable but preserves projectedPIA (full benefit)', () => {
+                // Documents the withheld shape the restore above recovers from: high earnings
+                // fully withhold the benefit (calculatedPIA→0) but projectedPIA stays the full PIA.
+                const activatedSS = new FutureSocialSecurityIncome(
+                    'ss1', 'Social Security',
+                    62, 2000, 2027,
+                    new Date(2027, 0, 1),
+                    new Date(2050, 11, 31),
+                    undefined, undefined,
+                    2000 // projectedPIA
+                );
+                const bigJob = createWorkIncome('work1', 'High-paying Job', 300000);
+
+                const assumptions = createTestAssumptions({ birthYear: 1965, retirementAge: 62 });
+                const logs: string[] = [];
+
+                const result = projectIncomes(
+                    2029,
+                    [activatedSS, bigJob],
+                    [],
+                    assumptions,
+                    [],
+                    64, // before FRA
+                    false,
+                    logs
+                );
+
+                const updated = result.nextIncomes.find(i => i.id === 'ss1') as FutureSocialSecurityIncome;
+                expect(updated.calculatedPIA).toBe(0);       // fully withheld this year
+                expect(updated.projectedPIA).toBeGreaterThan(0); // full benefit preserved for restore
+                expect(logs.some(l => l.includes('Earnings test'))).toBe(true);
+            });
+        });
+
+        describe('#172 FERS supplement gate', () => {
+            it('does NOT pay the supplement to an MRA+10 (reduced-annuity) retiree', () => {
+                // MRA+10: birthYear 1970 → MRA 57; retire at 57 with 20 years → 25% reduction.
+                // calculateSupplement() gates on reductionPercent===0; this activation path
+                // must too. Before the fix it paid a supplement to reduced-annuity retirees.
+                const fersPension = new FERSPensionIncome(
+                    'fers1', 'FERS Pension',
+                    20,     // yearsOfService (10-29 → MRA+10 reduced)
+                    0,      // high3 (auto)
+                    57,     // retirementAge = MRA
+                    1970,   // birthYear → MRA 57
+                    0,      // calculatedBenefit
+                    0,      // fersSupplement
+                    24000,  // estimatedSSAt62 (annual) — makes the pre-fix supplement > 0
+                    undefined, undefined,
+                    true, 'work1'
+                );
+                const previousSimulation: SimulationYear[] = [
+                    createSimulationYear(2024, [createWorkIncome('work1', 'Fed Job', 100000)]),
+                    createSimulationYear(2025, [createWorkIncome('work1', 'Fed Job', 100000)]),
+                    createSimulationYear(2026, [createWorkIncome('work1', 'Fed Job', 100000)]),
+                ];
+                const assumptions = createTestAssumptions({ birthYear: 1970, retirementAge: 57 });
+                const logs: string[] = [];
+
+                const result = projectIncomes(
+                    2027,
+                    [fersPension],
+                    [],
+                    assumptions,
+                    previousSimulation,
+                    57, // activate at MRA
+                    true,
+                    logs
+                );
+
+                const updated = result.nextIncomes.find(i => i.id === 'fers1') as FERSPensionIncome;
+                expect(updated.calculatedBenefit).toBeGreaterThan(0); // pension activated (reduced)
+                expect(updated.fersSupplement).toBe(0);               // but NO supplement
+            });
+
+            it('does NOT pay the supplement when activation happens past age 62 (bridge already over)', () => {
+                // Full retiree (MRA 57 with 30 years → reductionPercent 0) whose plan doesn't
+                // start until age 63. The MRA-to-62 supplement is a bridge that ends at 62, so
+                // a late activation past 62 must pay $0 (increment() would zero it too).
+                const fersPension = new FERSPensionIncome(
+                    'fers1', 'FERS Pension',
+                    30, 0, 57, 1970, 0, 0, 24000,
+                    undefined, undefined,
+                    true, 'work1'
+                );
+                const previousSimulation: SimulationYear[] = [
+                    createSimulationYear(2024, [createWorkIncome('work1', 'Fed Job', 100000)]),
+                    createSimulationYear(2025, [createWorkIncome('work1', 'Fed Job', 100000)]),
+                    createSimulationYear(2026, [createWorkIncome('work1', 'Fed Job', 100000)]),
+                ];
+                const assumptions = createTestAssumptions({ birthYear: 1970, retirementAge: 57 });
+                const logs: string[] = [];
+
+                const result = projectIncomes(
+                    2033,
+                    [fersPension],
+                    [],
+                    assumptions,
+                    previousSimulation,
+                    63, // activation year is past 62
+                    true,
+                    logs
+                );
+
+                const updated = result.nextIncomes.find(i => i.id === 'fers1') as FERSPensionIncome;
+                expect(updated.calculatedBenefit).toBeGreaterThan(0);
+                expect(updated.fersSupplement).toBe(0);
+            });
+
+            it('DOES pay the supplement to a full retiree who retires before 62 (regression guard)', () => {
+                // MRA 57 with 30 years (reductionPercent 0), activating at 57 (< 62): the
+                // supplement SHOULD be paid. Guards against over-tightening the gate.
+                const fersPension = new FERSPensionIncome(
+                    'fers1', 'FERS Pension',
+                    30, 0, 57, 1970, 0, 0, 24000,
+                    undefined, undefined,
+                    true, 'work1'
+                );
+                const previousSimulation: SimulationYear[] = [
+                    createSimulationYear(2024, [createWorkIncome('work1', 'Fed Job', 100000)]),
+                    createSimulationYear(2025, [createWorkIncome('work1', 'Fed Job', 100000)]),
+                    createSimulationYear(2026, [createWorkIncome('work1', 'Fed Job', 100000)]),
+                ];
+                const assumptions = createTestAssumptions({ birthYear: 1970, retirementAge: 57 });
+                const logs: string[] = [];
+
+                const result = projectIncomes(
+                    2027,
+                    [fersPension],
+                    [],
+                    assumptions,
+                    previousSimulation,
+                    57,
+                    true,
+                    logs
+                );
+
+                const updated = result.nextIncomes.find(i => i.id === 'fers1') as FERSPensionIncome;
+                expect(updated.fersSupplement).toBeGreaterThan(0);
+            });
+        });
     });
 });
