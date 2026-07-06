@@ -418,6 +418,42 @@ describe('DataTab Total Taxes sums all components (#189)', () => {
 });
 
 /**
+ * #189 regression: broadening the "Total Taxes" NUMERATOR to include
+ * withdrawal/cap-gains/NIIT/IRMAA/ACA taxes left the "Eff. Tax %" DENOMINATOR at
+ * cashflow.totalIncome, which EXCLUDES the gross withdrawals those taxes are
+ * levied on — so a retiree drawing a Traditional IRA showed an impossible >100%
+ * effective rate. The denominator must be the year's AGI-equivalent tax base
+ * (magi), the same income that generated the taxes.
+ */
+describe('DataTab Eff. Tax % denominator includes withdrawal gross (#189)', () => {
+    function makeRetireeWithdrawalSimYear(): SimulationYear {
+        return {
+            ...makeSimYear(),
+            expenses: [],
+            // $20k Social Security is the only cashflow "income"; the bulk of
+            // spendable cash is a $100k gross Traditional-IRA withdrawal, whose
+            // tax lands in withdrawalOrdinaryTax + capitalGains.
+            cashflow: { ...makeSimYear().cashflow, totalIncome: 20000, withdrawals: 100000 },
+            taxDetails: {
+                fed: 5000, state: 0, fica: 0,
+                preTax: 0, insurance: 0, postTax: 0,
+                capitalGains: 3000, withdrawalOrdinaryTax: 22000, niit: 0,
+            },
+            // AGI-equivalent tax base: $20k SS (taxable) + $100k gross Trad draw.
+            magi: 120000,
+        };
+    }
+
+    it('rates the full tax bill against magi, not against SS-only income (no >100%)', () => {
+        render(<DataTab simulationData={[makeRetireeWithdrawalSimYear()]} birthYear={1990} />);
+        // totalTaxes = 5000 + 3000 + 22000 = 30,000. Against magi 120,000 => 25.0%.
+        // The pre-fix code divided by totalIncome 20,000 => an impossible 150.0%.
+        expect(screen.getByText('25.0%')).toBeInTheDocument();
+        expect(screen.queryByText('150.0%')).toBeNull();
+    });
+});
+
+/**
  * #189: CSV income columns must export ANNUAL amounts (getAnnualAmount), not the
  * raw per-period figure — a $3,000 bi-weekly salary belongs next to the annual
  * Gross Income column as ~$78,000, not 3000.

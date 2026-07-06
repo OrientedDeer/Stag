@@ -126,10 +126,18 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
             // keeps the arithmetic visible against the CSV's gross Total Assets/Total Debt.
             const { unvested, vested } = getNetWorthBreakdown(year.accounts);
 
-            // Include Roth conversion amount in taxable income for effective rate calculation
-            // Conversions are taxed but aren't included in cashflow.totalIncome (they're account transfers)
+            // Eff. Tax % must rate the full tax bill against the income that
+            // GENERATED it. totalTaxes now sums the withdrawal/cap-gains/NIIT/
+            // IRMAA/ACA components (#189), but cashflow.totalIncome excludes the
+            // gross account withdrawals those taxes are levied on — so a retiree
+            // drawing a Traditional IRA showed an impossible >100% rate. Use the
+            // year's AGI-equivalent tax base (magi: ordinary income + taxable SS
+            // + Roth conversions + Traditional/RMD withdrawals + realized gains).
+            // Fall back to income + conversions + gross withdrawals for older
+            // simulation snapshots that predate the magi field.
             const conversionAmount = year.rothConversion?.amount || 0;
-            const taxableIncomeBase = year.cashflow.totalIncome + conversionAmount;
+            const taxableIncomeBase = year.magi
+                ?? (year.cashflow.totalIncome + conversionAmount + year.cashflow.withdrawals);
             const effectiveTaxRate = taxableIncomeBase > 0
                 ? (totalTaxes / taxableIncomeBase) * 100
                 : 0;
