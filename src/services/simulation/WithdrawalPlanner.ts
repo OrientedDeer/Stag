@@ -1101,7 +1101,20 @@ export function planWithdrawals(
     currentOrdinaryIncome: number,
     assumptions: AssumptionsState | undefined,
     reason: PlannedWithdrawal['reason'] = 'Spending deficit',
-    acaWithdrawalOptions?: { acaCliffThreshold: number; currentMAGI: number },
+    acaWithdrawalOptions?: {
+        acaCliffThreshold: number;
+        currentMAGI: number;
+        /** #175/#176: how much ESPP bargain-element ordinary income the CALLER has
+         *  already baked into `currentMAGI` (the solver's prior-iteration realized
+         *  ESPP total). The planner ALSO accretes ESPP ordinary into
+         *  `cumulativeOrdinaryFromSales` as it sells ESPP lots, so for an
+         *  ESPP-before-brokerage order the cliff projection would count the bargain
+         *  element twice. The guard subtracts the overlap
+         *  (`min(cumulativeESPPOrdinary, esppOrdinaryInMAGI)`) to count it exactly once,
+         *  while still seeing the full year's ESPP via `currentMAGI` for the
+         *  ESPP-after-brokerage order (where the planner hasn't sold ESPP yet). */
+        esppOrdinaryInMAGI?: number;
+    },
     /** Income included in currentOrdinaryIncome for federal brackets but exempt from state tax
      *  (e.g., taxable Social Security for DC and most states that exempt SS). */
     stateExemptIncome: number = 0
@@ -1131,6 +1144,12 @@ export function planWithdrawals(
     // un-steered. (The YearSolver-side estimate that should be folded into
     // acaWithdrawalOptions.currentMAGI is tracked separately in #175.)
     let cumulativeOrdinaryFromSales = 0;
+    // #175/#176: the ESPP-bargain-element SUBSET of cumulativeOrdinaryFromSales,
+    // tracked separately so the cliff guard can back out the overlap with the ESPP
+    // ordinary the caller already folded into acaWithdrawalOptions.currentMAGI (see
+    // the esppOrdinaryInMAGI doc). Roth-substitution earnings are NOT in currentMAGI,
+    // so they stay only in cumulativeOrdinaryFromSales and are excluded from this.
+    let cumulativeESPPOrdinary = 0;
     let runningOrdinaryIncome = currentOrdinaryIncome;
 
     // ACA cliff: track Roth amounts pre-consumed by look-ahead substitution.
@@ -1311,15 +1330,30 @@ export function planWithdrawals(
                 // Substitute tax-free Roth withdrawals for the remainder
                 // =================================================================
                 if (acaWithdrawalOptions && grossToWithdraw > 0) {
+                    // #175/#176: the ESPP bargain element can be double-counted here —
+                    // once via currentMAGI (the solver pre-seeds the year's full realized
+                    // ESPP ordinary) and again via cumulativeOrdinaryFromSales as this
+                    // planner sells ESPP lots. Back out the overlap so it counts ONCE.
+                    // For an ESPP-BEFORE-brokerage order cumulativeESPPOrdinary already
+                    // holds the bargain element (overlap > 0, de-dupe fires); for an
+                    // ESPP-AFTER-brokerage order it's still 0 here (overlap 0), so the
+                    // full year's ESPP is retained via currentMAGI — no undercount.
+                    const esppMagiOverlap = Math.min(
+                        cumulativeESPPOrdinary,
+                        acaWithdrawalOptions.esppOrdinaryInMAGI ?? 0,
+                    );
                     // STCG, LTCG, and ordinary income realized from sales earlier this
                     // pass all land in MAGI, so the cliff check counts all three (#75, #176).
-                    const projectedMAGI = acaWithdrawalOptions.currentMAGI + cumulativeLTCG + cumulativeSTCG + cumulativeOrdinaryFromSales + actualLTCG + actualSTCG;
+                    const projectedMAGI = acaWithdrawalOptions.currentMAGI + cumulativeLTCG + cumulativeSTCG + cumulativeOrdinaryFromSales + actualLTCG + actualSTCG - esppMagiOverlap;
 
                     if (projectedMAGI > acaWithdrawalOptions.acaCliffThreshold) {
-                        // Calculate how much realized-gains headroom we have
+                        // Calculate how much realized-gains headroom we have (add the
+                        // overlap back: currentMAGI and cumulativeOrdinaryFromSales both
+                        // subtract the same ESPP dollars, which would understate headroom).
                         const magiHeadroom = Math.max(0,
                             acaWithdrawalOptions.acaCliffThreshold - ACA_WITHDRAWAL_BUFFER
                             - acaWithdrawalOptions.currentMAGI - cumulativeLTCG - cumulativeSTCG - cumulativeOrdinaryFromSales
+                            + esppMagiOverlap
                         );
 
                         // Convert realized-gains headroom to max safe gross withdrawal.
@@ -1364,6 +1398,7 @@ export function planWithdrawals(
                                 acaWithdrawalOptions.acaCliffThreshold - ACA_WITHDRAWAL_BUFFER
                                 - acaWithdrawalOptions.currentMAGI
                                 - cumulativeLTCG - cumulativeSTCG - cumulativeOrdinaryFromSales - actualLTCG - actualSTCG
+                                + esppMagiOverlap // #175/#176: same ESPP de-dupe as magiHeadroom
                             );
 
                             for (const rothSnapshot of accountOrder) {
@@ -1804,6 +1839,9 @@ export function planWithdrawals(
                     // so a later brokerage ACA-cliff check counts it (parallel to how
                     // cumulativeSTCG/LTCG track realized gains).
                     cumulativeOrdinaryFromSales += esppOrdinaryIncome;
+                    // #175/#176: mirror into the ESPP-only subtotal used to de-dupe
+                    // against acaWithdrawalOptions.currentMAGI's pre-seeded ESPP.
+                    cumulativeESPPOrdinary += esppOrdinaryIncome;
 
                     cumulativeLTCG += esppLTCG;
                     remainingNetNeeded -= netReceived;

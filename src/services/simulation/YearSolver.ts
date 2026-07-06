@@ -2053,13 +2053,22 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         //
         // Also roll in estimatedESPPOrdinaryIncome: the ESPP bargain element is
         // ordinary income the subsidy-repayment check below (acaMagiEstimate) counts,
-        // but the planner does NOT layer it into its internal cliff projection (unlike
-        // brokerage LTCG, which it tracks via cumulativeLTCG). Without it the planner
-        // steered on a MAGI that undercounted by the ESPP bargain element, so the
-        // solver billed the full subsidy loss for a breach its own steering couldn't
-        // see. (A planner-side ESPP cliff guard is tracked separately.)
+        // and the planner needs it in currentMAGI so an ESPP sale that comes AFTER the
+        // brokerage in the withdrawal order (not yet reflected in the planner's own
+        // cumulativeOrdinaryFromSales when the brokerage cliff guard runs) still steers
+        // the brokerage cap. For an ESPP-BEFORE-brokerage order the planner DOES layer
+        // the same bargain element into cumulativeOrdinaryFromSales (#176), which would
+        // double-count it against this currentMAGI seed — so we hand the planner
+        // esppOrdinaryInMAGI and it backs out the overlap (min of the two), counting the
+        // bargain element exactly once for BOTH orders. NOTE: the subsidy BILLING
+        // (acaMagiEstimate, above) is computed independently and single-counts correctly
+        // — do not fold this de-dupe into it.
         const acaWithdrawalOpts = acaCliffActive
-            ? { acaCliffThreshold, currentMAGI: acaBaseMAGI + estimatedTradWithdrawal + estimatedESPPOrdinaryIncome }
+            ? {
+                acaCliffThreshold,
+                currentMAGI: acaBaseMAGI + estimatedTradWithdrawal + estimatedESPPOrdinaryIncome,
+                esppOrdinaryInMAGI: estimatedESPPOrdinaryIncome,
+            }
             : undefined;
 
         // Plan withdrawals - planner uses allOrdinaryIncome as starting income position

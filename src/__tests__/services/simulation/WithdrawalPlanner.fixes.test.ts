@@ -327,3 +327,114 @@ describe('#176 finding 3: ACA cliff guard counts ESPP bargain-element ordinary i
         expect(realizedMAGI).toBeLessThanOrEqual(CLIFF);
     });
 });
+
+// A disqualifying ESPP lot: bargain element (fmvAtPurchase − purchasePrice) × shares
+// is ORDINARY income on sale; the small ($1/sh) post-purchase appreciation is LTCG.
+function disqualifyingEsppLot(): ESPPLot {
+    return {
+        id: 'lot-dq',
+        shares: 1000,
+        purchasePrice: 10,
+        purchaseDate: new Date(YEAR - 1, 5, 30),
+        grantDate: new Date(YEAR - 1, 0, 1),
+        fmvAtPurchase: 40,   // bargain element $30/sh × 1000 = $30k ordinary
+        fmvAtGrant: 40,
+        totalCost: 10 * 1000,
+        discountAmount: 30,
+    };
+}
+
+describe('#175/#176: ESPP bargain element is counted ONCE in the ACA cliff projection, order-aware', () => {
+    // The solver pre-seeds the year's full realized ESPP ordinary income into
+    // acaWithdrawalOptions.currentMAGI (so an ESPP sale AFTER the brokerage still
+    // steers the brokerage cap) AND passes esppOrdinaryInMAGI so the planner can back
+    // out the overlap with its own cumulativeOrdinaryFromSales (which accretes the SAME
+    // bargain element when ESPP sells BEFORE the brokerage). Net: the bargain element
+    // counts exactly once for BOTH withdrawal orders.
+    const ESPP_ORDINARY = 30_000;  // (40 − 10) × 1000
+    const TRUE_BASE = 10_000;      // the non-ESPP part of MAGI the solver knows
+    const CLIFF = 80_000;
+    const saleDate = new Date(YEAR, 5, 15);
+
+    it('ESPP-before-brokerage: de-dupes the seed so the brokerage is NOT over-capped (double-count regression)', () => {
+        // ESPP FIRST, brokerage SECOND. currentMAGI carries the seeded ESPP ordinary
+        // (TRUE_BASE + ESPP_ORDINARY) and esppOrdinaryInMAGI reports it. When the
+        // brokerage guard runs, the planner has ALSO added the same $30k to
+        // cumulativeOrdinaryFromSales. Pre-fix (no de-dupe) the guard saw the bargain
+        // element TWICE, halving the LTCG headroom and slashing the brokerage sale, so
+        // realized MAGI landed far UNDER the cliff (~$41k) — an over-conservative steer
+        // that can fabricate an unfunded deficit. With the de-dupe the brokerage may
+        // realize LTCG up to the true single-counted headroom, pushing realized MAGI
+        // right up against (but not over) the cliff.
+        const espp = new ESPPAccount('espp-1', 'Company ESPP', 41000, [disqualifyingEsppLot()], null, undefined, 'ACME', 41);
+        const brok = allGainsBrokerage('brok-1', 200000);
+
+        const result = planWithdrawals(
+            150000,
+            [createAccountSnapshot(espp, saleDate), createAccountSnapshot(brok, saleDate)],
+            57,
+            YEAR,
+            taxStateFor('Texas'),
+            0,
+            undefined,
+            'Spending deficit',
+            {
+                acaCliffThreshold: CLIFF,
+                currentMAGI: TRUE_BASE + ESPP_ORDINARY, // solver seeds ESPP into currentMAGI
+                esppOrdinaryInMAGI: ESPP_ORDINARY,       // ...and reports how much, for de-dupe
+            },
+        );
+
+        const esppOrdinary = result.withdrawals
+            .filter(w => w.source === 'espp')
+            .reduce((sum, w) => sum + (w.ordinaryIncome ?? 0), 0);
+        expect(esppOrdinary).toBeCloseTo(ESPP_ORDINARY, -2);
+
+        // Realized MAGI counts the ESPP bargain element ONCE (via the true base + ESPP)
+        // plus all realized gains.
+        const realizedMAGI = TRUE_BASE + esppOrdinary + result.totalLTCG + result.totalSTCG;
+
+        // Never breaches the cliff...
+        expect(realizedMAGI).toBeLessThanOrEqual(CLIFF);
+        // ...but the brokerage was allowed enough LTCG that MAGI reaches well past what
+        // the double-counted (halved) headroom would have permitted (~$41k). This is the
+        // assertion that is RED before the de-dupe and GREEN after.
+        expect(realizedMAGI).toBeGreaterThan(60_000);
+    });
+
+    it('ESPP-after-brokerage: the seed still caps the brokerage (must NOT regress to undercount)', () => {
+        // Brokerage FIRST, ESPP SECOND. When the brokerage guard runs the planner has
+        // NOT yet sold ESPP, so cumulativeOrdinaryFromSales is 0 and the overlap is 0 —
+        // the guard must fall back on currentMAGI's seeded ESPP to cap the brokerage for
+        // the ESPP income still to come. If a "fix" dropped the seed entirely, the
+        // brokerage would over-realize and the later ESPP sale would blow past the cliff.
+        const espp = new ESPPAccount('espp-2', 'Company ESPP', 41000, [disqualifyingEsppLot()], null, undefined, 'ACME', 41);
+        const brok = allGainsBrokerage('brok-2', 200000);
+
+        const result = planWithdrawals(
+            150000,
+            [createAccountSnapshot(brok, saleDate), createAccountSnapshot(espp, saleDate)],
+            57,
+            YEAR,
+            taxStateFor('Texas'),
+            0,
+            undefined,
+            'Spending deficit',
+            {
+                acaCliffThreshold: CLIFF,
+                currentMAGI: TRUE_BASE + ESPP_ORDINARY,
+                esppOrdinaryInMAGI: ESPP_ORDINARY,
+            },
+        );
+
+        const esppOrdinary = result.withdrawals
+            .filter(w => w.source === 'espp')
+            .reduce((sum, w) => sum + (w.ordinaryIncome ?? 0), 0);
+        expect(esppOrdinary).toBeCloseTo(ESPP_ORDINARY, -2);
+
+        const realizedMAGI = TRUE_BASE + esppOrdinary + result.totalLTCG + result.totalSTCG;
+        // The brokerage was capped for the ESPP income still to come, so even after the
+        // later ESPP sale realized MAGI respects the cliff (no undercount regression).
+        expect(realizedMAGI).toBeLessThanOrEqual(CLIFF);
+    });
+});
