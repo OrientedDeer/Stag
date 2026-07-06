@@ -1,16 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import { SeededRandom, calculateMean, calculateStdDev } from '../../services/RandomGenerator';
 import {
-    calculateSuccessRate,
     getPercentileValue,
     calculatePercentiles,
     analyzeScenario,
     summarizeScenarios,
-    calculateFinalNetWorthStats,
 } from '../../services/MonteCarloAggregator';
 import {
     validateConfig,
-    estimateRunTime,
     runMonteCarloSimulationSync,
     runMonteCarloSimulation,
 } from '../../services/MonteCarloEngine';
@@ -100,105 +97,18 @@ describe('SeededRandom', () => {
         expect(rng2.next()).toBe(nextValue);
     });
 
-    describe('lognormal distribution', () => {
-        it('should generate positive values only', () => {
-            const rng = new SeededRandom(42);
-
-            for (let i = 0; i < 1000; i++) {
-                const value = rng.lognormal(1.07, 0.15);
-                expect(value).toBeGreaterThan(0);
-            }
-        });
-
-        it('should approximate target mean for lognormal', () => {
-            const rng = new SeededRandom(12345);
-            const samples: number[] = [];
-            const targetMean = 1.07; // 7% growth factor
-
-            for (let i = 0; i < 10000; i++) {
-                samples.push(rng.lognormal(targetMean, 0.15));
-            }
-
-            const actualMean = calculateMean(samples);
-
-            // Lognormal mean should be close to target (within 5%)
-            expect(actualMean).toBeGreaterThan(targetMean * 0.95);
-            expect(actualMean).toBeLessThan(targetMean * 1.05);
-        });
-
-        it('should have right-skewed distribution (mean > median)', () => {
-            const rng = new SeededRandom(42);
-            const samples: number[] = [];
-
-            for (let i = 0; i < 10000; i++) {
-                samples.push(rng.lognormal(1.07, 0.20));
-            }
-
-            const mean = calculateMean(samples);
-            const sorted = [...samples].sort((a, b) => a - b);
-            const median = sorted[Math.floor(sorted.length / 2)];
-
-            // Lognormal is right-skewed: mean > median
-            expect(mean).toBeGreaterThan(median);
-        });
-    });
-
-    describe('generateLognormalReturns', () => {
-        it('should generate array of correct length', () => {
-            const rng = new SeededRandom(42);
-            const returns = rng.generateLognormalReturns(30, 7, 15);
-
-            expect(returns.length).toBe(30);
-        });
-
-        it('should generate returns as percentages', () => {
-            const rng = new SeededRandom(42);
-            const returns = rng.generateLognormalReturns(100, 7, 15);
-
-            // Returns should be reasonable percentages (mostly between -50% and +50%)
-            const reasonable = returns.filter(r => r > -50 && r < 50);
-            expect(reasonable.length).toBeGreaterThan(90); // At least 90% reasonable
-        });
-
-        it('should never produce returns below -100%', () => {
+    describe('generateReturns sub--100% floor', () => {
+        it('should never produce returns below -100% even at extreme volatility', () => {
             const rng = new SeededRandom(12345);
 
-            // Run many scenarios with high volatility
+            // High volatility where an unbounded Normal WOULD draw below -100%.
             for (let i = 0; i < 100; i++) {
-                const returns = rng.generateLognormalReturns(50, 5, 25); // High volatility
+                const returns = rng.generateReturns(50, 5, 50);
 
                 for (const r of returns) {
-                    expect(r).toBeGreaterThan(-100); // Can't lose more than 100%
+                    expect(r).toBeGreaterThanOrEqual(-100); // Can't lose more than 100%
                 }
             }
-        });
-
-        it('should have mean close to target return', () => {
-            const rng = new SeededRandom(12345);
-            const allReturns: number[] = [];
-            const targetReturn = 7;
-
-            // Generate many years to get good statistical sample
-            for (let i = 0; i < 100; i++) {
-                const returns = rng.generateLognormalReturns(30, targetReturn, 15);
-                allReturns.push(...returns);
-            }
-
-            const actualMean = calculateMean(allReturns);
-
-            // Mean should be close to target (within 1 percentage point)
-            expect(actualMean).toBeGreaterThan(targetReturn - 1);
-            expect(actualMean).toBeLessThan(targetReturn + 1);
-        });
-
-        it('should produce deterministic results with same seed', () => {
-            const rng1 = new SeededRandom(42);
-            const rng2 = new SeededRandom(42);
-
-            const returns1 = rng1.generateLognormalReturns(10, 7, 15);
-            const returns2 = rng2.generateLognormalReturns(10, 7, 15);
-
-            expect(returns1).toEqual(returns2);
         });
     });
 });
@@ -253,39 +163,6 @@ describe('MonteCarloAggregator', () => {
         finalNetWorth,
         yearOfDepletion,
         yearlyReturns: [7, 7],
-    });
-
-    describe('calculateSuccessRate', () => {
-        it('should return 100% for all successful scenarios', () => {
-            const scenarios = [
-                createMockScenario(1, 1000000),
-                createMockScenario(2, 2000000),
-                createMockScenario(3, 500000),
-            ];
-            expect(calculateSuccessRate(scenarios)).toBe(100);
-        });
-
-        it('should return 0% for all failed scenarios', () => {
-            const scenarios = [
-                createMockScenario(1, -100, 2025),
-                createMockScenario(2, -200, 2026),
-            ];
-            expect(calculateSuccessRate(scenarios)).toBe(0);
-        });
-
-        it('should calculate correct percentage for mixed scenarios', () => {
-            const scenarios = [
-                createMockScenario(1, 1000000),
-                createMockScenario(2, -100, 2025),
-                createMockScenario(3, 2000000),
-                createMockScenario(4, -200, 2026),
-            ];
-            expect(calculateSuccessRate(scenarios)).toBe(50);
-        });
-
-        it('should return 0 for empty array', () => {
-            expect(calculateSuccessRate([])).toBe(0);
-        });
     });
 
     describe('getPercentileValue', () => {
@@ -443,32 +320,6 @@ describe('MonteCarloAggregator', () => {
         });
     });
 
-    describe('calculateFinalNetWorthStats', () => {
-        it('should return zeros for empty scenarios', () => {
-            const result = calculateFinalNetWorthStats([]);
-            expect(result.min).toBe(0);
-            expect(result.max).toBe(0);
-            expect(result.mean).toBe(0);
-            expect(result.median).toBe(0);
-            expect(result.stdDev).toBe(0);
-        });
-
-        it('should calculate correct statistics', () => {
-            const scenarios = [
-                createMockScenario(1, 100000),
-                createMockScenario(2, 200000),
-                createMockScenario(3, 300000),
-                createMockScenario(4, 400000),
-            ];
-
-            const result = calculateFinalNetWorthStats(scenarios);
-
-            expect(result.min).toBe(100000);
-            expect(result.max).toBe(400000);
-            expect(result.mean).toBe(250000);
-            expect(result.median).toBe(300000);
-        });
-    });
 });
 
 // --- Integration Test for Return Override ---
@@ -687,29 +538,6 @@ describe('validateConfig', () => {
             const result = validateConfig(config);
             expect(result).toBeNull();
         });
-    });
-});
-
-// --- estimateRunTime Tests ---
-describe('estimateRunTime', () => {
-    it('should return 15000ms for numScenarios=100, yearsToRun=30', () => {
-        const result = estimateRunTime(100, 30);
-        expect(result).toBe(100 * 30 * 5); // 15000
-    });
-
-    it('should return 5ms for numScenarios=1, yearsToRun=1', () => {
-        const result = estimateRunTime(1, 1);
-        expect(result).toBe(5);
-    });
-
-    it('should return 0ms for numScenarios=0, yearsToRun=30', () => {
-        const result = estimateRunTime(0, 30);
-        expect(result).toBe(0);
-    });
-
-    it('should return 200000ms for numScenarios=1000, yearsToRun=40', () => {
-        const result = estimateRunTime(1000, 40);
-        expect(result).toBe(1000 * 40 * 5); // 200000
     });
 });
 

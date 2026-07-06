@@ -44,27 +44,6 @@ export class SeededRandom {
     }
 
     /**
-     * Generate random number from lognormal distribution
-     * Useful for modeling investment returns (can't go below -100%)
-     * @param mean - Desired arithmetic mean of the distribution
-     * @param stdDev - Desired standard deviation
-     * @returns Value that's always > 0, with specified mean/stdDev
-     */
-    lognormal(mean: number, stdDev: number): number {
-        // Convert arithmetic mean/stdDev to log-space parameters
-        // For lognormal: E[X] = exp(mu + sigma^2/2)
-        //                Var[X] = (exp(sigma^2) - 1) * exp(2*mu + sigma^2)
-        const variance = stdDev * stdDev;
-        const meanSquared = mean * mean;
-
-        const sigma2 = Math.log(1 + variance / meanSquared);
-        const mu = Math.log(mean) - sigma2 / 2;
-
-        const normalSample = this.normal(mu, Math.sqrt(sigma2));
-        return Math.exp(normalSample);
-    }
-
-    /**
      * Generate array of annual investment returns
      * @param years - Number of years to generate
      * @param meanReturn - Expected annual return (e.g., 7 for 7%)
@@ -79,34 +58,15 @@ export class SeededRandom {
             // In practice, stock returns are approximately lognormal,
             // but for annual returns, normal is a reasonable approximation
             const annualReturn = this.normal(meanReturn, stdDev);
-            returns.push(annualReturn);
-        }
-
-        return returns;
-    }
-
-    /**
-     * Generate array of returns using lognormal distribution
-     * Better for modeling actual market behavior (prevents >-100% returns)
-     * @param years - Number of years to generate
-     * @param meanReturn - Expected annual return percentage (e.g., 7 for 7%)
-     * @param stdDev - Annual volatility percentage (e.g., 15 for 15%)
-     * @returns Array of return percentages
-     */
-    generateLognormalReturns(years: number, meanReturn: number, stdDev: number): number[] {
-        const returns: number[] = [];
-
-        // Convert percentage return to growth factor
-        // E.g., 7% mean return -> 1.07 growth factor
-        const meanFactor = 1 + meanReturn / 100;
-        const stdDevFactor = stdDev / 100;
-
-        for (let i = 0; i < years; i++) {
-            // Generate lognormal growth factor
-            const growthFactor = this.lognormal(meanFactor, stdDevFactor);
-            // Convert back to return percentage
-            const annualReturn = (growthFactor - 1) * 100;
-            returns.push(annualReturn);
+            // Floor at -100%: an unbounded Normal can draw below -100%, which
+            // turns a growth factor (1 + return/100) NEGATIVE and multiplies an
+            // account balance by a negative number — a phantom negative asset
+            // that poisons percentile bands and success classification. At the
+            // default stdDev (15) a sub--100% draw is effectively unreachable
+            // (~7 sigma), so this leaves default-config golden masters
+            // byte-for-byte unchanged; it only trims the unphysical high-vol
+            // tail. Matches the DP policy solve, which floors factors at 0.
+            returns.push(Math.max(annualReturn, -100));
         }
 
         return returns;

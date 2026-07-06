@@ -169,65 +169,30 @@ describe('SeededRandom', () => {
         });
     });
 
-    describe('lognormal()', () => {
-        it('should return positive values', () => {
-            const rng = new SeededRandom(12345);
-
-            for (let i = 0; i < 100; i++) {
-                const value = rng.lognormal(1, 0.2);
-                expect(value).toBeGreaterThan(0);
+    describe('generateReturns() - sub--100% floor', () => {
+        it('never returns a value below -100% even at extreme volatility', () => {
+            // At stdDev 50 (UI-reachable) an unbounded Normal draws below -100%
+            // for ~1.6% of years; those turn a growth factor negative. The floor
+            // clamps them at exactly -100% (growth factor 0).
+            const rng = new SeededRandom(1234567);
+            const returns = rng.generateReturns(100000, 7, 50);
+            let sawFloor = false;
+            for (const r of returns) {
+                expect(r).toBeGreaterThanOrEqual(-100);
+                if (r === -100) sawFloor = true;
             }
+            // Sanity: at this volatility the floor should actually engage.
+            expect(sawFloor).toBe(true);
         });
 
-        it('should have mean close to specified mean', () => {
+        it('leaves default-volatility draws (stdDev 15) untouched', () => {
+            // At the default stdDev a sub--100% draw is ~7 sigma — effectively
+            // unreachable — so the clamp is a no-op and golden masters are safe.
             const rng = new SeededRandom(54321);
-            const targetMean = 1.07; // 7% growth factor
-            const samples: number[] = [];
-
-            for (let i = 0; i < 1000; i++) {
-                samples.push(rng.lognormal(targetMean, 0.15));
-            }
-
-            const mean = calculateMean(samples);
-            // Mean should be close to target (within 0.05)
-            expect(Math.abs(mean - targetMean)).toBeLessThan(0.05);
-        });
-    });
-
-    describe('generateLognormalReturns()', () => {
-        it('should return correct number of years', () => {
-            const rng = new SeededRandom(12345);
-            const returns = rng.generateLognormalReturns(30, 7, 15);
-            expect(returns.length).toBe(30);
-        });
-
-        it('should produce returns that are mostly greater than -100%', () => {
-            const rng = new SeededRandom(99999);
-            const returns = rng.generateLognormalReturns(1000, 7, 15);
-
-            // Lognormal should never produce returns below -100%
+            const returns = rng.generateReturns(100000, 7, 15);
             for (const r of returns) {
                 expect(r).toBeGreaterThan(-100);
             }
-        });
-
-        it('should have mean close to specified meanReturn', () => {
-            const rng = new SeededRandom(54321);
-            const returns = rng.generateLognormalReturns(1000, 7, 15);
-            const mean = calculateMean(returns);
-
-            // Mean should be reasonably close to 7 (within 2)
-            expect(Math.abs(mean - 7)).toBeLessThan(2);
-        });
-
-        it('should be deterministic with same seed', () => {
-            const rng1 = new SeededRandom(12345);
-            const rng2 = new SeededRandom(12345);
-
-            const returns1 = rng1.generateLognormalReturns(10, 7, 15);
-            const returns2 = rng2.generateLognormalReturns(10, 7, 15);
-
-            expect(returns1).toEqual(returns2);
         });
     });
 

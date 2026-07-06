@@ -39,17 +39,6 @@ export interface SummarizeExtras {
 }
 
 /**
- * Calculate success rate from scenario results
- * @param scenarios - Array of scenario results
- * @returns Percentage of successful scenarios (0-100)
- */
-export function calculateSuccessRate(scenarios: ScenarioResult[]): number {
-    if (scenarios.length === 0) return 0;
-    const successful = scenarios.filter(s => s.success).length;
-    return (successful / scenarios.length) * 100;
-}
-
-/**
  * Calculate a specific percentile value from sorted array
  * @param sortedValues - Array of values, must be sorted ascending
  * @param percentile - Percentile to calculate (0-100)
@@ -120,28 +109,6 @@ export function calculatePercentiles(scenarios: ScenarioResult[]): PercentileDat
     }
 
     return { p10, p25, p50, p75, p90 };
-}
-
-/**
- * Find scenario closest to a specific final net worth percentile
- * @param scenarios - Array of scenario results, sorted by final net worth
- * @param percentile - Target percentile (0-100)
- * @returns The scenario closest to that percentile
- */
-export function findScenarioAtPercentile(
-    scenarios: ScenarioResult[],
-    percentile: number
-): ScenarioResult {
-    if (scenarios.length === 0) {
-        throw new Error('No scenarios provided');
-    }
-
-    const sortedByNetWorth = [...scenarios].sort(
-        (a, b) => a.finalNetWorth - b.finalNetWorth
-    );
-
-    const index = Math.floor((percentile / 100) * (sortedByNetWorth.length - 1));
-    return sortedByNetWorth[index];
 }
 
 /**
@@ -434,47 +401,3 @@ export function summarizeScenarios(
     };
 }
 
-/**
- * Extract net worth timeline from a scenario for charting
- * @param scenario - A single scenario result
- * @returns Array of {year, netWorth} data points
- */
-export function extractNetWorthTimeline(
-    scenario: ScenarioResult
-): YearlyPercentile[] {
-    return scenario.timeline.map(year => ({
-        year: year.year,
-        netWorth: calculateNetWorth(year.accounts),
-    }));
-}
-
-/**
- * Calculate statistical summary of final net worths
- * @param scenarios - Array of scenario results
- * @returns Statistics about final net worth distribution
- */
-export function calculateFinalNetWorthStats(scenarios: ScenarioResult[]): {
-    min: number;
-    max: number;
-    mean: number;
-    median: number;
-    stdDev: number;
-} {
-    if (scenarios.length === 0) {
-        return { min: 0, max: 0, mean: 0, median: 0, stdDev: 0 };
-    }
-
-    const values = scenarios.map(s => s.finalNetWorth);
-    const sorted = [...values].sort((a, b) => a - b);
-
-    const min = sorted[0];
-    const max = sorted[sorted.length - 1];
-    const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
-    const median = sorted[Math.floor(sorted.length / 2)];
-
-    const squaredDiffs = values.map(v => Math.pow(v - mean, 2));
-    const variance = squaredDiffs.reduce((sum, v) => sum + v, 0) / values.length;
-    const stdDev = Math.sqrt(variance);
-
-    return { min, max, mean, median, stdDev };
-}

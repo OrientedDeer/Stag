@@ -169,3 +169,14 @@ Two dead functions surfaced by the 2026-06-24 deep-review and removed:
 
 - `estimateBenefitFromCurrentIncome` (`src/services/SocialSecurityCalculator.tsx`) — zero `src/` callers (only its own 3-test describe block referenced it). Also carried a future-earnings off-by-one (`i < yearsUntilRetirement` omitted the claiming-year earnings), so deletion beat fixing the bound. Removed the function + its 3-test block + the import.
 - `extractIncomeForRMDEstimate` (+ the `ExtractedIncomeForRMD` interface, `src/services/simulation/helpers.ts`) — no production caller; the live RMD path in `YearSolver.ts` extracts income inline and had already diverged (it includes the FERS MRA-to-62 supplement and excludes RMD-sourced PassiveIncome, neither of which the helper did) — so the helper was both dead and stale. Removed the function, the interface, the section header, and its dedicated ~1076-line test file. Sibling `estimateFixedIncomeAtRMD` is still used by YearSolver and was kept.
+
+## Pass 9 (2026-07-06 deep-review, issue #187)
+
+Six exported Monte Carlo helpers with **zero production callers** (verified by grepping `src/` excluding `__tests__`/`*.test.*`) removed, along with their tests:
+
+- `calculateSuccessRate` (`src/services/MonteCarloAggregator.ts`) — only referenced by its own test blocks in `MonteCarloAggregator.test.ts` + `MonteCarloEngine.test.ts`. Production computes the success rate inline in `summarizeScenarios`.
+- `findScenarioAtPercentile` (`src/services/MonteCarloAggregator.ts`) — test-only.
+- `extractNetWorthTimeline` (`src/services/MonteCarloAggregator.ts`) — test-only; charting uses `calculatePercentiles`.
+- `calculateFinalNetWorthStats` (`src/services/MonteCarloAggregator.ts`) — test-only.
+- `estimateRunTime` (`src/services/MonteCarloEngine.ts`) — test-only; no UI consumer.
+- `generateLognormalReturns` + the private `lognormal` helper it wrapped (`src/services/RandomGenerator.ts`) — a dead alternate return path. The live MC path uses `generateReturns` (Normal). The dead lognormal path also *misled* about tail handling: it claimed the engine can't draw below -100%, but the shipped path can — which is the #187/#128 bug fixed in the same pass by flooring `generateReturns` at -100%. `generateReturns` itself is production (`MonteCarloEngine.ts:runSingleScenario` + `simulation.bench.ts`) and was kept. Removed the two `RandomGenerator.test.ts` describe blocks and the `generateLognormalReturns` case in `RandomGeneratorBoxMullerLog0.test.ts`; kept `calculateMean`/`calculateStdDev` (still used by the Normal-distribution tests).

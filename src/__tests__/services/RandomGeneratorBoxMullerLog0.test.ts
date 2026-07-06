@@ -42,15 +42,6 @@ describe('SeededRandom Box-Muller log(0) guard', () => {
         }
     });
 
-    it('generateLognormalReturns() stays finite for the degenerate seed', () => {
-        const rng = new SeededRandom(DEGENERATE_SEED);
-        const returns = rng.generateLognormalReturns(30, 7, 15);
-        expect(returns).toHaveLength(30);
-        for (const r of returns) {
-            expect(Number.isFinite(r)).toBe(true);
-        }
-    });
-
     it('pins an ordinary seed to its exact normal() value (golden-master anchor)', () => {
         // Hardcoded golden value: the clamp-if-zero guard must NOT change this.
         // (If the guard were `1 - next()` it would shift this number, breaking MC

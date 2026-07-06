@@ -7,14 +7,10 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-    calculateSuccessRate,
     getPercentileValue,
     calculatePercentiles,
-    findScenarioAtPercentile,
     analyzeScenario,
     summarizeScenarios,
-    extractNetWorthTimeline,
-    calculateFinalNetWorthStats
 } from '../../services/MonteCarloAggregator';
 import { ScenarioResult } from '../../services/MonteCarloTypes';
 import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
@@ -91,50 +87,6 @@ function createMockScenario(
         yearlyReturns: Array(yearCount).fill(7)
     };
 }
-
-// =============================================================================
-// calculateSuccessRate tests
-// =============================================================================
-
-describe('calculateSuccessRate', () => {
-    it('should return 0 for empty array', () => {
-        expect(calculateSuccessRate([])).toBe(0);
-    });
-
-    it('should return 100 for all successful scenarios', () => {
-        const scenarios = [
-            createMockScenario(1, 100000, true),
-            createMockScenario(2, 200000, true)
-        ];
-        expect(calculateSuccessRate(scenarios)).toBe(100);
-    });
-
-    it('should return 0 for all failed scenarios', () => {
-        const scenarios = [
-            createMockScenario(1, -10000, false),
-            createMockScenario(2, -20000, false)
-        ];
-        expect(calculateSuccessRate(scenarios)).toBe(0);
-    });
-
-    it('should return 50 for 50/50 success rate', () => {
-        const scenarios = [
-            createMockScenario(1, 100000, true),
-            createMockScenario(2, -10000, false)
-        ];
-        expect(calculateSuccessRate(scenarios)).toBe(50);
-    });
-
-    it('should return 75 for 3 of 4 successful', () => {
-        const scenarios = [
-            createMockScenario(1, 100000, true),
-            createMockScenario(2, 200000, true),
-            createMockScenario(3, 150000, true),
-            createMockScenario(4, -10000, false)
-        ];
-        expect(calculateSuccessRate(scenarios)).toBe(75);
-    });
-});
 
 // =============================================================================
 // getPercentileValue tests
@@ -239,53 +191,6 @@ describe('calculatePercentiles', () => {
         expect(result.p50[0]).toHaveProperty('year');
         expect(result.p50[0]).toHaveProperty('netWorth');
         expect(result.p50[0].year).toBe(2024);
-    });
-});
-
-// =============================================================================
-// findScenarioAtPercentile tests
-// =============================================================================
-
-describe('findScenarioAtPercentile', () => {
-    it('should throw Error for empty array', () => {
-        expect(() => findScenarioAtPercentile([], 50)).toThrow('No scenarios provided');
-    });
-
-    it('should return single scenario for any percentile', () => {
-        const scenario = createMockScenario(1, 100000);
-        expect(findScenarioAtPercentile([scenario], 0)).toBe(scenario);
-        expect(findScenarioAtPercentile([scenario], 50)).toBe(scenario);
-        expect(findScenarioAtPercentile([scenario], 100)).toBe(scenario);
-    });
-
-    it('should return lowest finalNetWorth scenario for percentile 0', () => {
-        const scenarios = [
-            createMockScenario(1, 300000),
-            createMockScenario(2, 100000),
-            createMockScenario(3, 200000)
-        ];
-        const result = findScenarioAtPercentile(scenarios, 0);
-        expect(result.finalNetWorth).toBe(100000);
-    });
-
-    it('should return highest finalNetWorth scenario for percentile 100', () => {
-        const scenarios = [
-            createMockScenario(1, 300000),
-            createMockScenario(2, 100000),
-            createMockScenario(3, 200000)
-        ];
-        const result = findScenarioAtPercentile(scenarios, 100);
-        expect(result.finalNetWorth).toBe(300000);
-    });
-
-    it('should return median scenario for percentile 50', () => {
-        const scenarios = [
-            createMockScenario(1, 100000),
-            createMockScenario(2, 200000),
-            createMockScenario(3, 300000)
-        ];
-        const result = findScenarioAtPercentile(scenarios, 50);
-        expect(result.finalNetWorth).toBe(200000);
     });
 });
 
@@ -463,150 +368,3 @@ describe('summarizeScenarios', () => {
     });
 });
 
-// =============================================================================
-// extractNetWorthTimeline tests
-// =============================================================================
-
-describe('extractNetWorthTimeline', () => {
-    it('should return array with {year, netWorth} for each year', () => {
-        const scenario = createMockScenario(1, 100000, true, 3);
-        const result = extractNetWorthTimeline(scenario);
-
-        expect(result.length).toBe(3);
-        expect(result[0]).toHaveProperty('year');
-        expect(result[0]).toHaveProperty('netWorth');
-    });
-
-    it('should have length matching scenario.timeline.length', () => {
-        const scenario = createMockScenario(1, 100000, true, 5);
-        const result = extractNetWorthTimeline(scenario);
-        expect(result.length).toBe(scenario.timeline.length);
-    });
-
-    it('should have correct year values', () => {
-        const scenario = createMockScenario(1, 100000, true, 3);
-        const result = extractNetWorthTimeline(scenario);
-
-        expect(result[0].year).toBe(2024);
-        expect(result[1].year).toBe(2025);
-        expect(result[2].year).toBe(2026);
-    });
-
-    it('should calculate correct netWorth for each year', () => {
-        const timeline = [
-            createMockSimulationYear(2024, 100000),
-            createMockSimulationYear(2025, 150000),
-            createMockSimulationYear(2026, 200000)
-        ];
-        const scenario: ScenarioResult = {
-            scenarioId: 1,
-            timeline,
-            success: true,
-            finalNetWorth: 200000,
-            yearOfDepletion: null,
-            yearlyReturns: [7, 8, 9]
-        };
-
-        const result = extractNetWorthTimeline(scenario);
-
-        expect(result[0].netWorth).toBe(100000);
-        expect(result[1].netWorth).toBe(150000);
-        expect(result[2].netWorth).toBe(200000);
-    });
-});
-
-// =============================================================================
-// calculateFinalNetWorthStats tests
-// =============================================================================
-
-describe('calculateFinalNetWorthStats', () => {
-    it('should return all zeros for empty array', () => {
-        const result = calculateFinalNetWorthStats([]);
-        expect(result.min).toBe(0);
-        expect(result.max).toBe(0);
-        expect(result.mean).toBe(0);
-        expect(result.median).toBe(0);
-        expect(result.stdDev).toBe(0);
-    });
-
-    it('should return min=max=mean=median and stdDev=0 for single scenario', () => {
-        const scenarios = [createMockScenario(1, 100000)];
-        const result = calculateFinalNetWorthStats(scenarios);
-
-        expect(result.min).toBe(100000);
-        expect(result.max).toBe(100000);
-        expect(result.mean).toBe(100000);
-        expect(result.median).toBe(100000);
-        expect(result.stdDev).toBe(0);
-    });
-
-    describe('multiple scenarios', () => {
-        const scenarios = [
-            createMockScenario(1, 100000),
-            createMockScenario(2, 200000),
-            createMockScenario(3, 300000),
-            createMockScenario(4, 400000),
-            createMockScenario(5, 500000)
-        ];
-
-        it('should calculate min as smallest finalNetWorth', () => {
-            const result = calculateFinalNetWorthStats(scenarios);
-            expect(result.min).toBe(100000);
-        });
-
-        it('should calculate max as largest finalNetWorth', () => {
-            const result = calculateFinalNetWorthStats(scenarios);
-            expect(result.max).toBe(500000);
-        });
-
-        it('should calculate mean as average', () => {
-            const result = calculateFinalNetWorthStats(scenarios);
-            // (100000 + 200000 + 300000 + 400000 + 500000) / 5 = 300000
-            expect(result.mean).toBe(300000);
-        });
-
-        it('should calculate median as middle value', () => {
-            const result = calculateFinalNetWorthStats(scenarios);
-            // Sorted: [100000, 200000, 300000, 400000, 500000]
-            // Middle index: floor(5/2) = 2 -> 300000
-            expect(result.median).toBe(300000);
-        });
-
-        it('should calculate stdDev correctly', () => {
-            const result = calculateFinalNetWorthStats(scenarios);
-            // Mean = 300000
-            // Variance = ((100k-300k)² + (200k-300k)² + (300k-300k)² + (400k-300k)² + (500k-300k)²) / 5
-            //         = (4e10 + 1e10 + 0 + 1e10 + 4e10) / 5 = 10e10 / 5 = 2e10
-            // StdDev = sqrt(2e10) ≈ 141421.36
-            expect(result.stdDev).toBeCloseTo(141421.36, 0);
-        });
-    });
-
-    it('should handle unsorted input correctly', () => {
-        const scenarios = [
-            createMockScenario(1, 300000),
-            createMockScenario(2, 100000),
-            createMockScenario(3, 500000),
-            createMockScenario(4, 200000),
-            createMockScenario(5, 400000)
-        ];
-
-        const result = calculateFinalNetWorthStats(scenarios);
-        expect(result.min).toBe(100000);
-        expect(result.max).toBe(500000);
-        expect(result.median).toBe(300000);
-    });
-
-    it('should handle negative net worth values', () => {
-        const scenarios = [
-            createMockScenario(1, -50000),
-            createMockScenario(2, 0),
-            createMockScenario(3, 50000)
-        ];
-
-        const result = calculateFinalNetWorthStats(scenarios);
-        expect(result.min).toBe(-50000);
-        expect(result.max).toBe(50000);
-        expect(result.mean).toBe(0);
-    });
-});

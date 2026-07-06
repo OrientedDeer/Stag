@@ -433,15 +433,3 @@ export function validateConfig(config: MonteCarloConfig): string | null {
     }
     return null;
 }
-
-/**
- * Estimate time to run simulation based on config
- * @param numScenarios - Number of scenarios
- * @param yearsToRun - Years per scenario
- * @returns Estimated time in milliseconds
- */
-export function estimateRunTime(numScenarios: number, yearsToRun: number): number {
-    // Rough estimate: ~5ms per scenario-year on typical hardware
-    const msPerScenarioYear = 5;
-    return numScenarios * yearsToRun * msPerScenarioYear;
-}
