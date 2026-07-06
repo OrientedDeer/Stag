@@ -32,18 +32,41 @@ export function isSeniorEligible(params: TaxParameters, age: number | undefined)
  * This is the federal "regular" component AND the entire state senior add-on —
  * the one piece both paths share. Federal bonus logic stays in federalTax.ts.
  *
+ * When the parameters carry an income-based phaseout
+ * (`seniorDeductionPhaseoutThreshold` + `seniorDeductionPhaseoutRate`, e.g.
+ * Virginia's age deduction: reduced $1-for-$1 by AFAGI above $50k single /
+ * $75k married) AND the caller supplies `incomeForPhaseout`, the TOTAL
+ * (per-person-multiplied) deduction is reduced by rate × (income − threshold),
+ * floored at $0. Callers that pass no income (the federal regular add-on —
+ * federal rows carry no phaseout fields) are byte-for-byte unchanged.
+ *
  * @param params - Tax parameters carrying the senior fields
  * @param filingStatus - Filing status (drives the MFJ per-person doubling)
  * @param age - Taxpayer age in the tax year (undefined ⇒ 0)
+ * @param incomeForPhaseout - AFAGI-style income for the phaseout (undefined ⇒ no phaseout)
  */
 export function seniorAdditionalDeduction(
     params: TaxParameters,
     filingStatus: FilingStatus,
     age: number | undefined,
+    incomeForPhaseout?: number,
 ): number {
     if (!isSeniorEligible(params, age)) return 0;
 
-    return (params.seniorDeduction ?? 0) * seniorPerPersonMultiplier(params, filingStatus);
+    let deduction = (params.seniorDeduction ?? 0) * seniorPerPersonMultiplier(params, filingStatus);
+
+    const threshold = params.seniorDeductionPhaseoutThreshold;
+    const rate = params.seniorDeductionPhaseoutRate;
+    if (
+        threshold !== undefined &&
+        rate !== undefined &&
+        incomeForPhaseout !== undefined &&
+        incomeForPhaseout > threshold
+    ) {
+        deduction = Math.max(0, deduction - (incomeForPhaseout - threshold) * rate);
+    }
+
+    return deduction;
 }
 
 /**

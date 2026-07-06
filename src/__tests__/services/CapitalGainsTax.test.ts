@@ -1,20 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { InvestedAccount } from '../../components/Objects/Accounts/models';
-import { calculateCapitalGainsTax } from '../../components/Objects/Taxes/TaxService';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
 
 describe('Capital Gains Tax', () => {
-    const baseTaxState: TaxState = {
-        filingStatus: 'Single',
-        deductionMethod: 'Standard',
-        stateResidency: 'Texas', // No state income tax
-        fedOverride: null,
-        stateOverride: null,
-        ficaOverride: null,
-        year: 2025,
-    };
-
     describe('InvestedAccount costBasis tracking', () => {
         it('should initialize costBasis equal to amount', () => {
             const account = new InvestedAccount(
@@ -136,91 +124,6 @@ describe('Capital Gains Tax', () => {
             // 40% of account is gains, 60% is basis
             expect(allocation.gains).toBe(4000);  // 40% of 10000
             expect(allocation.basis).toBe(6000);  // 60% of 10000
-        });
-    });
-
-    describe('calculateCapitalGainsTax', () => {
-        it('should return 0% tax for gains within 0% bracket', () => {
-            // For 2025 Single, 0% bracket is up to $48,350 taxable income
-            const tax = calculateCapitalGainsTax(
-                10000,  // gains
-                30000,  // ordinaryTaxableIncome (within 0% bracket)
-                baseTaxState,
-                2025
-            );
-
-            // All gains should be in the 0% bracket
-            expect(tax).toBe(0);
-        });
-
-        it('should apply 15% rate for gains in middle bracket', () => {
-            // If ordinary income is $50k (above 0% threshold), gains should be at 15%
-            const tax = calculateCapitalGainsTax(
-                10000,  // gains
-                60000,  // ordinaryTaxableIncome (already above 0% bracket)
-                baseTaxState,
-                2025
-            );
-
-            // All $10k gains should be at 15%
-            expect(tax).toBe(1500);
-        });
-
-        it('should split gains across brackets', () => {
-            // If ordinary income is just below the 0% threshold
-            // Some gains should be at 0%, rest at 15%
-            const tax = calculateCapitalGainsTax(
-                20000,  // gains
-                40000,  // ordinaryTaxableIncome (below $48,350 threshold)
-                baseTaxState,
-                2025
-            );
-
-            // $8,350 should be at 0% (filling up to $48,350)
-            // $11,650 should be at 15%
-            const expected = (8350 * 0) + (11650 * 0.15);
-            expect(tax).toBeCloseTo(expected, 0);
-        });
-
-        it('should apply 20% rate for high income', () => {
-            // If ordinary income pushes gains into 20% bracket
-            // 2025 Single: 15% up to $533,400, 20% above
-            const tax = calculateCapitalGainsTax(
-                50000,  // gains
-                500000, // ordinaryTaxableIncome
-                baseTaxState,
-                2025
-            );
-
-            // $33,400 at 15% (filling from $500k to $533,400)
-            // $16,600 at 20% (above $533,400)
-            const expected = (33400 * 0.15) + (16600 * 0.20);
-            expect(tax).toBeCloseTo(expected, 0);
-        });
-
-        it('should handle Married Filing Jointly brackets', () => {
-            const mfjTaxState: TaxState = {
-                ...baseTaxState,
-                filingStatus: 'Married Filing Jointly',
-            };
-
-            // MFJ has higher thresholds: 0% up to $96,700 in 2025
-            const tax = calculateCapitalGainsTax(
-                20000,  // gains
-                80000,  // ordinaryTaxableIncome
-                mfjTaxState,
-                2025
-            );
-
-            // $16,700 at 0% (filling from $80k to $96,700)
-            // $3,300 at 15% (above $96,700)
-            const expected = (16700 * 0) + (3300 * 0.15);
-            expect(tax).toBeCloseTo(expected, 0);
-        });
-
-        it('should return 0 for negative or zero gains', () => {
-            expect(calculateCapitalGainsTax(0, 50000, baseTaxState, 2025)).toBe(0);
-            expect(calculateCapitalGainsTax(-1000, 50000, baseTaxState, 2025)).toBe(0);
         });
     });
 

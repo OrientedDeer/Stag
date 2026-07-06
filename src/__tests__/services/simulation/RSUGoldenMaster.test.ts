@@ -441,31 +441,40 @@ describe('RSU sell-to-cover over-withholding refund (engine path)', () => {
 //  MIXED (issue #84): Single, CALIFORNIA, age 64, $30,000/yr SS, $20,000
 //  Traditional IRA drawn first, one short-term RSU lot (1,000 sh, $40 basis,
 //  $300 price), $250,000 living expenses. The Traditional draw ($20k) can't
-//  cover the deficit, so the planner sells RSU for the rest → $205,917 STCG.
-//  MAGI = taxable SS ($25,500) + Traditional ($20,000) + STCG ($205,917) =
-//  $251,417 → above the $200k NIIT threshold. The federal helper's internal
+//  cover the deficit, so the planner sells RSU for the rest → $205,910 STCG.
+//  MAGI = taxable SS ($25,500) + Traditional ($20,000) + STCG ($205,910) =
+//  $251,410 → above the $200k NIIT threshold. The federal helper's internal
 //  NIIT MAGI excludes the planner-side Traditional draw (it's carried in
-//  withdrawalOrdinaryTax), so niitBase = min($205,917, ($25,500+$205,917)−$200k)
-//  = $31,417 → NIIT = $31,417 × 3.8% = $1,194. tax.federal ($940) is the
+//  withdrawalOrdinaryTax), so niitBase = min($205,910, ($25,500+$205,910)−$200k)
+//  = $31,410 → NIIT = $31,410 × 3.8% = $1,194. tax.federal ($940) is the
 //  ordinary tax on the $25,500 taxable SS alone (the STCG ordinary tax is BACKED
-//  OUT and instead lives in withdrawalOrdinaryTax = $35,463, which also carries
+//  OUT and instead lives in withdrawalOrdinaryTax = $35,455, which also carries
 //  the Traditional ordinary tax and CA state tax on both). tax.state is the
 //  income-side line ($0 — CA exempts SS); the gain's CA state cost surfaces as
-//  the $9,748 CA-vs-Texas total delta. Taxable SS is gain-driven: $5,350 without
+//  the $9,740 CA-vs-Texas total delta. Taxable SS is gain-driven: $5,350 without
 //  the STCG, $25,500 (85% cap) with it.
 const GOLD = {
     lt: { gross: 50000, ltcg: 30000, magi: 30000, ltcgTax: 0, niit: 0, total: 0 },
     st: { gross: 53191, stcg: 31915, magi: 31915, niit: 0, total: 3191 },
+    // #192: mixed pins re-derived when the CA "2025" row was corrected from
+    // CA's published 2024 schedule to FTB's real 2025 figures (slightly wider
+    // low brackets + $5,706 std ded → the RSU sale grosses up against ~$8 less
+    // CA tax): rsuGross 237,597→237,589, stcg 205,917→205,910, magi
+    // 251,417→251,410, withdrawalOrdinaryTax 35,463→35,455, total
+    // 37,597→37,589, stateTaxEffect 9,748→9,740.
     mixed: {
-        rsuGross: 237597,
-        stcg: 205917,
-        magi: 251417,
+        rsuGross: 237589,
+        stcg: 205910,
+        magi: 251410,
         fedOrdinary: 940,
         niit: 1194,
         stateLine: 0,
-        withdrawalOrdinaryTax: 35463,
-        total: 37597,
-        stateTaxEffect: 9748,
+        withdrawalOrdinaryTax: 35455,
+        total: 37589,
+        // #192: CA-vs-TX delta re-pinned 9,748 → 9,740 when the CA "2025" row
+        // was corrected from CA's 2024 schedule to FTB's real 2025 figures
+        // (slightly wider low brackets + $5,706 std ded → ~$8 less CA tax here).
+        stateTaxEffect: 9740,
         taxableSSNoGain: 5350,
         taxableSSWithGain: 25500,
     },

@@ -10,7 +10,7 @@
  *   - federalTax          calculateFederalTaxFromIncomes (orchestrator)
  *   - stateTax            calculateStateTax, calculateUnifiedStateTax
  *   - ficaTax             calculateFicaTax
- *   - capitalGainsTax     calculateCapitalGainsTax
+ *   - capitalGainsTax     getLTCGRate (consumed directly by the solvers)
  *   - marginalRates       getMarginalTaxRate, getCombinedMarginalRate
  *   - esppTax             calculateESPPDispositionTax
  *
@@ -39,7 +39,6 @@ export {
 export { calculateFederalTaxFromIncomes, getEffectiveStandardDeduction } from "./taxService/federalTax";
 export { calculateStateTax, calculateUnifiedStateTax } from "./taxService/stateTax";
 export { calculateFicaTax } from "./taxService/ficaTax";
-export { calculateCapitalGainsTax } from "./taxService/capitalGainsTax";
 export {
     getMarginalTaxRate,
     getCombinedMarginalRate,

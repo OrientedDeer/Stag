@@ -69,7 +69,9 @@ const itemizedMortgage = () => {
 describe('PR55 #7/#11: calculateStateTax characterization', () => {
     it('California, no SS, Standard (2025)', () => {
         const s = createTaxState({ stateResidency: 'California' });
-        expect(calculateStateTax(s, [work(100000)], [], 2025, noInflationAssumptions)).toBeCloseTo(5327, 0);
+        // #192: re-pinned 5,327 -> 5,207.98 when the CA "2025" row was corrected
+        // from CA's 2024 schedule to FTB's real 2025 figures ($5,706 std ded).
+        expect(calculateStateTax(s, [work(100000)], [], 2025, noInflationAssumptions)).toBeCloseTo(5207.98, 0);
     });
 
     it('DC, no SS, Standard', () => {
@@ -84,12 +86,17 @@ describe('PR55 #7/#11: calculateStateTax characterization', () => {
 
     it('Virginia, age 66 MFJ senior doubling, no SS, Standard', () => {
         const s = createTaxState({ stateResidency: 'Virginia', filingStatus: 'Married Filing Jointly' });
-        expect(calculateStateTax(s, [work(100000)], [], 2024, seniorAssumptions)).toBeCloseTo(3135, 4);
+        // #192: re-pinned 3,135 -> 4,515 — VA's age deduction phases out
+        // $1-for-$1 above $75k married AFAGI; at $100k it is fully phased out
+        // (24,000 - 25,000 < 0), so only the $17k standard deduction applies.
+        expect(calculateStateTax(s, [work(100000)], [], 2024, seniorAssumptions)).toBeCloseTo(4515, 4);
     });
 
     it('Virginia, age 66 Single senior, no SS, Standard', () => {
         const s = createTaxState({ stateResidency: 'Virginia' });
-        expect(calculateStateTax(s, [work(100000)], [], 2024, seniorAssumptions)).toBeCloseTo(4313.75, 4);
+        // #192: re-pinned 4,313.75 -> 5,003.75 — the $12k age deduction is fully
+        // phased out at $100k AFAGI ($0 from $62k up for a single filer).
+        expect(calculateStateTax(s, [work(100000)], [], 2024, seniorAssumptions)).toBeCloseTo(5003.75, 4);
     });
 
     it('Virginia, with SS (exempt), Standard', () => {

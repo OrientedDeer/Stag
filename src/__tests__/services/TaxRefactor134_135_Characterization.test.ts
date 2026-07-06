@@ -100,16 +100,26 @@ describe('#134 characterization: regular 65+ additional standard deduction', () 
     });
 
     // --- State regular 65+ add-on (Virginia, per-person doubling for MFJ) ---
+    // #192: VA's age deduction phases out $1-for-$1 on AFAGI above $50k single /
+    // $75k married, so the positive characterizations use below-threshold incomes
+    // and the $100k cases now pin the fully-phased-out values.
     it('state Virginia single 65+ senior deduction (2024, Standard)', () => {
         const s = createTaxState({ stateResidency: 'Virginia' });
-        // VA 2024 Single: standard $8,500 + senior $12,000 = $20,500.
-        expect(calculateStateTax(s, [work(100000)], [], 2024, assumptionsForBirthYear(1959))).toBeCloseTo(4313.75, 2);
+        // $40k AFAGI < $50k → full deduction. Standard $8,500 + senior $12,000.
+        // Taxable 19.5k → 60 + 60 + 600 + 2.5k@5.75% = 863.75.
+        expect(calculateStateTax(s, [work(40000)], [], 2024, assumptionsForBirthYear(1959))).toBeCloseTo(863.75, 2);
+        // $100k AFAGI → deduction fully phased out (was pinned 4,313.75 with the
+        // full $12k applied — the number this fix corrects).
+        expect(calculateStateTax(s, [work(100000)], [], 2024, assumptionsForBirthYear(1959))).toBeCloseTo(5003.75, 2);
     });
 
     it('state Virginia MFJ 65+ senior deduction doubled (2024, Standard)', () => {
         const s = createTaxState({ stateResidency: 'Virginia', filingStatus: 'Married Filing Jointly' });
-        // VA 2024 MFJ: standard $17,000 + senior $24,000 (2 x $12k) = $41,000.
-        expect(calculateStateTax(s, [work(100000)], [], 2024, assumptionsForBirthYear(1959))).toBeCloseTo(3135, 2);
+        // $70k AFAGI < $75k married threshold → full doubled deduction.
+        // Standard $17,000 + senior $24,000 (2 x $12k); taxable 29k → 1,410.
+        expect(calculateStateTax(s, [work(70000)], [], 2024, assumptionsForBirthYear(1959))).toBeCloseTo(1410, 2);
+        // $100k AFAGI → 24,000 − 25,000 < 0 → $0 deduction (was pinned 3,135).
+        expect(calculateStateTax(s, [work(100000)], [], 2024, assumptionsForBirthYear(1959))).toBeCloseTo(4515, 2);
     });
 
     it('state Virginia MFS 65+ senior NOT doubled (single person)', () => {
@@ -122,21 +132,26 @@ describe('#134 characterization: regular 65+ additional standard deduction', () 
 
     it('state Virginia under-65: NO senior deduction', () => {
         const s = createTaxState({ stateResidency: 'Virginia' });
-        const senior = calculateStateTax(s, [work(100000)], [], 2024, assumptionsForBirthYear(1959));
-        const underAge = calculateStateTax(s, [work(100000)], [], 2024, assumptionsForBirthYear(1985));
+        // #192: compare at $40k AFAGI, where the senior actually KEEPS the
+        // deduction (at the old $100k the phaseout zeroes it and the two ages
+        // tie — the strict inequality only exists below the phaseout).
+        const senior = calculateStateTax(s, [work(40000)], [], 2024, assumptionsForBirthYear(1959));
+        const underAge = calculateStateTax(s, [work(40000)], [], 2024, assumptionsForBirthYear(1985));
         // Under-65 forfeits the $12,000 senior deduction → strictly higher tax.
         expect(underAge).toBeGreaterThan(senior);
     });
 
     it('state Virginia senior deduction with additional ordinary income (unified path)', () => {
         const s = createTaxState({ stateResidency: 'Virginia' });
-        // VA 2024 Single, $100k gross + $30k additional ordinary income ($130k):
-        // standard $8,500 + senior $12,000. Pin the EXACT unified-path value so the
-        // shared senior helper can't shift it.
-        const senior = calculateUnifiedStateTax(s, [work(100000)], [], 30000, 2024, assumptionsForBirthYear(1959));
-        const underAge = calculateUnifiedStateTax(s, [work(100000)], [], 30000, 2024, assumptionsForBirthYear(1985));
-        expect(senior).toBeCloseTo(6038.75, 2);
-        expect(underAge).toBeCloseTo(6728.75, 2);
+        // #192: VA 2024 Single, $30k gross + $15k additional ordinary income
+        // ($45k AFAGI < $50k → full deduction; the old $130k fixture is fully
+        // phased out now). Pin the EXACT unified-path value so the shared senior
+        // helper can't shift it. Senior: taxable 45k − 8.5k − 12k = 24.5k →
+        // 720 + 7.5k@5.75% = 1,151.25. Under-65: taxable 36.5k → 1,841.25.
+        const senior = calculateUnifiedStateTax(s, [work(30000)], [], 15000, 2024, assumptionsForBirthYear(1959));
+        const underAge = calculateUnifiedStateTax(s, [work(30000)], [], 15000, 2024, assumptionsForBirthYear(1985));
+        expect(senior).toBeCloseTo(1151.25, 2);
+        expect(underAge).toBeCloseTo(1841.25, 2);
         // Gap is the $12,000 senior deduction at VA's 5.75% top rate.
         expect(underAge - senior).toBeCloseTo(12000 * 0.0575, 2);
     });

@@ -46,27 +46,35 @@ export function calculateESPPDispositionTax(
     let shortTermCapitalGains = 0;
     let longTermCapitalGains = 0;
 
-    if (totalGain <= 0) {
-        // Loss scenario - all goes to capital gains (loss)
-        if (isLongTermCG) {
+    if (isQualifying) {
+        // Qualifying disposition
+        // A sale at/below cost recognizes no ordinary income — the qualifying
+        // rule caps ordinary income at the ACTUAL gain (IRC §423(c)), so a loss
+        // is pure capital loss (always long-term: qualifying requires >1yr from
+        // purchase).
+        if (totalGain <= 0) {
             longTermCapitalGains = totalGain;
         } else {
-            shortTermCapitalGains = totalGain;
+            // Ordinary income = lesser of the grant bargain element or the actual gain.
+            // The bargain element is the ACTUAL discount at grant (fmvAtGrant - purchasePrice),
+            // NOT a hardcoded 15% — ESPP discounts vary (and can be measured at the lower of
+            // grant/purchase FMV under a lookback plan). Using the real discount matches the IRS
+            // rule and the disqualifying branch below (#16).
+            const grantDiscount = Math.max(0, fmvAtGrant - purchasePrice) * sharesToSell;
+            ordinaryIncome = Math.min(grantDiscount, totalGain);
+            longTermCapitalGains = totalGain - ordinaryIncome;
         }
-    } else if (isQualifying) {
-        // Qualifying disposition
-        // Ordinary income = lesser of the grant bargain element or the actual gain.
-        // The bargain element is the ACTUAL discount at grant (fmvAtGrant - purchasePrice),
-        // NOT a hardcoded 15% — ESPP discounts vary (and can be measured at the lower of
-        // grant/purchase FMV under a lookback plan). Using the real discount matches the IRS
-        // rule and the disqualifying branch below (#16).
-        const grantDiscount = Math.max(0, fmvAtGrant - purchasePrice) * sharesToSell;
-        ordinaryIncome = Math.min(grantDiscount, totalGain);
-        longTermCapitalGains = totalGain - ordinaryIncome;
     } else {
         // Disqualifying disposition
-        const bargainElement = (fmvAtPurchase - purchasePrice) * sharesToSell;
-        ordinaryIncome = Math.max(0, bargainElement);
+        // The purchase-date bargain element is ordinary income REGARDLESS of the
+        // sale price (IRC §421(b) has no gain cap for disqualifying dispositions
+        // — unlike the qualifying rule above). It also steps up the basis to
+        // fmvAtPurchase, so a sale below FMV-at-purchase produces the full
+        // ordinary income PLUS a capital loss. The old code routed a sale at a
+        // net loss entirely to capital loss, silently dropping the bargain
+        // element from ordinary income.
+        const bargainElement = Math.max(0, fmvAtPurchase - purchasePrice) * sharesToSell;
+        ordinaryIncome = bargainElement;
 
         const capitalGain = totalGain - bargainElement;
         if (isLongTermCG) {

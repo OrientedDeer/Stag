@@ -39,6 +39,14 @@ export interface TaxParameters {
   seniorDeduction?: number;
   seniorAge?: number;
   seniorDeductionPerPerson?: boolean;  // If true, MFJ gets double the deduction (assumes both spouses same age)
+  // Income-based phaseout of the senior deduction (e.g. Virginia's age deduction,
+  // reduced $1-for-$1 by AFAGI above $50k single / $75k married). The TOTAL
+  // (per-person-multiplied) deduction is reduced by `seniorDeductionPhaseoutRate`
+  // of (income − seniorDeductionPhaseoutThreshold), floored at $0. Applied in
+  // seniorAdditionalDeduction when the caller supplies an income figure — the
+  // federal regular 65+ add-on has no such phaseout and passes none.
+  seniorDeductionPhaseoutThreshold?: number;
+  seniorDeductionPhaseoutRate?: number;
 
   // OBBBA "senior bonus" additional deduction (federal only), tax years 2025–2028
   // (sunset after 2028 — gated by SENIOR_BONUS_*_YEAR in federalTax.ts). Per-person
@@ -87,7 +95,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                 ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 168600,
-                medicareTaxRate: 0.0145
+                medicareTaxRate: 0.0145,
+                // 2024 regular 65+ additional standard deduction: $1,950 (single/HoH).
+                // (No OBBBA senior bonus — that starts in tax year 2025.)
+                seniorDeduction: 1950,
+                seniorAge: 65
             },
             'Married Filing Jointly': {
                 standardDeduction: 29200,
@@ -107,7 +119,12 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                 ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 168600,
-                medicareTaxRate: 0.0145
+                medicareTaxRate: 0.0145,
+                // 2024 regular 65+ additional standard deduction: $1,550 PER SPOUSE 65+
+                // (doubled for MFJ via seniorDeductionPerPerson → $3,100 if both 65+).
+                seniorDeduction: 1550,
+                seniorAge: 65,
+                seniorDeductionPerPerson: true
             },
             'Married Filing Separately': {
                 standardDeduction: 14600,
@@ -127,7 +144,10 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                 ],
                 socialSecurityTaxRate: 0.062,
                 socialSecurityWageBase: 168600,
-                medicareTaxRate: 0.0145
+                medicareTaxRate: 0.0145,
+                // 2024 regular 65+ additional standard deduction: $1,550 (MFS, per spouse).
+                seniorDeduction: 1550,
+                seniorAge: 65
             }
         },
         2025: {
@@ -307,19 +327,30 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
     },
     states: {
         "California": {
+            // 2025: FTB-published 2025 tax rate schedules (Schedule X/Y) and
+            // standard deduction ($5,706 single/MFS, $11,412 MFJ) — the prior
+            // "2025" row was CA's published 2024 schedule. Source:
+            // https://www.ftb.ca.gov/forms/2025/2025-540-tax-rate-schedules.pdf
+            // (verified via FTB/NerdWallet 2025 tables).
+            //
+            // Every year includes the 1% Mental Health Services Tax (R&TC §17043)
+            // as an extra bracket layer above $1,000,000 of taxable income (top
+            // rate 13.3%). The $1M MHST threshold is per-return, identical for
+            // all filing statuses, and statutorily NOT inflation-indexed.
             2025: {
                 Single: {
-                    standardDeduction: 5540,
+                    standardDeduction: 5706,
                     brackets: [
                         { threshold: 0, rate: 0.01 },
-                        { threshold: 10_757, rate: 0.02 },
-                        { threshold: 25_500, rate: 0.04 },
-                        { threshold: 40_246, rate: 0.06 },
-                        { threshold: 55_867, rate: 0.08 },
-                        { threshold: 70_607, rate: 0.093 },
-                        { threshold: 360_660, rate: 0.103 },
-                        { threshold: 432_788, rate: 0.113 },
-                        { threshold: 721_315, rate: 0.123 },
+                        { threshold: 11_079, rate: 0.02 },
+                        { threshold: 26_264, rate: 0.04 },
+                        { threshold: 41_452, rate: 0.06 },
+                        { threshold: 57_542, rate: 0.08 },
+                        { threshold: 72_724, rate: 0.093 },
+                        { threshold: 371_479, rate: 0.103 },
+                        { threshold: 445_771, rate: 0.113 },
+                        { threshold: 742_953, rate: 0.123 },
+                        { threshold: 1_000_000, rate: 0.133 },
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
@@ -327,17 +358,18 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityTreatment: 'exempt'
                 },
                 'Married Filing Jointly': {
-                    standardDeduction: 11080,
+                    standardDeduction: 11412,
                     brackets: [
                         { threshold: 0, rate: 0.01 },
-                        { threshold: 21_513, rate: 0.02 },
-                        { threshold: 50_999, rate: 0.04 },
-                        { threshold: 80_491, rate: 0.06 },
-                        { threshold: 111_733, rate: 0.08 },
-                        { threshold: 141_213, rate: 0.093 },
-                        { threshold: 721_319, rate: 0.103 },
-                        { threshold: 865_575, rate: 0.113 },
-                        { threshold: 1_442_629, rate: 0.123 },
+                        { threshold: 22_158, rate: 0.02 },
+                        { threshold: 52_528, rate: 0.04 },
+                        { threshold: 82_904, rate: 0.06 },
+                        { threshold: 115_084, rate: 0.08 },
+                        { threshold: 145_448, rate: 0.093 },
+                        { threshold: 742_958, rate: 0.103 },
+                        { threshold: 891_542, rate: 0.113 },
+                        { threshold: 1_000_000, rate: 0.123 },
+                        { threshold: 1_485_906, rate: 0.133 },
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
@@ -345,17 +377,18 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityTreatment: 'exempt'
                 },
                 'Married Filing Separately': {
-                    standardDeduction: 5540,
+                    standardDeduction: 5706,
                     brackets: [
                         { threshold: 0, rate: 0.01 },
-                        { threshold: 10_757, rate: 0.02 },
-                        { threshold: 25_500, rate: 0.04 },
-                        { threshold: 40_246, rate: 0.06 },
-                        { threshold: 55_867, rate: 0.08 },
-                        { threshold: 70_607, rate: 0.093 },
-                        { threshold: 360_660, rate: 0.103 },
-                        { threshold: 432_788, rate: 0.113 },
-                        { threshold: 721_315, rate: 0.123 },
+                        { threshold: 11_079, rate: 0.02 },
+                        { threshold: 26_264, rate: 0.04 },
+                        { threshold: 41_452, rate: 0.06 },
+                        { threshold: 57_542, rate: 0.08 },
+                        { threshold: 72_724, rate: 0.093 },
+                        { threshold: 371_479, rate: 0.103 },
+                        { threshold: 445_771, rate: 0.113 },
+                        { threshold: 742_953, rate: 0.123 },
+                        { threshold: 1_000_000, rate: 0.133 },
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
@@ -363,19 +396,23 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityTreatment: 'exempt'
                 }
             },
+            // 2026: PROJECTED — FTB publishes 2026 indexing (June-to-June CCPI)
+            // in late 2026; these are the real 2025 figures × 1.024 (the file's
+            // prior projection convention), MHST $1M threshold kept nominal.
             2026: {
                 Single: {
-                    standardDeduction: 5669,
+                    standardDeduction: 5843,
                     brackets: [
                         { threshold: 0, rate: 0.01 },
-                        { threshold: 11_015, rate: 0.02 },
-                        { threshold: 26_111, rate: 0.04 },
-                        { threshold: 41_212, rate: 0.06 },
-                        { threshold: 57_208, rate: 0.08 },
-                        { threshold: 72_272, rate: 0.093 },
-                        { threshold: 369_156, rate: 0.103 },
-                        { threshold: 443_175, rate: 0.113 },
-                        { threshold: 738_628, rate: 0.123 },
+                        { threshold: 11_345, rate: 0.02 },
+                        { threshold: 26_894, rate: 0.04 },
+                        { threshold: 42_447, rate: 0.06 },
+                        { threshold: 58_923, rate: 0.08 },
+                        { threshold: 74_469, rate: 0.093 },
+                        { threshold: 380_394, rate: 0.103 },
+                        { threshold: 456_470, rate: 0.113 },
+                        { threshold: 760_784, rate: 0.123 },
+                        { threshold: 1_000_000, rate: 0.133 },
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
@@ -383,17 +420,18 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityTreatment: 'exempt'
                 },
                 'Married Filing Jointly': {
-                    standardDeduction: 11_338,
+                    standardDeduction: 11686,
                     brackets: [
                         { threshold: 0, rate: 0.01 },
-                        { threshold: 22_030, rate: 0.02 },
-                        { threshold: 52_223, rate: 0.04 },
-                        { threshold: 82_423, rate: 0.06 },
-                        { threshold: 114_414, rate: 0.08 },
-                        { threshold: 144_542, rate: 0.093 },
-                        { threshold: 738_310, rate: 0.103 },
-                        { threshold: 885_974, rate: 0.113 },
-                        { threshold: 1_477_252, rate: 0.123 },
+                        { threshold: 22_690, rate: 0.02 },
+                        { threshold: 53_789, rate: 0.04 },
+                        { threshold: 84_894, rate: 0.06 },
+                        { threshold: 117_846, rate: 0.08 },
+                        { threshold: 148_939, rate: 0.093 },
+                        { threshold: 760_789, rate: 0.103 },
+                        { threshold: 912_939, rate: 0.113 },
+                        { threshold: 1_000_000, rate: 0.123 },
+                        { threshold: 1_521_568, rate: 0.133 },
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
@@ -401,17 +439,18 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityTreatment: 'exempt'
                 },
                 'Married Filing Separately': {
-                    standardDeduction: 5669,
+                    standardDeduction: 5843,
                     brackets: [
                         { threshold: 0, rate: 0.01 },
-                        { threshold: 11_015, rate: 0.02 },
-                        { threshold: 26_111, rate: 0.04 },
-                        { threshold: 41_212, rate: 0.06 },
-                        { threshold: 57_208, rate: 0.08 },
-                        { threshold: 72_272, rate: 0.093 },
-                        { threshold: 369_156, rate: 0.103 },
-                        { threshold: 443_175, rate: 0.113 },
-                        { threshold: 738_628, rate: 0.123 },
+                        { threshold: 11_345, rate: 0.02 },
+                        { threshold: 26_894, rate: 0.04 },
+                        { threshold: 42_447, rate: 0.06 },
+                        { threshold: 58_923, rate: 0.08 },
+                        { threshold: 74_469, rate: 0.093 },
+                        { threshold: 380_394, rate: 0.103 },
+                        { threshold: 456_470, rate: 0.113 },
+                        { threshold: 760_784, rate: 0.123 },
+                        { threshold: 1_000_000, rate: 0.133 },
                     ],
                     socialSecurityTaxRate: 0.0,
                     socialSecurityWageBase: 0,
@@ -778,7 +817,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityTreatment: 'exempt',
                     seniorDeduction: 12000,
                     seniorAge: 65,
-                    seniorDeductionPerPerson: true
+                    seniorDeductionPerPerson: true,
+                    // Age-deduction phaseout: reduced $1-for-$1 by AFAGI
+                    // above $50,000 (single) — $0 at $62k AFAGI.
+                    seniorDeductionPhaseoutThreshold: 50000,
+                    seniorDeductionPhaseoutRate: 1.0
                 },
                 'Married Filing Jointly': {
                     standardDeduction: 17000,
@@ -794,7 +837,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityTreatment: 'exempt',
                     seniorDeduction: 12000,
                     seniorAge: 65,
-                    seniorDeductionPerPerson: true  // $24k total for MFJ (both spouses 65+)
+                    seniorDeductionPerPerson: true,  // $24k total for MFJ (both spouses 65+)
+                    // Age-deduction phaseout: reduced $1-for-$1 by AFAGI above
+                    // $75,000 (married combined) — $0 at $99k AFAGI for a couple.
+                    seniorDeductionPhaseoutThreshold: 75000,
+                    seniorDeductionPhaseoutRate: 1.0
                 },
                 'Married Filing Separately': {
                     standardDeduction: 8500,
@@ -810,7 +857,12 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityTreatment: 'exempt',
                     seniorDeduction: 12000,
                     seniorAge: 65,
-                    seniorDeductionPerPerson: true
+                    seniorDeductionPerPerson: true,
+                    // Married filers (joint OR separate) phase out on $75,000
+                    // of COMBINED AFAGI per VA instructions; the model only sees
+                    // this filer's income, so MFS uses the $75k threshold too.
+                    seniorDeductionPhaseoutThreshold: 75000,
+                    seniorDeductionPhaseoutRate: 1.0
                 },
             },
             2025: {
@@ -828,7 +880,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityTreatment: 'exempt',
                     seniorDeduction: 12000,
                     seniorAge: 65,
-                    seniorDeductionPerPerson: true
+                    seniorDeductionPerPerson: true,
+                    // Age-deduction phaseout: reduced $1-for-$1 by AFAGI
+                    // above $50,000 (single) — $0 at $62k AFAGI.
+                    seniorDeductionPhaseoutThreshold: 50000,
+                    seniorDeductionPhaseoutRate: 1.0
                 },
                 'Married Filing Jointly': {
                     standardDeduction: 17500,
@@ -844,7 +900,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityTreatment: 'exempt',
                     seniorDeduction: 12000,
                     seniorAge: 65,
-                    seniorDeductionPerPerson: true  // $24k total for MFJ (both spouses 65+)
+                    seniorDeductionPerPerson: true,  // $24k total for MFJ (both spouses 65+)
+                    // Age-deduction phaseout: reduced $1-for-$1 by AFAGI above
+                    // $75,000 (married combined) — $0 at $99k AFAGI for a couple.
+                    seniorDeductionPhaseoutThreshold: 75000,
+                    seniorDeductionPhaseoutRate: 1.0
                 },
                 'Married Filing Separately': {
                     standardDeduction: 8750,
@@ -860,7 +920,12 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityTreatment: 'exempt',
                     seniorDeduction: 12000,
                     seniorAge: 65,
-                    seniorDeductionPerPerson: true
+                    seniorDeductionPerPerson: true,
+                    // Married filers (joint OR separate) phase out on $75,000
+                    // of COMBINED AFAGI per VA instructions; the model only sees
+                    // this filer's income, so MFS uses the $75k threshold too.
+                    seniorDeductionPhaseoutThreshold: 75000,
+                    seniorDeductionPhaseoutRate: 1.0
                 },
             },
             2026: {
@@ -878,7 +943,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityTreatment: 'exempt',
                     seniorDeduction: 12000,
                     seniorAge: 65,
-                    seniorDeductionPerPerson: true
+                    seniorDeductionPerPerson: true,
+                    // Age-deduction phaseout: reduced $1-for-$1 by AFAGI
+                    // above $50,000 (single) — $0 at $62k AFAGI.
+                    seniorDeductionPhaseoutThreshold: 50000,
+                    seniorDeductionPhaseoutRate: 1.0
                 },
                 'Married Filing Jointly': {
                     standardDeduction: 17500,
@@ -894,7 +963,11 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityTreatment: 'exempt',
                     seniorDeduction: 12000,
                     seniorAge: 65,
-                    seniorDeductionPerPerson: true  // $24k total for MFJ (both spouses 65+)
+                    seniorDeductionPerPerson: true,  // $24k total for MFJ (both spouses 65+)
+                    // Age-deduction phaseout: reduced $1-for-$1 by AFAGI above
+                    // $75,000 (married combined) — $0 at $99k AFAGI for a couple.
+                    seniorDeductionPhaseoutThreshold: 75000,
+                    seniorDeductionPhaseoutRate: 1.0
                 },
                 'Married Filing Separately': {
                     standardDeduction: 8750,
@@ -910,7 +983,12 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                     socialSecurityTreatment: 'exempt',
                     seniorDeduction: 12000,
                     seniorAge: 65,
-                    seniorDeductionPerPerson: true
+                    seniorDeductionPerPerson: true,
+                    // Married filers (joint OR separate) phase out on $75,000
+                    // of COMBINED AFAGI per VA instructions; the model only sees
+                    // this filer's income, so MFS uses the $75k threshold too.
+                    seniorDeductionPhaseoutThreshold: 75000,
+                    seniorDeductionPhaseoutRate: 1.0
                 },
             }
         }

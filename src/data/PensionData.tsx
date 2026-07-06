@@ -206,6 +206,10 @@ export function getFERSCOLA(inflation: number, age: number): number {
   // No COLA for FERS retirees under 62
   if (age < 62) return 0;
 
+  // Federal COLAs never go negative: under deflation (negative CPI) benefits
+  // are held flat, not cut (5 U.S.C. §8462 floors the adjustment at 0).
+  if (inflation <= 0) return 0;
+
   // Full COLA if inflation under 2%
   if (inflation <= 0.02) return inflation;
 
@@ -338,10 +342,11 @@ export function getDisplayedCSRSBenefit(
  * Calculated on the anniversary of retirement.
  *
  * @param inflation Annual inflation rate (as decimal, e.g., 0.03 for 3%)
- * @returns COLA rate to apply (same as inflation)
+ * @returns COLA rate to apply (CPI, floored at 0 — federal COLAs never cut
+ *          benefits under deflation; 5 U.S.C. §8340 floors the adjustment at 0)
  */
 export function getCSRSCOLA(inflation: number): number {
-  return inflation;
+  return Math.max(0, inflation);
 }
 
 /**

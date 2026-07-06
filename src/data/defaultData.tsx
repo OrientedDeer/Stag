@@ -1,3 +1,5 @@
+import { max_year } from './TaxData';
+
 export const defaultData = {
   "version": 1,
   "taxSettings": {
@@ -7,7 +9,10 @@ export const defaultData = {
     "fedOverride": null,
     "ficaOverride": null,
     "stateOverride": null,
-    "year": 2024
+    // Derived, not pinned: the demo's Taxes-tab year tracks the current
+    // calendar year, clamped to the latest year the tax tables carry —
+    // matching TaxContext's own default. (A hardcoded 2024 went stale.)
+    "year": Math.min(new Date().getFullYear(), max_year)
   },
   "assumptions": {
     "demographics": {

@@ -1,11 +1,5 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import {
-    getCombinedMarginalRate,
-    calculateCapitalGainsTax,
-    calculateTotalFederalTax,
-} from '../../components/Objects/Taxes/TaxService';
-import * as parametersModule from '../../components/Objects/Taxes/taxService/parameters';
-import { getTaxParameters } from '../../components/Objects/Taxes/taxService/parameters';
+import { describe, it, expect } from 'vitest';
+import { getCombinedMarginalRate } from '../../components/Objects/Taxes/TaxService';
 import { TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { defaultAssumptions, AssumptionsState } from '../../components/Objects/Assumptions/AssumptionsContext';
 
@@ -86,81 +80,5 @@ describe('ISSUE 1 — FICA wage-base test uses earned income, not gross', () => 
             200000, 0, createTaxState({ filingStatus: 'Single' }), 2025, noInflationAssumptions, true,
         );
         expect(above.fica).toBeCloseTo(0.0235, 6);
-    });
-});
-
-// =====================================================================
-// ISSUE 2 — standalone calculateCapitalGainsTax must agree with the
-// canonical engine LTCG path (calculateTotalFederalTax STEP 5).
-// =====================================================================
-describe('ISSUE 2 — calculateCapitalGainsTax delegates to the engine LTCG path', () => {
-    const engineLtcg = (gains: number, ordinaryTaxable: number, ts: TaxState, year: number) => {
-        const fedParams = getTaxParameters(year, ts.filingStatus, 'federal', undefined, noInflationAssumptions)!;
-        // Reconstruct the standalone contract: ordinaryTaxable is ALREADY after the
-        // standard deduction, so feed (ordinaryTaxable + stdDed) as pre-deduction
-        // ordinary income, gains as LTCG, everything else zero.
-        return calculateTotalFederalTax(
-            ordinaryTaxable + fedParams.standardDeduction,
-            0, // SS
-            0, // STCG
-            gains, // LTCG
-            0, // preTaxDeductions
-            ts.filingStatus,
-            fedParams,
-        ).ltcgTax;
-    };
-
-    it('matches the engine for gains above the 20% threshold (was a flat-15% divergence risk)', () => {
-        const ts = createTaxState({ filingStatus: 'Single' });
-        // 2025 Single LTCG: 0% @0, 15% @48,350, 20% @533,400.
-        // Ordinary taxable 500k, 50k gains: 33,400 @15% + 16,600 @20%.
-        const standalone = calculateCapitalGainsTax(50000, 500000, ts, 2025, noInflationAssumptions);
-        const engine = engineLtcg(50000, 500000, ts, 2025);
-
-        expect(standalone).toBeCloseTo(engine, 4);
-        // And it is NOT the old flat-15% answer (50000 * 0.15 = 7500).
-        expect(standalone).not.toBeCloseTo(7500, 0);
-        expect(standalone).toBeCloseTo((33400 * 0.15) + (16600 * 0.20), 0);
-    });
-
-    it('matches the engine when gains span the 0% and 15% brackets (bracket-floor refinement)', () => {
-        const ts = createTaxState({ filingStatus: 'Single' });
-        const standalone = calculateCapitalGainsTax(20000, 40000, ts, 2025, noInflationAssumptions);
-        const engine = engineLtcg(20000, 40000, ts, 2025);
-        expect(standalone).toBeCloseTo(engine, 4);
-    });
-
-    it('matches the engine across all three LTCG brackets at once', () => {
-        const ts = createTaxState({ filingStatus: 'Married Filing Jointly' });
-        // Start ordinary low so gains stack from 0% all the way through 20%.
-        const standalone = calculateCapitalGainsTax(700000, 10000, ts, 2025, noInflationAssumptions);
-        const engine = engineLtcg(700000, 10000, ts, 2025);
-        expect(standalone).toBeCloseTo(engine, 4);
-    });
-
-    it('returns 0 for non-positive gains', () => {
-        const ts = createTaxState();
-        expect(calculateCapitalGainsTax(0, 50000, ts, 2025, noInflationAssumptions)).toBe(0);
-        expect(calculateCapitalGainsTax(-1000, 50000, ts, 2025, noInflationAssumptions)).toBe(0);
-    });
-
-    describe('missing capitalGainsBrackets fallback', () => {
-        afterEach(() => {
-            vi.restoreAllMocks();
-        });
-
-        it('mirrors the engine (no LTCG tax) instead of the old flat-15% fallback when brackets are absent', () => {
-            const ts = createTaxState({ filingStatus: 'Single' });
-            const real = getTaxParameters(2025, 'Single', 'federal', undefined, noInflationAssumptions)!;
-            // Federal params with the LTCG brackets stripped: the engine STEP 5 guard
-            // (`&& params.capitalGainsBrackets`) yields ltcgTax = 0, so the delegated
-            // standalone must also be 0 — NOT the old `gains * 0.15` = 7,500.
-            const noLtcgBrackets = { ...real, capitalGainsBrackets: undefined };
-            vi.spyOn(parametersModule, 'getTaxParameters').mockReturnValue(noLtcgBrackets);
-
-            const result = calculateCapitalGainsTax(50000, 100000, ts, 2025, noInflationAssumptions);
-            expect(result).toBe(0);
-            expect(result).not.toBeCloseTo(50000 * 0.15, 0);
-        });
     });
 });

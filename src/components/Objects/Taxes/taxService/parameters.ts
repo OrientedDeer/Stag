@@ -10,6 +10,7 @@ import {
     AssumptionsState,
     defaultAssumptions,
 } from "../../Assumptions/AssumptionsContext";
+import { getWageBase } from "../../../../data/SocialSecurityData";
 
 /** Net Investment Income Tax rate (3.8%); default when params.niitRate is unset.
  *  Mirrors NIIT_RATE in bracketTax.ts — kept in sync so calibration can scale it. */
@@ -235,9 +236,19 @@ export function getTaxParameters(
             standardDeduction: Math.round(
                 baseYearParams.standardDeduction * inflationMultiplier
             ),
-            socialSecurityWageBase: Math.round(
-                baseYearParams.socialSecurityWageBase * inflationMultiplier
-            ),
+            // FICA cap: single-sourced from the SS benefit-side data (getWageBase)
+            // so the SAME statutory cap can't resolve to two different numbers in
+            // one simulated year. The old code CPI-inflated the tax-table row,
+            // while benefit crediting stepped through SSA's published/projected
+            // rows (~4.4%/yr through 2030) — a working simulated year in 2028
+            // taxed FICA to one cap and credited SS earnings to another. States
+            // (wage base 0) stay 0 either way; getWageBase compounds beyond its
+            // last published row at the same `inflation` rate used here. (The
+            // statutory index is the Average Wage Index, which the user's
+            // inflation assumption approximates beyond published data.)
+            socialSecurityWageBase: baseYearParams.socialSecurityWageBase > 0
+                ? getWageBase(year, inflation, true)
+                : baseYearParams.socialSecurityWageBase,
             brackets: inflatedBrackets,
             capitalGainsBrackets: baseYearParams.capitalGainsBrackets?.map((bracket) => ({
                 ...bracket,

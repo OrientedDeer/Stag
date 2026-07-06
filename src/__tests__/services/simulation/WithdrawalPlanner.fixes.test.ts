@@ -48,9 +48,14 @@ function taxStateFor(stateResidency: string): TaxState {
 // not the frozen initial one.
 describe('Bug #7: state marginal rate recomputes per-iteration (not frozen)', () => {
     function buildSnapshots(): AccountBalanceSnapshot[] {
-        // Traditional: large balance so a big withdrawal lifts income across CA brackets.
+        // Traditional: balance CAPPED below the net need so the planner MUST
+        // spill into the HSA. (The original $1M balance covered the whole need;
+        // an HSA entry only appeared as a ~$0.4 float sliver, which #192's CA
+        // schedule correction erased — the test was asserting on that sliver.)
+        // Drawing the full $100k still lifts running income from $5k into CA's
+        // 9.3% bracket before the HSA is tapped, which is the point of Bug #7.
         const trad = new InvestedAccount(
-            'trad-1', 'Traditional IRA', 1000000,
+            'trad-1', 'Traditional IRA', 100000,
             0, 10, 0.07, 'Traditional IRA',
         );
         // HSA: tapped AFTER traditional; its gross-up uses the (now-higher) marginal rate.
@@ -65,8 +70,8 @@ describe('Bug #7: state marginal rate recomputes per-iteration (not frozen)', ()
         const snapshots = buildSnapshots();
 
         // Start with low income (~$5k) so the FROZEN state rate would be the 1% bracket.
-        // The large traditional withdrawal pushes running income into CA's 9.3% bracket
-        // (taxable >= 70,607) before the HSA is tapped.
+        // The full $100k traditional draw pushes running income into CA's 9.3%
+        // bracket (2025 taxable >= 72,724) before the HSA is tapped.
         const result = planWithdrawals(
             120000,           // big net need → large traditional draw, then HSA
             snapshots,

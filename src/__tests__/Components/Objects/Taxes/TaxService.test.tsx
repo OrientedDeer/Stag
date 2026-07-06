@@ -196,8 +196,13 @@ describe('TaxService: ESPP Disposition Tax', () => {
         // Loss Scenarios
         // -------------------------------------------------------------------------
         describe('Loss Scenarios', () => {
-            it('should treat loss as short-term capital loss when not held long enough', () => {
-                // Sale price below purchase price
+            it('disqualifying sale at a loss still recognizes the bargain element as ordinary income', () => {
+                // Sale price below purchase price — but a DISQUALIFYING disposition
+                // recognizes the purchase-date bargain element as ordinary income
+                // REGARDLESS of the sale price (IRC §421(b) — no gain cap, unlike a
+                // qualifying disposition). The basis steps up to fmvAtPurchase, so
+                // the capital loss deepens by the same amount. (The old oracle
+                // routed the whole thing to capital loss, encoding the bug.)
                 const result = calculateESPPDispositionTax(
                     100,    // shares
                     80,     // salePrice (below purchase)
@@ -208,7 +213,28 @@ describe('TaxService: ESPP Disposition Tax', () => {
                     false   // shortTermCG
                 );
 
-                // Total gain = (80 - 85) * 100 = -$500 (loss)
+                // Bargain element = (100 - 85) * 100 = $1,500 → ordinary income
+                // Capital loss = (80 - 100) * 100 = -$2,000 (basis stepped up to FMV)
+                // Net economic result = -$500, split per the IRS rule.
+                expect(result.ordinaryIncome).toBe(1500);
+                expect(result.shortTermCapitalGains).toBe(-2000);
+                expect(result.longTermCapitalGains).toBe(0);
+                expect(result.totalTaxableGain).toBe(-500);
+            });
+
+            it('disqualifying sale at a loss with NO purchase discount is pure capital loss', () => {
+                // fmvAtPurchase == purchasePrice → no bargain element, so the loss
+                // stays a plain capital loss (no phantom ordinary income).
+                const result = calculateESPPDispositionTax(
+                    100,    // shares
+                    80,     // salePrice (below purchase)
+                    85,     // purchasePrice
+                    85,     // fmvAtGrant
+                    85,     // fmvAtPurchase (no discount)
+                    false,  // disqualifying
+                    false   // shortTermCG
+                );
+
                 expect(result.ordinaryIncome).toBe(0);
                 expect(result.shortTermCapitalGains).toBe(-500);
                 expect(result.longTermCapitalGains).toBe(0);
@@ -636,8 +662,13 @@ describe('TaxService: Additional Functions', () => {
             expect(stateTax).toBe(3000);
         });
 
+        // #192: these VA senior-deduction pins previously used $100k incomes and
+        // encoded the WRONG numbers — VA's age deduction phases out $1-for-$1 on
+        // AFAGI above $50k single / $75k married, which the model didn't apply.
+        // The positive cases now use below-threshold incomes; explicit phaseout
+        // cases follow.
         it('should apply Virginia senior deduction for age 65+', () => {
-            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const income = new WorkIncome('w1', 'Job', 40000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
             const taxState = createTaxState({ stateResidency: 'Virginia' });
             // Assumptions with age 65 (born 1959, tax year 2024)
             const seniorAssumptions: AssumptionsState = {
@@ -645,26 +676,71 @@ describe('TaxService: Additional Functions', () => {
                 milestones: createBuiltinMilestones(1959, 1, 15)
             };
             const stateTax = calculateStateTax(taxState, [income], [], 2024, seniorAssumptions);
+            // AFAGI $40k < $50k threshold → full $12k age deduction.
             // Virginia 2024 Single: standard deduction $8,500 + senior deduction $12,000 = $20,500
-            // Taxable: 100k - 20.5k = 79.5k
-            // VA brackets: 3k@2% + 2k@3% + 12k@5% + 62.5k@5.75%
-            // = 60 + 60 + 600 + 3593.75 = 4313.75
-            expect(stateTax).toBeCloseTo(4313.75, 0);
+            // Taxable: 40k - 20.5k = 19.5k
+            // VA brackets: 3k@2% + 2k@3% + 12k@5% + 2.5k@5.75%
+            // = 60 + 60 + 600 + 143.75 = 863.75
+            expect(stateTax).toBeCloseTo(863.75, 0);
+        });
+
+        it('should phase out Virginia senior deduction $1-for-$1 above $50k AFAGI (single)', () => {
+            const income = new WorkIncome('w1', 'Job', 55000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const taxState = createTaxState({ stateResidency: 'Virginia' });
+            const seniorAssumptions: AssumptionsState = {
+                ...noInflationAssumptions,
+                milestones: createBuiltinMilestones(1959, 1, 15)
+            };
+            const stateTax = calculateStateTax(taxState, [income], [], 2024, seniorAssumptions);
+            // AFAGI $55k → deduction $12,000 − $5,000 = $7,000.
+            // Taxable: 55k - 8.5k - 7k = 39.5k
+            // = 60 + 60 + 600 + 22.5k@5.75% = 2013.75
+            expect(stateTax).toBeCloseTo(2013.75, 0);
+        });
+
+        it('should fully phase out Virginia senior deduction at high AFAGI (single)', () => {
+            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const taxState = createTaxState({ stateResidency: 'Virginia' });
+            const seniorAssumptions: AssumptionsState = {
+                ...noInflationAssumptions,
+                milestones: createBuiltinMilestones(1959, 1, 15)
+            };
+            const stateTax = calculateStateTax(taxState, [income], [], 2024, seniorAssumptions);
+            // AFAGI $100k ≥ $62k full-phaseout point → $0 age deduction (the old
+            // pinned value here, $4,313.75, assumed the full $12k applied).
+            // Taxable: 100k - 8.5k = 91.5k
+            // = 60 + 60 + 600 + 74.5k@5.75% = 5003.75
+            expect(stateTax).toBeCloseTo(5003.75, 0);
         });
 
         it('should double Virginia senior deduction for MFJ', () => {
-            const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const income = new WorkIncome('w1', 'Job', 70000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
             const taxState = createTaxState({ stateResidency: 'Virginia', filingStatus: 'Married Filing Jointly' });
             const seniorAssumptions: AssumptionsState = {
                 ...noInflationAssumptions,
                 milestones: createBuiltinMilestones(1959, 1, 15)
             };
             const stateTax = calculateStateTax(taxState, [income], [], 2024, seniorAssumptions);
+            // AFAGI $70k < $75k married threshold → full doubled deduction.
             // MFJ: standard $17,000 + senior $24,000 (2x $12k) = $41,000
-            // Taxable: 100k - 41k = 59k
-            // VA brackets: 3k@2% + 2k@3% + 12k@5% + 42k@5.75%
-            // = 60 + 60 + 600 + 2415 = 3135
-            expect(stateTax).toBeCloseTo(3135, 0);
+            // Taxable: 70k - 41k = 29k
+            // VA brackets: 3k@2% + 2k@3% + 12k@5% + 12k@5.75%
+            // = 60 + 60 + 600 + 690 = 1410
+            expect(stateTax).toBeCloseTo(1410, 0);
+        });
+
+        it('should fully phase out the doubled MFJ deduction at $99k+ AFAGI', () => {
+            const income = new WorkIncome('w1', 'Job', 120000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const taxState = createTaxState({ stateResidency: 'Virginia', filingStatus: 'Married Filing Jointly' });
+            const seniorAssumptions: AssumptionsState = {
+                ...noInflationAssumptions,
+                milestones: createBuiltinMilestones(1959, 1, 15)
+            };
+            const stateTax = calculateStateTax(taxState, [income], [], 2024, seniorAssumptions);
+            // $24,000 − ($120k − $75k) < 0 → $0 (deduction is $0 from $99k AFAGI up).
+            // Taxable: 120k - 17k = 103k
+            // = 60 + 60 + 600 + 86k@5.75% = 5665
+            expect(stateTax).toBeCloseTo(5665, 0);
         });
 
         it('should exclude Social Security from Virginia state tax', () => {
@@ -696,10 +772,27 @@ describe('TaxService: Additional Functions', () => {
             const income = new WorkIncome('w1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
             const taxState = createTaxState({ stateResidency: 'California' });
             const stateTax = calculateStateTax(taxState, [income], [], 2025, noInflationAssumptions);
-            // CA 2025 Single: standard deduction $5,540
-            // Taxable: 100k - 5.54k = 94.46k
-            // CA progressive brackets lead to ~$5,327 tax
-            expect(stateTax).toBeCloseTo(5327, 0);
+            // #192: FTB's REAL 2025 figures (the old row was CA's 2024 schedule).
+            // CA 2025 Single: standard deduction $5,706 → taxable 94,294.
+            // 11,079@1% + 15,185@2% + 15,188@4% + 16,090@6% + 15,182@8%
+            //   + 21,570@9.3% = 5,207.98
+            expect(stateTax).toBeCloseTo(5207.98, 0);
+        });
+
+        it('applies the 1% Mental Health Services Tax above $1M CA taxable income', () => {
+            const income = new WorkIncome('w1', 'Job', 2_000_000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const taxState = createTaxState({ stateResidency: 'California' });
+            const stateTax = calculateStateTax(taxState, [income], [], 2025, noInflationAssumptions);
+            // Taxable = 2,000,000 − 5,706 = 1,994,294. The layer above $1M must be
+            // taxed at 13.3% (12.3% top rate + 1% MHST) — without the MHST bracket
+            // the last 994,294 was taxed at 12.3%, undertaxing ~$9,943/yr.
+            const below1M =
+                11_079 * 0.01 + (26_264 - 11_079) * 0.02 + (41_452 - 26_264) * 0.04 +
+                (57_542 - 41_452) * 0.06 + (72_724 - 57_542) * 0.08 +
+                (371_479 - 72_724) * 0.093 + (445_771 - 371_479) * 0.103 +
+                (742_953 - 445_771) * 0.113 + (1_000_000 - 742_953) * 0.123;
+            const expected = below1M + (1_994_294 - 1_000_000) * 0.133;
+            expect(stateTax).toBeCloseTo(expected, 0);
         });
     });
 
@@ -745,19 +838,36 @@ describe('TaxService: Additional Functions', () => {
         });
 
         it('should apply Virginia senior deduction with additional income', () => {
-            const income = new WorkIncome('w1', 'Job', 50000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const income = new WorkIncome('w1', 'Job', 30000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
             const taxState = createTaxState({ stateResidency: 'Virginia' });
             const seniorAssumptions: AssumptionsState = {
                 ...noInflationAssumptions,
                 milestones: createBuiltinMilestones(1959, 1, 15)
             };
-            // $50k work + $30k withdrawal = $80k total
-            const stateTax = calculateUnifiedStateTax(taxState, [income], [], 30000, 2024, seniorAssumptions);
+            // #192: additional ordinary income (withdrawals) counts toward the
+            // phaseout AFAGI. $30k work + $15k withdrawal = $45k AFAGI < $50k
+            // threshold → full $12k deduction. (The old pin used $80k total and
+            // assumed the full deduction — wrong once the phaseout is modeled.)
+            const stateTax = calculateUnifiedStateTax(taxState, [income], [], 15000, 2024, seniorAssumptions);
             // Virginia 2024 Single: standard $8,500 + senior $12,000 = $20,500
-            // Taxable: 80k - 20.5k = 59.5k
-            // VA brackets: 3k@2% + 2k@3% + 12k@5% + 42.5k@5.75%
-            // = 60 + 60 + 600 + 2443.75 = 3163.75
-            expect(stateTax).toBeCloseTo(3163.75, 0);
+            // Taxable: 45k - 20.5k = 24.5k
+            // VA brackets: 3k@2% + 2k@3% + 12k@5% + 7.5k@5.75%
+            // = 60 + 60 + 600 + 431.25 = 1151.25
+            expect(stateTax).toBeCloseTo(1151.25, 0);
+        });
+
+        it('phases out the Virginia senior deduction when a withdrawal pushes AFAGI over $50k', () => {
+            const income = new WorkIncome('w1', 'Job', 30000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
+            const taxState = createTaxState({ stateResidency: 'Virginia' });
+            const seniorAssumptions: AssumptionsState = {
+                ...noInflationAssumptions,
+                milestones: createBuiltinMilestones(1959, 1, 15)
+            };
+            // $30k work + $28k withdrawal = $58k AFAGI → deduction $12k − $8k = $4k.
+            const stateTax = calculateUnifiedStateTax(taxState, [income], [], 28000, 2024, seniorAssumptions);
+            // Taxable: 58k - 8.5k - 4k = 45.5k
+            // = 60 + 60 + 600 + 28.5k@5.75% = 2358.75
+            expect(stateTax).toBeCloseTo(2358.75, 0);
         });
     });
 

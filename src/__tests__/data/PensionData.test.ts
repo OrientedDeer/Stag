@@ -120,6 +120,12 @@ describe('PensionData', () => {
       expect(getFERSCOLA(0.04, 65)).toBe(0.03);
       expect(getFERSCOLA(0.05, 65)).toBe(0.04);
     });
+
+    it('floors at 0 under deflation (federal COLAs never cut benefits) (#192)', () => {
+      expect(getFERSCOLA(-0.01, 65)).toBe(0);
+      expect(getFERSCOLA(-0.05, 70)).toBe(0);
+      expect(getFERSCOLA(0, 65)).toBe(0);
+    });
   });
 
   describe('calculateCSRSBasicBenefit', () => {
@@ -186,6 +192,11 @@ describe('PensionData', () => {
     it('should return full inflation rate', () => {
       expect(getCSRSCOLA(0.03)).toBe(0.03);
       expect(getCSRSCOLA(0.05)).toBe(0.05);
+    });
+
+    it('floors at 0 under deflation (federal COLAs never cut benefits) (#192)', () => {
+      expect(getCSRSCOLA(-0.02)).toBe(0);
+      expect(getCSRSCOLA(0)).toBe(0);
     });
   });
 

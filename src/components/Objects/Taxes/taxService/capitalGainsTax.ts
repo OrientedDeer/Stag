@@ -1,8 +1,4 @@
-import { TaxState } from "../TaxContext";
-import { AssumptionsState } from "../../Assumptions/AssumptionsContext";
-import { getTaxParameters } from "./parameters";
 import { TaxParameters } from "../../../../data/TaxData";
-import { calculateTotalFederalTax } from "./bracketTax";
 
 /**
  * Get the long-term capital gains rate that applies at a given ordinary income
@@ -29,54 +25,10 @@ export function getLTCGRate(ordinaryIncome: number, fedParams: TaxParameters | n
     return brackets[0]?.rate ?? 0;
 }
 
-/**
- * Calculate capital gains tax on long-term gains.
- * Capital gains are taxed based on your total taxable income bracket.
- * The gains "stack on top" of ordinary income to determine the applicable rate.
- *
- * Delegates to the canonical engine LTCG path (calculateTotalFederalTax STEP 5) so
- * there is a single source of truth for 0/15/20% LTCG stacking — including the
- * bracket-floor refinement and the >20% bracket — rather than re-implementing the
- * walk here, where it had drifted from the engine and fell back to a flat 15%.
- *
- * The engine takes ordinary income BEFORE the standard deduction, whereas this
- * function's contract receives ordinaryTaxableIncome already net of deductions.
- * We add the standard deduction back so the engine reconstructs exactly that taxable
- * ordinary figure (adjustedOrdinary - standardDeduction === ordinaryTaxableIncome)
- * with zero leftover deduction, matching this function's post-deduction contract.
- *
- * @param gains - Amount of long-term capital gains
- * @param ordinaryTaxableIncome - Taxable income from ordinary sources (after deductions)
- * @param taxState - Filing status and other tax state
- * @param year - Tax year
- * @param assumptions - Assumptions for inflation adjustments
- * @returns The tax owed on the capital gains (LTCG component only; NIIT is a separate tax)
- */
-export function calculateCapitalGainsTax(
-    gains: number,
-    ordinaryTaxableIncome: number,
-    taxState: TaxState,
-    year: number,
-    assumptions?: AssumptionsState,
-): number {
-    if (gains <= 0) return 0;
-
-    const fedParams = getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
-    // Federal params resolve for every filing status; $0 LTCG tax would be a
-    // silent distortion, so crash loudly instead (matches YearSolver).
-    if (!fedParams) {
-        throw new Error(`No federal tax parameters for year ${year}`);
-    }
-
-    const ordinaryBeforeDeduction = Math.max(0, ordinaryTaxableIncome) + fedParams.standardDeduction;
-
-    return calculateTotalFederalTax(
-        ordinaryBeforeDeduction,
-        0, // socialSecurityBenefits
-        0, // shortTermCapitalGains
-        gains, // longTermCapitalGains
-        0, // preTaxDeductions
-        taxState.filingStatus,
-        fedParams,
-    ).ltcgTax;
-}
+// NOTE: a standalone `calculateCapitalGainsTax(gains, postDeductionOrdinary, …)`
+// helper used to live here. It had zero production callers, and its
+// post-deduction contract structurally forfeited the unused-deduction LTCG
+// offset for any future caller (the engine path in calculateTotalFederalTax
+// STEP 5 applies leftover deduction to LTCG; this wrapper reconstructed the
+// inputs so no deduction could ever be left over). Deleted — call
+// calculateTotalFederalTax with PRE-deduction ordinary income instead.

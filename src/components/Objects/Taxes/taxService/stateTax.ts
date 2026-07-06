@@ -73,7 +73,17 @@ function computeStateTaxFromGross(
     // (assumes both spouses meet the age threshold). Shared with federalTax.ts's
     // regular 65+ add-on via seniorAdditionalDeduction so the rule lives in one
     // place.
-    const seniorDeductionAmount = seniorAdditionalDeduction(stateParams, state.filingStatus, age);
+    //
+    // AFAGI proxy for income-based phaseouts (Virginia: the $12k age deduction is
+    // reduced $1-for-$1 by AFAGI above $50k single / $75k married). VA's AFAGI is
+    // federal AGI minus taxable Social Security — `adjustedGross` already has the
+    // state's SS treatment applied (VA is 'exempt', so SS is fully removed), and
+    // above-the-line deductions come off federal AGI, so subtract those too.
+    // States without phaseout fields ignore the argument entirely.
+    const afagiProxy = Math.max(0, adjustedGross - totalPreTaxDeductions);
+    const seniorDeductionAmount = seniorAdditionalDeduction(
+        stateParams, state.filingStatus, age, afagiProxy,
+    );
 
     const itemizedTotal = getItemizedDeductions(expenses, year);
     const stateStandardDeduction = (stateParams.standardDeduction || 0) + seniorDeductionAmount;
