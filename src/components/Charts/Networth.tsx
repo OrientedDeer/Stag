@@ -84,10 +84,16 @@ export const NetWorthCard = () => {
                     // FIX: Apply the current "Vested Ratio" to historical data.
                     // This ensures the chart tracks "Vested Net Worth" roughly over time
                     // and converges with the Big Number at the end.
-                    const currentTotal = acc.amount || 1; 
+                    // When the account is currently empty (e.g. a 401k rolled out to an
+                    // IRA), there's no vested ratio to apply — treat it as fully vested
+                    // (ratio 1) so past snapshots survive. `amount || 1` would make the
+                    // ratio 0/1 = 0 and erase this account's entire history from the line.
+                    const currentTotal = acc.amount;
                     const currentVested = acc.vestedAmount;
-                    const vestedRatio = Math.max(0, Math.min(1, currentVested / currentTotal));
-                    
+                    const vestedRatio = currentTotal > 0
+                        ? Math.max(0, Math.min(1, currentVested / currentTotal))
+                        : 1;
+
                     historicalNetWorth += (assetValue * vestedRatio);
                 } else {
                     historicalNetWorth += assetValue;
@@ -174,7 +180,7 @@ export const NetWorthCard = () => {
                             crosshair: { line: { stroke: 'var(--color-chart-money)', strokeWidth: 1 } },
                             tooltip: { container: { color: '#000', zIndex: 9999 } }
                         }}
-                        tooltip={({ point }: any) => (
+                        tooltip={({ point }: { point: { data: { xFormatted: string; y: number } } }) => (
                             <div className="bg-surface-overlay border border-border-default p-2 rounded shadow-xl text-xs whitespace-nowrap">
                                 <span className="text-content-muted">{point.data.xFormatted}: </span>
                                 <span className="text-positive font-bold">${point.data.y.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>

@@ -10,7 +10,7 @@ const MIN_CHART_WIDTH = 300;
 // --- Types ---
 export interface DebtStreamData {
   year: number;
-  [key: string]: any; // Dynamic keys for asset names
+  [key: string]: number; // year + dynamic per-loan balances (all numeric)
 }
 
 interface DebtStreamChartProps {
@@ -111,8 +111,10 @@ export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
   };
 
   // 1. Smart Tooltip Logic
-  const CustomTooltip = ({ index }: any) => {
-    const yearData = trimmedData[index];
+  // @nivo/stream hands the stack tooltip a `slice` (with `.index`), not `{ index }`
+  // like the point tooltip — mirror AssetsStreamChart's stackTooltip wiring.
+  const CustomTooltip = ({ slice }: { slice: { index: number } }) => {
+    const yearData = trimmedData[slice.index];
     if (!yearData) return null;
 
     const total = keys.reduce((sum, key) => sum + (Number(yearData[key]) || 0), 0);
@@ -236,8 +238,11 @@ export const DebtStreamChart: React.FC<DebtStreamChartProps> = ({
           enableGridY={true}
           animate={true}
           
-          // The Custom Tooltip
-          tooltip={CustomTooltip}
+          // The Custom Tooltip — stream exposes the whole-slice tooltip via
+          // stackTooltip; the per-layer `tooltip` is silenced.
+          enableStackTooltip={true}
+          stackTooltip={CustomTooltip}
+          tooltip={() => null}
         /></ChartFrame>
       </div>
 
