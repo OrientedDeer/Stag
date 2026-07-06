@@ -143,13 +143,22 @@ export function getRMDDivisor(age: number): number {
  * Get the ACA subsidy cliff threshold (400% FPL) for a given year and filing status.
  * Values should be updated annually when FPL is published (typically January).
  *
+ * For years beyond the latest published FPL, the threshold is projected forward by
+ * the plan's macro inflation rate (mirroring getTaxParameters / the IRMAA schedule),
+ * BUT ONLY when `assumptions` is supplied. Without it the last known nominal value is
+ * held flat (backward-compatible). Freezing the cliff at its 2026 nominal value while
+ * every other bracket inflates caused systematic under-conversion in the late pre-65
+ * years of long horizons (#185).
+ *
  * @param filingStatus - 'single' or 'married_filing_jointly'
  * @param year - The tax year
+ * @param assumptions - Optional plan assumptions; enables forward inflation of the FPL
  * @returns The income threshold where ACA subsidies phase out completely
  */
 export function getAcaCliffThreshold(
     filingStatus: 'single' | 'married_filing_jointly',
-    year: number
+    year: number,
+    assumptions?: AssumptionsState
 ): number {
     // Base FPL values by year (update annually when published)
     // 400% FPL = threshold where ACA subsidies phase out completely
@@ -166,8 +175,18 @@ export function getAcaCliffThreshold(
 
     const baseFPL = filingStatus === 'single' ? fpl.single : fpl.couple;
 
+    // Forward-only inflation for years past the latest published table, mirroring the
+    // IRMAA schedule (inflationMultiplier): index up by the macro inflation rate; snap
+    // to the table verbatim within/before it (no deflation).
+    let multiplier = 1;
+    if (assumptions && assumptions.macro.inflationAdjusted && year > useYear) {
+        let rate = assumptions.macro.inflationRate / 100;
+        if (!Number.isFinite(rate)) rate = 0;
+        multiplier = Math.pow(1 + rate, year - useYear);
+    }
+
     // 400% FPL is the cliff
-    return baseFPL * 4;
+    return baseFPL * 4 * multiplier;
 }
 
 /**
@@ -313,7 +332,13 @@ export function coarseToFineSearch(
     // Special case: Check ACA cliff threshold specifically since coarse step might jump over it
     // The cliff creates a rate spike at exactly the crossing point
     if (acaOptions && acaOptions.acaSubsidyAware && acaOptions.currentAge < 65) {
-        const cliffConversion = Math.max(0, acaOptions.acaCliffThreshold - currentAGI);
+        // ACA MAGI = non-SS ordinary income + 100% of SS benefits + LTCG (mirroring
+        // calculateEffectiveConversionTax's magiBefore). The cliff is crossed when a
+        // conversion pushes THAT total to the threshold, so size the probe against the
+        // full MAGI base — not currentAGI alone, which omits SS + LTCG and placed the
+        // probe well past the real crossing (#185).
+        const currentAcaMagi = currentAGI + socialSecurity + ltcgIncome;
+        const cliffConversion = Math.max(0, acaOptions.acaCliffThreshold - currentAcaMagi);
         if (cliffConversion > 0 && cliffConversion <= maxAmount) {
             // Check rate just before and at the cliff
             const rateBeforeCliff = getEffectiveConversionRate(
@@ -325,7 +350,8 @@ export function coarseToFineSearch(
                 taxState,
                 year,
                 stateParams,
-                acaOptions
+                acaOptions,
+                irmaaOptions
             );
             if (rateBeforeCliff > targetRate) {
                 // Already over target before cliff
@@ -344,7 +370,8 @@ export function coarseToFineSearch(
                     taxState,
                     year,
                     stateParams,
-                    acaOptions
+                    acaOptions,
+                    irmaaOptions
                 );
                 // The cliff causes a massive spike at exactly cliffConversion - 1
                 // (because converting $1 more would cross the cliff)
@@ -446,8 +473,46 @@ export function coarseToFineSearch(
     }
 
     if (!edgeFound) {
-        // Never exceeded target rate - can convert everything
-        return { amount: maxAmount, converged: true, edgeType: null };
+        // The coarse loop samples 0, coarseStep, 2·coarseStep, … but stops at the
+        // largest multiple ≤ maxAmount. When maxAmount isn't on that grid (e.g. the
+        // Traditional balance or an IRMAA cap lands mid-step) the final partial window
+        // between the last sample and maxAmount is never rate-tested — up to ~coarseStep
+        // could convert past the target rate. Probe maxAmount off-grid; if it's still
+        // under target the whole balance is fine, otherwise binary-search that tail (#185).
+        const rateAtMax = getEffectiveConversionRate(
+            maxAmount,
+            currentAGI,
+            ltcgIncome,
+            socialSecurity,
+            taxParams,
+            taxState,
+            year,
+            stateParams,
+            acaOptions,
+            irmaaOptions
+        );
+        if (rateAtMax <= targetRate + SEARCH_CONFIG.epsilon) {
+            // Never exceeded target rate - can convert everything
+            return { amount: maxAmount, converged: true, edgeType: null };
+        }
+        // Edge lies in the final partial window below maxAmount.
+        edgeFound = true;
+        edgeLow = Math.floor(maxAmount / SEARCH_CONFIG.coarseStep) * SEARCH_CONFIG.coarseStep;
+        edgeHigh = maxAmount;
+        const rateBefore = getEffectiveConversionRate(
+            edgeLow,
+            currentAGI,
+            ltcgIncome,
+            socialSecurity,
+            taxParams,
+            taxState,
+            year,
+            stateParams,
+            acaOptions,
+            irmaaOptions
+        );
+        const rateJump = rateAtMax - rateBefore;
+        edgeType = rateJump > 0.25 ? 'SS_TORPEDO' : rateJump > 0.12 ? 'LTCG_BUMP' : 'BRACKET_EDGE';
     }
 
     // PHASE 2: Fine binary search within the identified window

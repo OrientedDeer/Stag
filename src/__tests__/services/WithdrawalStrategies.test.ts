@@ -539,5 +539,17 @@ describe('Withdrawal Strategies', () => {
       expect(a.targetAdjustment).toBeCloseTo(20000, 5);
       expect(a.ratio).toBeCloseTo(0.5, 5);
     });
+
+    it('boost with $0 discretionary applies nothing (no phantom adjustment) (#185)', () => {
+      // With no discretionary spending, ratio stays 1 and nothing actually moves —
+      // the boost has nowhere to land. appliedAdjustment must therefore be 0, not the
+      // full target: gkRateSuggestion backs actualAdjustment out of plannedSpending, so
+      // a phantom boost would understate the suggested/auto GK rate (~10% low).
+      const a = computeGKDiscretionaryAdjustment({ guardrailTriggered: 'prosperity', totalSpending: 100000, discretionary: 0 });
+      expect(a.targetAdjustment).toBeCloseTo(10000, 5); // still reports the intended target
+      expect(a.appliedAdjustment).toBe(0);              // but nothing was actually applied
+      expect(a.ratio).toBe(1);
+      expect(a.failed).toBe(false);
+    });
   });
 });

@@ -377,7 +377,14 @@ export function computeGKDiscretionaryAdjustment(params: {
 
   const targetAdjustment = (adjustmentPercent / 100) * totalSpending;
   const isCut = guardrailTriggered === 'capital-preservation';
-  const appliedAdjustment = isCut ? Math.min(targetAdjustment, discretionary) : targetAdjustment;
+  // With $0 discretionary, `ratio` below stays 1 and nothing actually moves — the boost
+  // is a scaling of discretionary expenses that don't exist. Report appliedAdjustment = 0
+  // in that corner so gkRateSuggestion doesn't back a phantom boost out of plannedSpending
+  // and understate the suggested/auto GK rate (~10% low). A cut is already 0 here via the
+  // min(), so this only changes the empty-discretionary boost case (#185).
+  const appliedAdjustment = discretionary > 0
+    ? (isCut ? Math.min(targetAdjustment, discretionary) : targetAdjustment)
+    : 0;
   const shortfall = isCut ? targetAdjustment - appliedAdjustment : 0;
   const failed = shortfall > 0.5;
   const newDiscretionary = isCut ? discretionary - appliedAdjustment : discretionary + appliedAdjustment;

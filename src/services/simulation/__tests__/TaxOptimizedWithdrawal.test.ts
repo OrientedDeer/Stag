@@ -67,6 +67,46 @@ describe('getAcaCliffThreshold', () => {
         });
     });
 
+    // #185: the cliff must inflate forward past the last published FPL, not freeze at
+    // the 2026 nominal value while every other bracket inflates.
+    describe('Future Years — inflation-indexed when assumptions supplied', () => {
+        const inflAssumptions: AssumptionsState = {
+            ...defaultAssumptions,
+            milestones: createBuiltinMilestones(1990, 65, 90),
+            macro: { ...defaultAssumptions.macro, inflationAdjusted: true, inflationRate: 3 },
+        };
+
+        it('inflates the single cliff for years beyond the table', () => {
+            // 2030 is 4 years past the 2026 base → 64,400 × 1.03^4 ≈ 72,480
+            const expected = 64_400 * Math.pow(1.03, 4);
+            expect(getAcaCliffThreshold('single', 2030, inflAssumptions)).toBeCloseTo(expected, 2);
+            // Must be strictly higher than the frozen value (the bug held it at 64,400).
+            expect(getAcaCliffThreshold('single', 2030, inflAssumptions)).toBeGreaterThan(64_400);
+        });
+
+        it('inflates the MFJ cliff for years beyond the table', () => {
+            const expected = 87_000 * Math.pow(1.03, 4);
+            expect(getAcaCliffThreshold('married_filing_jointly', 2030, inflAssumptions)).toBeCloseTo(expected, 2);
+        });
+
+        it('snaps to the table verbatim within/before it (no deflation)', () => {
+            expect(getAcaCliffThreshold('single', 2026, inflAssumptions)).toBe(64_400);
+            expect(getAcaCliffThreshold('single', 2024, inflAssumptions)).toBe(60_240);
+        });
+
+        it('holds flat when inflation adjustment is disabled', () => {
+            const noInfl: AssumptionsState = {
+                ...inflAssumptions,
+                macro: { ...inflAssumptions.macro, inflationAdjusted: false },
+            };
+            expect(getAcaCliffThreshold('single', 2030, noInfl)).toBe(64_400);
+        });
+
+        it('stays frozen (backward-compatible) when no assumptions passed', () => {
+            expect(getAcaCliffThreshold('single', 2030)).toBe(64_400);
+        });
+    });
+
     describe('Past Years (Uses Earliest Known)', () => {
         it('returns 60240 for single, year 2023 (uses 2024 values)', () => {
             expect(getAcaCliffThreshold('single', 2023)).toBe(60_240);
@@ -484,6 +524,80 @@ describe('coarseToFineSearch', () => {
             );
 
             expect(result.amount).toBeLessThanOrEqual(SEARCH_CONFIG.maxConversionCap);
+        });
+    });
+
+    // #185: the coarse loop stops at the largest $5k multiple ≤ maxAmount, so when
+    // maxAmount (the balance / an IRMAA cap) is off-grid the final partial window is
+    // never rate-tested and up to ~$5k converts past the target rate.
+    describe('rate-tests the final partial window below maxAmount', () => {
+        it('does not convert past the bracket edge when maxAmount is off-grid', () => {
+            const taxParams = getSingleParams();
+            // Single 2024: std ded 14,600. currentAGI 30,000 → taxable 15,400 (12%).
+            // 12%→22% edge at taxable 47,150 → conversion 31,750.
+            // Balance 33,000 is off the $5k grid: coarse samples 0…30,000 (all ≤ edge),
+            // next sample 35,000 > 33,000 so no edge is found; the old code returned
+            // the full 33,000, converting ~$1,250 into the 22% bracket past a 12% target.
+            const result = coarseToFineSearch(
+                0.12,        // targetRate — stay in 12%
+                33_000,      // traditionalBalance (off-grid maxAmount)
+                30_000,      // currentAGI
+                0,
+                0,
+                taxParams,
+                singleTaxState,
+                year,
+                null,        // no state tax (federal-only rate)
+                undefined
+            );
+
+            // Must stop at/below the 12%→22% edge (~31,750), NOT the full 33,000.
+            expect(result.amount).toBeLessThan(32_500);
+            expect(result.amount).toBeGreaterThan(31_000);
+            // And the returned amount stays at or below target.
+            const rateAtResult = getEffectiveConversionRate(
+                result.amount, 30_000, 0, 0, taxParams, singleTaxState, year, null, undefined
+            );
+            expect(rateAtResult).toBeLessThanOrEqual(0.12 + SEARCH_CONFIG.epsilon);
+        });
+    });
+
+    // #185: the ACA-cliff probe sized the crossing off currentAGI alone, omitting the
+    // gross SS + LTCG that the real ACA MAGI includes. LTCG (no SS torpedo) with a high
+    // target isolates the probe — the ACA cliff is then the only edge, so the search's
+    // result is exactly the probe's cliff-crossing point.
+    describe('ACA cliff probe uses the full MAGI base (currentAGI + SS + LTCG)', () => {
+        it('sizes the crossing off the full MAGI base, not currentAGI alone', () => {
+            const taxParams = getSingleParams();
+            const currentAGI = 20_000;   // non-SS ordinary income
+            const socialSecurity = 0;    // no SS torpedo
+            const ltcg = 25_000;         // part of ACA MAGI, omitted by the old probe
+            const acaCliffThreshold = 60_000;
+            // Real ACA MAGI before = 20k + 0 + 25k = 45k → cliff crossing at +$15,000.
+            // The old currentAGI-only probe put the crossing at 60k − 20k = $40,000.
+            const acaOptions = {
+                currentAge: 60,
+                acaSubsidyAware: true,
+                acaCliffThreshold,
+                estimatedSubsidyLoss: 12_000,
+            };
+            const result = coarseToFineSearch(
+                0.35,        // high target — no federal/LTCG edge in range, cliff is the only one
+                100_000,     // plenty of balance
+                currentAGI,
+                socialSecurity,
+                ltcg,
+                taxParams,
+                singleTaxState,
+                year,
+                null,
+                acaOptions
+            );
+
+            // Must cap just below the real cliff (+$15,000), not the currentAGI-only
+            // $40,000 the buggy probe allowed.
+            expect(result.amount).toBeLessThan(15_000);
+            expect(result.amount).toBeGreaterThan(14_000);
         });
     });
 });
