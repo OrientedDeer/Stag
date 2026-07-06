@@ -25,7 +25,13 @@ import { AnyIncome, reconstituteIncome } from '../Income/models';
 import { AnyExpense, reconstituteExpense } from '../Expense/models';
 import { linkOrphanLoanExpenses } from '../../../services/simulation/linkOrphanLoanExpenses';
 import { runJointSearchEphemeral } from '../../../services/jointSearchRunner';
-import { AssumptionsState, defaultAssumptions } from '../Assumptions/AssumptionsContext';
+import {
+    AssumptionsState,
+    defaultAssumptions,
+    migrateAssumptions,
+    getBirthYear,
+    getLifeExpectancy,
+} from '../Assumptions/AssumptionsContext';
 import { TaxState } from '../Taxes/TaxContext';
 import { AmountHistoryEntry } from '../Accounts/AccountContext';
 
@@ -412,36 +418,24 @@ export const ScenarioProvider = ({ children }: { children: ReactNode }) => {
         // not-yet-wired path tracked in #136.)
         const { accounts } = linkOrphanLoanExpenses(reconstitutedAccounts, expenses);
 
-        // Merge assumptions with defaults
-        const assumptions: AssumptionsState = {
-            ...defaultAssumptions,
-            ...inputs.assumptions,
-            macro: { ...defaultAssumptions.macro, ...(inputs.assumptions?.macro || {}) },
-            income: { ...defaultAssumptions.income, ...(inputs.assumptions?.income || {}) },
-            expenses: { ...defaultAssumptions.expenses, ...(inputs.assumptions?.expenses || {}) },
-            investments: {
-                ...defaultAssumptions.investments,
-                ...(inputs.assumptions?.investments || {}),
-                returnRates: {
-                    ...defaultAssumptions.investments.returnRates,
-                    ...((inputs.assumptions?.investments && inputs.assumptions.investments.returnRates) || {}),
-                },
-                // Pre-withdrawalRateMode scenario blobs: same inference as
-                // migrateAssumptions — a customized GK rate was deliberate, so
-                // it runs manual; the default rate gets the auto default.
-                withdrawalRateMode:
-                    inputs.assumptions?.investments?.withdrawalRateMode
-                    ?? (typeof inputs.assumptions?.investments?.withdrawalRate === 'number'
-                        && inputs.assumptions.investments.withdrawalRate !== defaultAssumptions.investments.withdrawalRate
-                        ? 'manual'
-                        : defaultAssumptions.investments.withdrawalRateMode),
-            },
-            demographics: { ...defaultAssumptions.demographics, ...(inputs.assumptions?.demographics || {}) },
-            priorities: inputs.assumptions?.priorities || defaultAssumptions.priorities
-        };
+        // Merge assumptions with defaults through the SHARED migrateAssumptions
+        // (the same reconstitution boundary localStorage/file/QR import use) so a
+        // saved scenario blob can't silently skip a future migration. This
+        // subsumes the old hand-rolled merge — including the withdrawalRateMode
+        // inference (c111a90) and the demographics.priorEarnings carve-out that a
+        // naive section-merge would drop — and normalizes/synthesizes the built-in
+        // Birth/Retire/End-of-Plan milestones we need to size the horizon below.
+        const assumptions: AssumptionsState = migrateAssumptions(inputs.assumptions, defaultAssumptions);
 
-        // Run simulation (use 50 years to ensure full lifetime coverage)
-        const yearsToRun = 50;
+        // Size the run from the SCENARIO'S OWN horizon, not a hardcoded 50. The
+        // Current Plan simulates lifeExpectancy − currentAge years (54 on the
+        // default demo data), so a fixed 50 left the scenario's tail short and
+        // compareScenarios back-filled the missing years with `?? 0` — a fake
+        // $0-net-worth collapse in the final plan years. Derive it exactly as
+        // buildProjection does.
+        const currentYear = new Date().getFullYear();
+        const currentAge = currentYear - getBirthYear(assumptions.milestones);
+        const yearsToRun = Math.max(1, getLifeExpectancy(assumptions.milestones) - currentAge);
         const effectiveTaxState = inputs.taxSettings || taxState;
         let simulation: SimulationYear[];
         if (!assumptions.investments.taxOptimizationEnabled) {
