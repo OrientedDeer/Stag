@@ -65,7 +65,10 @@ export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, i
                                     value={entry.date}
                                     onChange={(e) => dispatch({
                                         type: 'UPDATE_HISTORY_ENTRY',
-                                        payload: { ...entry, id: accountId, index, date: e.target.value, num: entry.num }
+                                        // prevDate/prevNum pin the edit to THIS row's entry: the
+                                        // reducer re-sorts on date change, so a bare index can drift
+                                        // off the intended entry between dispatches.
+                                        payload: { id: accountId, index, prevDate: entry.date, prevNum: entry.num, date: e.target.value, num: entry.num }
                                     })}
                                     className="bg-surface-raised border border-border-default rounded px-2 py-1.5 text-xs text-white w-full outline-none focus:border-accent-soft"
                                 />
@@ -76,12 +79,12 @@ export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, i
                                     value={entry.num}
                                     onChange={(val) => dispatch({
                                         type: 'UPDATE_HISTORY_ENTRY',
-                                        payload: { ...entry, id: accountId, index, date: entry.date, num: val }
+                                        payload: { id: accountId, index, prevDate: entry.date, prevNum: entry.num, date: entry.date, num: val }
                                     })}
                                 />
                             </div>
                             <button
-                                onClick={() => dispatch({ type: 'DELETE_HISTORY_ENTRY', payload: { id: accountId, index }})}
+                                onClick={() => dispatch({ type: 'DELETE_HISTORY_ENTRY', payload: { id: accountId, index, prevDate: entry.date, prevNum: entry.num }})}
                                 className={`p-1 rounded-full text-negative hover:text-negative-bright transition-colors ${!canDeleteEntry ? 'opacity-30 cursor-not-allowed' : ''}`}
                                 disabled={!canDeleteEntry}
                                 title={!canDeleteEntry ? 'Cannot delete the only entry' : 'Delete entry'}

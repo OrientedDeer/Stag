@@ -609,6 +609,105 @@ describe('AccountContext', () => {
         expect(amountHistory['1'].map((e: any) => e.date)).toEqual(['2024-01-01', MOCK_DATE]);
       });
 
+      it('targets the entry by its pre-edit value, not a stale index, after a re-sort (#182)', () => {
+        let amountHistory!: any;
+        let dispatch!: any;
+
+        const TestComponent = () => {
+          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
+          return null;
+        };
+
+        render(
+          <AccountProvider>
+            <TestComponent />
+          </AccountProvider>
+        );
+
+        const account = new SavedAccount('1', 'Savings', 1000);
+        act(() => {
+          dispatch({ type: 'ADD_ACCOUNT', payload: account }); // seeds 2024-01-15 / 1000
+        });
+        act(() => {
+          dispatch({ type: 'ADD_HISTORY_ENTRY', payload: { id: '1', date: '2024-02-01', num: 2000 } });
+        });
+        act(() => {
+          dispatch({ type: 'ADD_HISTORY_ENTRY', payload: { id: '1', date: '2024-03-01', num: 3000 } });
+        });
+        // sorted: [2024-01-15/1000, 2024-02-01/2000, 2024-03-01/3000] (indices 0,1,2)
+
+        // Edit the index-2 entry's date to the earliest — this re-sorts it to index 0.
+        act(() => {
+          dispatch({
+            type: 'UPDATE_HISTORY_ENTRY',
+            payload: { id: '1', index: 2, prevDate: '2024-03-01', prevNum: 3000, date: '2024-01-01', num: 3000 },
+          });
+        });
+        // sorted now: [2024-01-01/3000, 2024-01-15/1000, 2024-02-01/2000]
+
+        // A second edit of that SAME entry arrives with a STALE index (2, from the
+        // pre-sort render) but the entry's current identity (prevDate/prevNum). It
+        // must hit the 2024-01-01 entry, not whatever now sits at index 2.
+        act(() => {
+          dispatch({
+            type: 'UPDATE_HISTORY_ENTRY',
+            payload: { id: '1', index: 2, prevDate: '2024-01-01', prevNum: 3000, date: '2024-01-01', num: 9999 },
+          });
+        });
+
+        const byDate = Object.fromEntries(amountHistory['1'].map((e: any) => [e.date, e.num]));
+        expect(byDate['2024-01-01']).toBe(9999); // the intended entry
+        expect(byDate['2024-02-01']).toBe(2000); // untouched (the stale index pointed here)
+      });
+
+      it('deletes the entry by its value, not a stale index, after a re-sort (#182)', () => {
+        let amountHistory!: any;
+        let dispatch!: any;
+
+        const TestComponent = () => {
+          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
+          return null;
+        };
+
+        render(
+          <AccountProvider>
+            <TestComponent />
+          </AccountProvider>
+        );
+
+        const account = new SavedAccount('1', 'Savings', 1000);
+        act(() => {
+          dispatch({ type: 'ADD_ACCOUNT', payload: account }); // 2024-01-15 / 1000
+        });
+        act(() => {
+          dispatch({ type: 'ADD_HISTORY_ENTRY', payload: { id: '1', date: '2024-02-01', num: 2000 } });
+        });
+        act(() => {
+          dispatch({ type: 'ADD_HISTORY_ENTRY', payload: { id: '1', date: '2024-03-01', num: 3000 } });
+        });
+        // Move the index-2 entry to the front.
+        act(() => {
+          dispatch({
+            type: 'UPDATE_HISTORY_ENTRY',
+            payload: { id: '1', index: 2, prevDate: '2024-03-01', prevNum: 3000, date: '2024-01-01', num: 3000 },
+          });
+        });
+        // sorted: [2024-01-01/3000, 2024-01-15/1000, 2024-02-01/2000]
+
+        // Delete that same 2024-01-01 entry using a stale index (2) + identity.
+        act(() => {
+          dispatch({
+            type: 'DELETE_HISTORY_ENTRY',
+            payload: { id: '1', index: 2, prevDate: '2024-01-01', prevNum: 3000 },
+          });
+        });
+
+        const dates = amountHistory['1'].map((e: any) => e.date);
+        expect(dates).not.toContain('2024-01-01'); // the intended entry is gone
+        expect(dates).toContain('2024-02-01'); // the stale-index target survives
+        expect(amountHistory['1']).toHaveLength(2);
+      });
+
       it('should not update if index does not exist', () => {
         let amountHistory!: any;
         let dispatch!: any;

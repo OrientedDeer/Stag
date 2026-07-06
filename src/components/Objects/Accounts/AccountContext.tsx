@@ -25,8 +25,8 @@ type Action =
   | { type: 'UPDATE_ACCOUNT_FIELD'; payload: { id: string; field: AllAccountKeys; value: unknown } }
   | { type: 'ADD_AMOUNT_SNAPSHOT'; payload: { id: string; amount: number } }
   | { type: 'REORDER_ACCOUNTS'; payload: { startIndex: number; endIndex: number } }
-  | { type: 'UPDATE_HISTORY_ENTRY'; payload: { id: string; index: number; date: string; num: number } }
-  | { type: 'DELETE_HISTORY_ENTRY'; payload: { id: string; index: number } }
+  | { type: 'UPDATE_HISTORY_ENTRY'; payload: { id: string; index: number; date: string; num: number; prevDate?: string; prevNum?: number } }
+  | { type: 'DELETE_HISTORY_ENTRY'; payload: { id: string; index: number; prevDate?: string; prevNum?: number } }
   | { type: 'ADD_HISTORY_ENTRY'; payload: { id: string; date: string; num: number } }
   | { type: 'SET_BULK_DATA'; payload: { accounts: AnyAccount[]; amountHistory: Record<string, AmountHistoryEntry[]> } };
 
@@ -40,6 +40,24 @@ function getTodayString(): string {
   // the evening of a negative-offset timezone gets stamped with tomorrow's date
   // and lands in the wrong month for the budget's historicBalance lookups.
   return formatDateForInput(new Date());
+}
+
+// Resolve which amountHistory entry an index-based edit/delete really means.
+// The reducer re-sorts amountHistory by date, so an index captured by an earlier
+// modal render can drift off its entry once a date edit reorders the list. When
+// the caller supplies the entry's pre-edit value (prevDate/prevNum), prefer that
+// identity: use the index only if it still points at that value, otherwise search
+// for it. Falls back to the raw index when no identity is supplied.
+function resolveHistoryTarget(
+  history: AmountHistoryEntry[],
+  index: number,
+  prevDate?: string,
+  prevNum?: number,
+): number {
+  if (prevDate === undefined || prevNum === undefined) return index;
+  const at = history[index];
+  if (at && at.date === prevDate && at.num === prevNum) return index;
+  return history.findIndex(e => e.date === prevDate && e.num === prevNum);
 }
 
 function accountReducer(state: AccountState, action: Action): AccountState {
@@ -111,10 +129,17 @@ function accountReducer(state: AccountState, action: Action): AccountState {
     }
 
     case 'UPDATE_HISTORY_ENTRY': {
-      const { id, index, date, num } = action.payload;
+      const { id, index, date, num, prevDate, prevNum } = action.payload;
       const history = [...(state.amountHistory[id] || [])];
-      if (!history[index]) return state;
-      history[index] = { ...history[index], date, num };
+      // Resolve the target by stable identity (the entry's value BEFORE this edit),
+      // not the raw array index. Because a prior date edit re-sorts the list, an
+      // index captured by an earlier modal render can point at a different entry now
+      // — editing history[index] blindly clobbers the wrong row. prevDate/prevNum
+      // re-locate the intended entry regardless of the current order; the index is
+      // only a hint / fallback for callers that don't supply an identity.
+      const target = resolveHistoryTarget(history, index, prevDate, prevNum);
+      if (!history[target]) return state;
+      history[target] = { ...history[target], date, num };
       // A date edit can move this entry out of order; re-sort so reverse().find()
       // consumers (Networth, projectionHistory) don't read a stale balance.
       history.sort((a, b) => a.date.localeCompare(b.date));
@@ -122,9 +147,13 @@ function accountReducer(state: AccountState, action: Action): AccountState {
     }
 
     case 'DELETE_HISTORY_ENTRY': {
-      const { id, index } = action.payload;
+      const { id, index, prevDate, prevNum } = action.payload;
       const history = [...(state.amountHistory[id] || [])];
-      history.splice(index, 1);
+      // Same identity resolution as UPDATE: delete the intended entry, not whatever
+      // sits at a now-stale index after a re-sort.
+      const target = resolveHistoryTarget(history, index, prevDate, prevNum);
+      if (!history[target]) return state;
+      history.splice(target, 1);
       return { ...state, amountHistory: { ...state.amountHistory, [id]: history } };
     }
 
