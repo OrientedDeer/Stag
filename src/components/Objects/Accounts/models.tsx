@@ -222,8 +222,15 @@ export class InvestedAccount extends BaseAccount {
     let returnRate: number;
     if (overrideReturnRate !== undefined) {
       // overrideReturnRate is a percentage (e.g., 7 for 7%), already includes inflation if applicable
-      // Still subtract expense ratio
-      returnRate = 1 + (overrideReturnRate - this.expenseRatio) / 100;
+      // Still subtract expense ratio.
+      // Floor the growth FACTOR at 0: generateReturns caps the drawn return at
+      // -100%, but netting a positive expense ratio (e.g. -100 - 1) drives the
+      // factor negative, which would multiply the balance into a phantom negative
+      // asset that poisons Monte Carlo percentile bands. A -100% net year wipes the
+      // balance to 0, never below. Matches the DP policy solve, which floors at 0.
+      // (Byte-safe for default configs: only reachable via the high-volatility MC
+      // tail; the deterministic engine never takes this override branch.)
+      returnRate = Math.max(0, 1 + (overrideReturnRate - this.expenseRatio) / 100);
     } else if (this.customROR !== undefined) {
       // Use per-account custom ROR (already a percentage, e.g., 7 for 7%)
       returnRate = 1 + (this.customROR + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) - this.expenseRatio) / 100;

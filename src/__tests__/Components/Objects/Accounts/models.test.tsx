@@ -267,6 +267,21 @@ describe('Account Models', () => {
             expect(nextYear.amount).toBeCloseTo(11450);
         });
 
+        it('floors a sub--100% Monte Carlo draw so the balance never goes negative (#187)', () => {
+            // At high volatility, generateReturns can hand increment() a -100%
+            // override. Subtracting a positive expense ratio then pushes the growth
+            // FACTOR below zero (1 + (-100 - 1)/100 = -0.01), multiplying the balance
+            // by a negative number — a phantom negative asset. The factor must be
+            // floored at 0, matching the DP policy solve.
+            const acc = new InvestedAccount(
+                'i1', 'HighVol', 1_000_000,
+                0, 0, 1.0, 'Brokerage', true, 0.2 // expenseRatio 1.0%
+            );
+            const nextYear = acc.increment(mockAssumptions, 0, 0, -100);
+            expect(nextYear.amount).toBeGreaterThanOrEqual(0);
+            expect(nextYear.amount).toBe(0); // factor floored at 0 => wiped out, not negative
+        });
+
         it('should cap employer balance at total when employer exceeds total (edge case)', () => {
             // This tests the safety check at line 174
             // Create an extreme scenario where we might get employer > total
