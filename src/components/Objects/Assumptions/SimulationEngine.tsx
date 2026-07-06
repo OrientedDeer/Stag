@@ -386,7 +386,9 @@ function simulateOneYearWithNewEngine(
     // LIFESTYLE CREEP (same as old engine)
     // ------------------------------------------------------------------
     let nextExpenses = milestoneFilteredExpenses.map(exp => {
-        const next = exp.increment(assumptions);
+        // Pass the sim year so future-dated loans/mortgages hold their balance
+        // until they actually start (#178) instead of amortizing pre-start.
+        const next = exp.increment(assumptions, year);
         // A goal's `amount` is its total cost, funded by a nominal fixed monthly
         // set-aside (and the budget computes that set-aside from the un-inflated
         // amount). Inflating the cost here would make the lump outgrow the fund

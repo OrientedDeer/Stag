@@ -723,7 +723,9 @@ export function buildDPYearContexts(
             acaOptions = {
                 currentAge: age,
                 acaSubsidyAware: true,
-                acaCliffThreshold: getAcaCliffThreshold(acaFiling, simYear.year),
+                // Pass assumptions so post-2026 thresholds inflate with the plan
+                // (#185) instead of freezing at the last published FPL.
+                acaCliffThreshold: getAcaCliffThreshold(acaFiling, simYear.year, assumptions),
                 // Same number the engine charges as real cash (YearSolver), so
                 // seed and judge price identical cliff economics.
                 estimatedSubsidyLoss: assumptions.investments.acaAnnualSubsidyLoss ?? ACA_SUBSIDY_LOSS_DEFAULT,

@@ -1535,7 +1535,7 @@ function MortgageTestingTab() {
             const annualUtilities = currentMortgage.utilities * 12;
 
             // Advance Time
-            const nextMortgage = currentMortgage.increment(assumptions);
+            const nextMortgage = currentMortgage.increment(assumptions, year);
 
             // Calculate Deltas from Increment
             // MortgageExpense.increment() stores the total interest paid in 'tax_deductible' of the NEW object
