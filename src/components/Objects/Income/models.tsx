@@ -9,7 +9,7 @@ import {
   getDisplayedFERSBenefit,
   getDisplayedCSRSBenefit,
 } from '../../../data/PensionData';
-import { parseDate, parseDateRequired, hasClassName, extractBaseFields, getActiveWindowMultiplier, isWindowActiveInCurrentMonth, hasWindowEnded } from "../modelUtils";
+import { parseDate, hasClassName, extractBaseFields, getActiveWindowMultiplier, isWindowActiveInCurrentMonth, hasWindowEnded } from "../modelUtils";
 // isActiveRSUGrant lives in a leaf .ts module so importing the pure predicate
 // elsewhere doesn't pull in the model graph or trip react-refresh on this .tsx.
 // Imported here only for this file's own internal use (NOT re-exported — a
@@ -979,6 +979,40 @@ export function getIncomeActiveMultiplier(income: AnyIncome, year: number): numb
     return getActiveWindowMultiplier({ startDate: income.startDate, endDate: income.end_date }, year);
 }
 
+/**
+ * Fraction of `year` (in twelfths) that the income is active WITHIN the sub-window
+ * of months [fromMonthInclusive..December]. This is the TRUE month-interval overlap
+ * of a partial-year tail with the income's active window — unlike
+ * `min(remainingFraction, getIncomeActiveMultiplier)`, which double-counts a job that
+ * ended EARLIER in the year (e.g. ended March, tail = Oct–Dec → real overlap 0, but
+ * the min gives ~2 months). Mirrors getActiveWindowMultiplier's local-midnight,
+ * inclusive month-boundary convention; a missing startDate is treated as "now",
+ * a missing endDate as open-ended. `fromMonthInclusive` is a 0-indexed month.
+ */
+export function getIncomeActiveMonthOverlap(
+    income: AnyIncome,
+    year: number,
+    fromMonthInclusive: number,
+): number {
+    const startDate = income.startDate ? new Date(income.startDate) : new Date();
+    const startYear = startDate.getFullYear();
+    const endDate = income.end_date ? new Date(income.end_date) : null;
+    const endYear = endDate ? endDate.getFullYear() : null;
+
+    if (startYear > year) return 0;
+    if (endYear !== null && endYear < year) return 0;
+
+    const windowStartMonth = (startYear < year) ? 0 : startDate.getMonth();
+    const windowEndMonth = (endDate && endYear === year) ? endDate.getMonth() : 11;
+
+    // Intersect the active window [windowStartMonth..windowEndMonth] with the
+    // requested tail [fromMonthInclusive..11] (December = 11).
+    const from = Math.max(0, fromMonthInclusive);
+    const overlapStart = Math.max(windowStartMonth, from);
+    const overlapEnd = Math.min(windowEndMonth, 11);
+    return Math.max(0, overlapEnd - overlapStart + 1) / 12;
+}
+
 export function isIncomeActiveInCurrentMonth(income: AnyIncome): boolean {
     return isWindowActiveInCurrentMonth({ startDate: income.startDate, endDate: income.end_date });
 }
@@ -1099,7 +1133,14 @@ function deriveStableIncomeId(data: Record<string, unknown>): string {
 export function reconstituteIncome(data: unknown): AnyIncome | null {
     if (!hasClassName(data)) return null;
 
-    const startDate = parseDateRequired(data.startDate);
+    // Preserve a MISSING startDate as undefined — do NOT force-fill with new Date().
+    // Milestone-started incomes (startMilestoneId set) carry startDate undefined BY
+    // DESIGN; a wall-clock fallback would (a) re-anchor RSU vest schedules to the reload
+    // instant so a milestone-anchored grant vests zero shares (resolveRSUAnchorDate short-
+    // circuits on any truthy startDate), and (b) destabilize the simulation input hash
+    // (startDate serializes as a fresh instant every reload). All startDate consumers are
+    // undefined-safe and treat a missing start as "now", so the no-anchor case is unchanged.
+    const startDate = parseDate(data.startDate);
     const endDate = parseDate(data.end_date);
     const frequency = (data.frequency as IncomeFrequency) || 'Monthly';
     const base = extractBaseFields(data, 'Unnamed Income');

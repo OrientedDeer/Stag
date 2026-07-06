@@ -348,4 +348,38 @@ describe('useSimulation - runSimulation', () => {
             expect(result.length).toBe(1);
         });
     });
+
+    describe('EOY partial-year contribution overlap (#178)', () => {
+        // Isolate the STEP-1.5 partial-year seed from Year-1's own contributions/growth
+        // by turning off growth (ror 0, inflation off already in baseAssumptions).
+        const noGrowth: AssumptionsState = {
+            ...baseAssumptions,
+            investments: { ...baseAssumptions.investments, returnRates: { ror: 0 } },
+        };
+        const october = new Date(currentYear, 9, 15); // month 9 → tail is Nov–Dec
+
+        it('does NOT seed EOY 401k contributions from a job that already ENDED earlier this year', () => {
+            const account = new InvestedAccount('ret-1', '401k', 0, 0, 5, 0, 'Traditional 401k', true, 1.0);
+            // Job ran until March of the current year; viewed in October there is no
+            // active overlap with the Nov–Dec tail. Before the fix, min(remainingFraction,
+            // activeMultiplier) = min(2/12, 3/12) = 2/12 wrongly seeded $2,000 (2 months of
+            // the $12k annual pre-tax contribution) into the Year-1 account — a phantom
+            // deposit that then compounds for the whole horizon.
+            const endedJob = new WorkIncome(
+                'inc-ended', 'Ended Job', 120000, 'Annually', 'Yes',
+                12000, 0, 0, 0, 'ret-1', 'Traditional 401k', 'FIXED',
+                new Date(currentYear - 5, 0, 1), new Date(currentYear, 2, 31), // ends March
+            );
+
+            const result = runSimulation(1, [account], [endedJob], [], noGrowth, baseTaxState, undefined, { referenceDate: october });
+
+            const ret1 = result[1].accounts.find(a => a.id === 'ret-1');
+            // Ended job contributes nothing in Year 1 either, and ror is 0 → the only
+            // possible balance is the phantom seed, which must now be zero.
+            // (The positive overlap cases — partial and full year — are covered directly
+            // by the getIncomeActiveMonthOverlap unit tests in the Income model suite,
+            // which isolate the seed cleanly without Year-1 surplus-allocation noise.)
+            expect(ret1!.amount).toBe(0);
+        });
+    });
 });

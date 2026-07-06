@@ -1,6 +1,6 @@
 import { simulateOneYear, SimulationYear } from './SimulationEngine';
 import * as TaxService from '../../Objects/Taxes/TaxService';
-import { WorkIncome, getIncomeActiveMultiplier } from '../Income/models';
+import { WorkIncome, getIncomeActiveMonthOverlap } from '../Income/models';
 import { AnyAccount, InvestedAccount, SavedAccount, DebtAccount, DeficitDebtAccount } from '../Accounts/models';
 import { AnyIncome } from '../Income/models';
 import { AnyExpense, MortgageExpense, CLASS_TO_CATEGORY } from '../Expense/models';
@@ -662,9 +662,14 @@ export const runSimulation = (
 
         yearZero.incomes.forEach(inc => {
             if (inc instanceof WorkIncome && inc.matchAccountId) {
-                const activeMultiplier = getIncomeActiveMultiplier(inc, startYear);
-                // Overlap between remaining months and income's active period
-                const effectiveFraction = Math.min(remainingFraction, activeMultiplier);
+                // TRUE month-interval overlap of the remaining-months tail
+                // [currentMonth+1 .. Dec] with the income's active window this year.
+                // The old min(remainingFraction, activeMultiplier) counted a job that
+                // had already ENDED earlier in the year (e.g. ended March, viewed in
+                // October) as still depositing ~2 months of annualized 401k+match into
+                // the accounts that seed Year 1 — a permanent phantom deposit that
+                // compounds across the whole plan.
+                const effectiveFraction = getIncomeActiveMonthOverlap(inc, startYear, currentMonth + 1);
                 if (effectiveFraction <= 0) return;
 
                 // preTax401k/roth401k are per pay period; annualize before applying the

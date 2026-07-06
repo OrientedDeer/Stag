@@ -1,5 +1,5 @@
 import { AssumptionsState } from "../Assumptions/AssumptionsContext";
-import { parseDate, parseDateRequired, hasClassName, extractBaseFields, getActiveWindowMultiplier, isWindowActiveInCurrentMonth } from "../modelUtils";
+import { parseDate, hasClassName, extractBaseFields, getActiveWindowMultiplier, isWindowActiveInCurrentMonth } from "../modelUtils";
 
 export type ExpenseFrequency = 'Weekly' | 'Monthly' | 'Annually';
 
@@ -214,7 +214,8 @@ abstract class SimpleExpense extends BaseExpense {
     return this.copyMetaTo(result);
   }
 
-  increment(assumptions: AssumptionsState): AnyExpense {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  increment(assumptions: AssumptionsState, _year?: number): AnyExpense {
     const generalInflation = this.getGeneralInflation(assumptions);
     return this.cloneWithAmount(this.amount * (1 + generalInflation));
   }
@@ -241,7 +242,8 @@ export class RentExpense extends BaseExpense {
     super(id, name, payment + utilities, frequency, startDate, endDate, false, startMilestoneId, endMilestoneId);
   }
 
-  increment(assumptions: AssumptionsState): RentExpense {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  increment(assumptions: AssumptionsState, _year?: number): RentExpense {
     const rentInflation = assumptions.expenses.rentInflation / 100;
     const generalInflation = this.getGeneralInflation(assumptions);
 
@@ -313,7 +315,29 @@ export class MortgageExpense extends BaseExpense {
     this.tax_deductible = tax_deductible;
   }
 
-  increment(assumptions: AssumptionsState): MortgageExpense {
+  increment(assumptions: AssumptionsState, year?: number): MortgageExpense {
+    // Pre-purchase: for a future-dated home the mortgage doesn't exist yet, so the
+    // year-over-year advance must NOT amortize principal, appreciate the valuation,
+    // or accrue deductible interest. Carry the mortgage forward unchanged — mirrors
+    // calculateAnnualAmortization's `year < purchaseYear` guard so the balance and
+    // the reported cashflow/deduction agree. Without this, a home bought in a later
+    // year silently pays down principal and builds equity before closing (net worth
+    // overstated) and books phantom mortgage-interest deductions.
+    const purchaseYear = this.startDate ? this.startDate.getFullYear() : undefined;
+    if (year !== undefined && purchaseYear !== undefined && year < purchaseYear) {
+      const unchanged = new MortgageExpense(
+        this.id, this.name, this.frequency,
+        this.valuation, this.loan_balance, this.starting_loan_balance,
+        this.apr, this.term_length, this.property_taxes, this.valuation_deduction,
+        this.maintenance, this.utilities, this.home_owners_insurance, this.pmi, this.hoa_fee,
+        this.is_tax_deductible, this.tax_deductible, this.linkedAccountId,
+        this.startDate, this.payment, this.extra_payment, this.endDate,
+        this.startMilestoneId, this.endMilestoneId
+      );
+      unchanged.tax_deductible = 0; // no interest accrued before the loan starts
+      return this.copyMetaTo(unchanged);
+    }
+
     const monthlyRate = this.apr / 100 / 12;
     let balance = this.loan_balance;
     let totalInterestPaid = 0;
@@ -586,31 +610,42 @@ export class LoanExpense extends BaseExpense {
       this.payment = this.calculatePaymentFromEndDate();
     }
   }
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  increment(_assumptions: AssumptionsState): LoanExpense {
+  increment(_assumptions: AssumptionsState, year?: number): LoanExpense {
     let balance = this.amount; // In LoanExpense, 'amount' tracks the current balance
     const monthlyRate = this.apr / 100 / 12;
 
-    // 1. Internal Loop: 12 Months
-    for (let i = 0; i < 12; i++) {
-      if (balance <= 0) break;
+    // Don't amortize before the loan starts. The engine advances balances one year
+    // at a time via increment(); a future-dated loan hasn't begun, so no payment
+    // leaves the plan and the balance (and its mirrored DebtAccount, #60) must hold.
+    // Mirrors calculateAnnualAmortization's `year < loanStartYear` guard so the
+    // carried balance and the reported cashflow agree. Without it, a loan starting
+    // in a later year silently pays down principal with $0 cash outflow — net worth
+    // overstated and the post-start payoff schedule wrong.
+    const loanStartYear = this.startDate ? this.startDate.getFullYear() : undefined;
+    const notYetStarted = year !== undefined && loanStartYear !== undefined && year < loanStartYear;
 
-      // Accrue interest on the outstanding balance for both Simple and Compounding loans.
-      // (Previously 'Simple' loans skipped this branch and accrued zero interest, so the
-      // entire payment went to principal and the loan effectively cost nothing.)
-      let interest = 0;
-      if (this.apr > 0) {
-        interest = balance * monthlyRate;
+    // 1. Internal Loop: 12 Months (skipped entirely before the loan starts)
+    if (!notYetStarted) {
+      for (let i = 0; i < 12; i++) {
+        if (balance <= 0) break;
+
+        // Accrue interest on the outstanding balance for both Simple and Compounding loans.
+        // (Previously 'Simple' loans skipped this branch and accrued zero interest, so the
+        // entire payment went to principal and the loan effectively cost nothing.)
+        let interest = 0;
+        if (this.apr > 0) {
+          interest = balance * monthlyRate;
+        }
+
+        // Logic: Payment covers interest first, then principal. Any extra_payment
+        // (#60 B) goes straight to principal on top, capped at the remaining
+        // balance so we never overpay (drive the balance negative).
+        const principal = Math.min(balance, (this.payment + this.extra_payment) - interest);
+
+        // If payment is too low to cover interest, balance grows (negative amortization)
+        // Otherwise balance shrinks
+        balance = balance - principal;
       }
-
-      // Logic: Payment covers interest first, then principal. Any extra_payment
-      // (#60 B) goes straight to principal on top, capped at the remaining
-      // balance so we never overpay (drive the balance negative).
-      const principal = Math.min(balance, (this.payment + this.extra_payment) - interest);
-
-      // If payment is too low to cover interest, balance grows (negative amortization)
-      // Otherwise balance shrinks
-      balance = balance - principal;
     }
 
     // 2. Return new state
@@ -764,7 +799,8 @@ export class DependentExpense extends BaseExpense {
     super(id, name, amount, frequency, startDate, endDate, false, startMilestoneId, endMilestoneId);
   }
 
-  increment(assumptions: AssumptionsState): DependentExpense {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  increment(assumptions: AssumptionsState, _year?: number): DependentExpense {
     const generalInflation = this.getGeneralInflation(assumptions);
     const result = new DependentExpense(
       this.id, this.name, this.amount * (1 + generalInflation), this.frequency,
@@ -800,7 +836,8 @@ export class HealthcareExpense extends BaseExpense {
     super(id, name, amount, frequency, startDate, endDate, false, startMilestoneId, endMilestoneId);
   }
 
-  increment(assumptions: AssumptionsState): HealthcareExpense {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  increment(assumptions: AssumptionsState, _year?: number): HealthcareExpense {
     const inflation = assumptions.macro.healthcareInflation / 100;
     const result = new HealthcareExpense(
       this.id, this.name, this.amount * (1 + inflation), this.frequency,
@@ -847,7 +884,8 @@ export class CharityExpense extends BaseExpense {
     // Charity is typically discretionary - already set via super call
   }
 
-  increment(assumptions: AssumptionsState): CharityExpense {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  increment(assumptions: AssumptionsState, _year?: number): CharityExpense {
     const generalInflation = this.getGeneralInflation(assumptions);
     const result = new CharityExpense(
       this.id, this.name, this.amount * (1 + generalInflation), this.frequency,
@@ -1161,7 +1199,14 @@ export const CATEGORY_PALETTES: Record<ExpenseCategory, string[]> = {
 export function reconstituteExpense(data: unknown): AnyExpense | null {
     if (!hasClassName(data)) return null;
 
-    const startDate = parseDateRequired(data.startDate);
+    // Preserve a MISSING startDate as undefined — do NOT force-fill with new Date().
+    // Milestone-started expenses (startMilestoneId set) carry startDate undefined BY
+    // DESIGN; a wall-clock fallback would destabilize the simulation input hash (startDate
+    // serializes fresh every reload → spurious stale-recompute) and mis-anchor date-driven
+    // windows. All startDate consumers here treat a missing start as "now", and the loan
+    // constructors still default their own effectiveStartDate, so behavior is unchanged
+    // apart from removing the phantom wall-clock stamp. Mirrors reconstituteIncome.
+    const startDate = parseDate(data.startDate);
     // Legacy migration: 'targetDate' goals used to store the target in a
     // separate `goalTargetDate` field (a duplicate of endDate that could
     // drift). endDate is now the single source of truth; absorb the old field

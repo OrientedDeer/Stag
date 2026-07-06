@@ -197,6 +197,28 @@ describe('Expense Models', () => {
         expect(balance).toBeCloseTo(391648.80, 2);
     });
 
+    describe('future-dated home purchase does not advance before closing (#178)', () => {
+      // A home purchased Jan 2028, advanced through 2026/2027 first.
+      const futureHome = new MortgageExpense('mf', 'Future Home', 'Monthly', 500000, 400000, 400000, 3, 30, 1.2, 0, 1, 100, 0.3, 0, 50, 'Yes', 0, 'a4', new Date(2028, 0, 1));
+
+      it('holds loan_balance and valuation for years before the purchase year', () => {
+        const y2026 = futureHome.increment(mockAssumptions, 2026);
+        expect(y2026.loan_balance).toBe(400000); // no phantom principal paydown
+        expect(y2026.valuation).toBe(500000);    // no phantom appreciation
+        expect(y2026.tax_deductible).toBe(0);     // no phantom interest deduction
+      });
+
+      it('advances normally once the purchase year is reached', () => {
+        const y2028 = futureHome.increment(mockAssumptions, 2028);
+        expect(y2028.loan_balance).toBeLessThan(400000);
+        expect(y2028.valuation).toBe(500000 * 1.05);
+      });
+
+      it('advances when no year is supplied (backward compatible)', () => {
+        expect(futureHome.increment(mockAssumptions).loan_balance).toBeLessThan(400000);
+      });
+    });
+
     it('should calculate annual amortization', () => {
         const year = 2025;
         const { totalInterest, totalPrincipal } = mortgage.calculateAnnualAmortization(year);
@@ -584,6 +606,27 @@ describe('Expense Models', () => {
         expect(nextYear.amount).toBeCloseTo(20486.13, 2);
     });
 
+    describe('future-dated loan does not amortize before it starts (#178)', () => {
+      // A $30k car loan starting Jan 2028, being advanced through years before 2028.
+      const futureLoan = new LoanExpense('lf', 'Future Car', 30000, 'Monthly', 6, 'Compounding', 0, 'No', 0, 'a3', new Date(2028, 0, 1), new Date(2033, 0, 1));
+
+      it('holds the balance for years strictly before the start year', () => {
+        // Advancing through 2026 and 2027 must NOT pay down principal — no cash
+        // leaves the plan before the loan exists.
+        expect(futureLoan.increment(mockAssumptions, 2026).amount).toBe(30000);
+        expect(futureLoan.increment(mockAssumptions, 2027).amount).toBe(30000);
+      });
+
+      it('amortizes normally once the loan has started', () => {
+        const started = futureLoan.increment(mockAssumptions, 2028);
+        expect(started.amount).toBeLessThan(30000);
+      });
+
+      it('still amortizes when no year is supplied (backward compatible)', () => {
+        expect(futureLoan.increment(mockAssumptions).amount).toBeLessThan(30000);
+      });
+    });
+
     it('should calculate months remaining from payment', () => {
         expect(loan.calculateMonthsFromPayment(471.78)).toBe(60);
     });
@@ -901,6 +944,16 @@ describe('Expense Models', () => {
   });
 
   describe('reconstituteExpense', () => {
+    it('preserves an ABSENT startDate as undefined for a milestone-started expense (#178)', () => {
+      // Milestone-started expenses carry startDate undefined BY DESIGN. The old
+      // parseDateRequired stamped a fresh new Date() on every reload, destabilizing the
+      // simulation input hash. Round-trip the undefined instead.
+      const food = reconstituteExpense({ className: 'FoodExpense', id: 'f9', amount: 400, startMilestoneId: 'ms-move' }) as FoodExpense;
+      expect(food).toBeInstanceOf(FoodExpense);
+      expect(food.startDate).toBeUndefined();
+      expect(food.startMilestoneId).toBe('ms-move');
+    });
+
     it('should create various expense types correctly and preserve data', () => {
       const rentData = { className: 'RentExpense', id: 'r1', payment: 1500, utilities: 200 };
       const mortgageData = { className: 'MortgageExpense', id: 'm1', valuation: 500000 };

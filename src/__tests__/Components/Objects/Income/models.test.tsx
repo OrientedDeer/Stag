@@ -10,6 +10,7 @@ import {
   WindfallIncome,
   reconstituteIncome,
   getIncomeActiveMultiplier,
+  getIncomeActiveMonthOverlap,
   isIncomeActiveInCurrentMonth,
   BaseIncome,
   calculateSocialSecurityStartYear,
@@ -38,6 +39,7 @@ const mockAssumptions: AssumptionsState = {
 describe('Income Models', () => {
   describe('BaseIncome', () => {
     class TestIncome extends BaseIncome {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- stub override
         increment(_assumptions: AssumptionsState): TestIncome { return this; }
     }
     it('should calculate prorated annual and monthly amounts correctly', () => {
@@ -96,6 +98,34 @@ describe('Income Models', () => {
       // In 2024: Jan and Feb are active = 2 months
       const spanning = new PassiveIncome('p6', 'Spanning', 1000, 'Annually', 'No', 'Interest', new Date(2023, 10, 1), new Date(2024, 1, 29));
       expect(getIncomeActiveMultiplier(spanning, 2024)).toBeCloseTo(2 / 12, 4);
+    });
+  });
+
+  describe('getIncomeActiveMonthOverlap (#178 EOY partial-year overlap)', () => {
+    it('is 0 when the income already ENDED before the tail window', () => {
+      // Job ran Jan–March; the remaining-year tail viewed in October is Nov–Dec.
+      // The true overlap is zero — the old min(remainingFraction, activeMultiplier)
+      // wrongly reported ~2 months (a phantom EOY 401k deposit).
+      const endedMarch = new WorkIncome('w1', 'Ended March', 1, 'Monthly', 'Yes', 0,0,0,0, 'a1', null, 'FIXED', new Date(2025, 0, 1), new Date(2025, 2, 31));
+      expect(getIncomeActiveMonthOverlap(endedMarch, 2025, 10 /* Nov */)).toBe(0);
+    });
+
+    it('counts only the months in [fromMonth..Dec] that overlap the active window', () => {
+      // Active Jan–June; tail from October (month 9→ fromMonth 10, i.e. Nov). No overlap.
+      const janToJune = new WorkIncome('w2', 'Jan-June', 1, 'Monthly', 'Yes', 0,0,0,0, 'a1', null, 'FIXED', new Date(2025, 0, 1), new Date(2025, 5, 30));
+      expect(getIncomeActiveMonthOverlap(janToJune, 2025, 10)).toBe(0);
+      // Full-year job, tail Nov–Dec → 2 months.
+      const fullYear = new WorkIncome('w3', 'Full', 1, 'Monthly', 'Yes', 0,0,0,0, 'a1', null, 'FIXED', new Date(2025, 0, 1));
+      expect(getIncomeActiveMonthOverlap(fullYear, 2025, 10)).toBe(2 / 12);
+      // Job starting in December, tail Nov–Dec → just December.
+      const startsDec = new WorkIncome('w4', 'Dec', 1, 'Monthly', 'Yes', 0,0,0,0, 'a1', null, 'FIXED', new Date(2025, 11, 1));
+      expect(getIncomeActiveMonthOverlap(startsDec, 2025, 10)).toBe(1 / 12);
+    });
+
+    it('returns the full tail when the income is active the whole year', () => {
+      const fullYear = new WorkIncome('w5', 'Full', 1, 'Monthly', 'Yes', 0,0,0,0, 'a1', null, 'FIXED', new Date(2024, 0, 1));
+      // fromMonth 0 (Jan) → all 12 months.
+      expect(getIncomeActiveMonthOverlap(fullYear, 2025, 0)).toBe(1.0);
     });
   });
 
@@ -538,6 +568,37 @@ describe('Income Models', () => {
         }
     });
 
+    it('preserves an ABSENT startDate as undefined for a milestone-started income (#178)', () => {
+      // A milestone-anchored RSU grant carries startDate undefined BY DESIGN. The old
+      // parseDateRequired force-filled new Date() on every reload, which re-anchored the
+      // RSU vest schedule to the reload date (vesting zero shares) and destabilized the
+      // simulation input hash. Reconstitution must round-trip the undefined startDate.
+      const data = {
+        className: 'WorkIncome',
+        id: 'rsu1',
+        name: 'Startup grant',
+        amount: 200000,
+        startMilestoneId: 'ms-join',
+        rsuVestingSchedule: 'annual',
+        rsuGrantShares: 10000,
+        rsuAccountId: 'acct-rsu',
+      };
+      const inc = reconstituteIncome(data);
+      expect(inc).toBeInstanceOf(WorkIncome);
+      expect(inc!.startDate).toBeUndefined();
+      expect((inc as WorkIncome).startMilestoneId).toBe('ms-join');
+    });
+
+    it('produces a STABLE simulation-hash startDate across reloads when startDate is absent (#178)', () => {
+      const data = { className: 'PassiveIncome', id: 'p9', name: 'Milestone rental', amount: 1200, startMilestoneId: 'ms-x' };
+      const a = reconstituteIncome(data);
+      const b = reconstituteIncome(data);
+      // Both reconstitutions must agree (undefined === undefined), not two distinct
+      // wall-clock instants that would trip a spurious stale-recompute banner.
+      expect(a!.startDate).toBeUndefined();
+      expect(b!.startDate).toBeUndefined();
+    });
+
     it('should return null for unknown or invalid data', () => {
         const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
         expect(reconstituteIncome({ className: 'FakeIncome' })).toBeNull();
@@ -636,6 +697,7 @@ describe('Income Models', () => {
 
   describe('BaseIncome.getProratedAnnual with year parameter', () => {
     class TestIncome extends BaseIncome {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- stub override
       increment(_assumptions: AssumptionsState): TestIncome { return this; }
     }
 
