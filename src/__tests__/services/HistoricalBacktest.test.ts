@@ -5,6 +5,21 @@ import {
   getBacktestDataRange,
   BacktestConfig,
 } from '../../services/HistoricalBacktest';
+import { INFLATION_RATES } from '../../data/HistoricalReturns';
+
+/**
+ * Cumulative inflation factor from `startYear` over the `yearsElapsed` calendar
+ * years BEFORE the current year, computed independently from the historical CPI
+ * table. This is the accumulation Fixed Real should use: the year-1 withdrawal
+ * grown by ∏(1 + actualCPI) year by year — NOT one year's CPI raised to a power.
+ */
+function cumulativeInflationFactor(startYear: number, yearsElapsed: number): number {
+  let factor = 1;
+  for (let k = 0; k < yearsElapsed; k++) {
+    factor *= 1 + INFLATION_RATES[startYear + k] / 100;
+  }
+  return factor;
+}
 
 describe('HistoricalBacktest', () => {
   describe('getBacktestDataRange', () => {
@@ -72,6 +87,53 @@ describe('HistoricalBacktest', () => {
       expect(result).not.toBeNull();
       expect(result!.succeeded).toBe(true);
       expect(result!.yearOfDepletion).toBeNull();
+    });
+  });
+
+  describe('Fixed Real strategy — cumulative historical inflation (#196)', () => {
+    // 1966 through 1980 spans the 1970s stagflation, where single-year-CPI
+    // compounding vs cumulative-actual diverge sharply (13.5% in 1980 alone).
+    const fixedRealConfig: BacktestConfig = {
+      retirementYears: 15,
+      startingBalance: 1_000_000,
+      annualWithdrawal: 40000, // unused by the strategy path
+      stockAllocation: 0.6,
+      inflationAdjustedWithdrawals: true,
+      withdrawalStrategy: 'Fixed Real',
+      withdrawalRate: 4,
+    };
+
+    it('grows the withdrawal by ACTUAL cumulative CPI, not one year raised to a power', () => {
+      const result = runSingleBacktest(1966, fixedRealConfig);
+      expect(result).not.toBeNull();
+      // No depletion at 4% over this window, so all 15 years are present.
+      expect(result!.yearlySnapshots.length).toBe(15);
+
+      const initialWithdrawal = fixedRealConfig.startingBalance * (fixedRealConfig.withdrawalRate! / 100);
+      expect(result!.yearlySnapshots[0].withdrawal).toBeCloseTo(initialWithdrawal, 4);
+
+      result!.yearlySnapshots.forEach((snap, i) => {
+        // Correct: initial × cumulative product of each elapsed year's actual CPI.
+        const expected = initialWithdrawal * cumulativeInflationFactor(1966, i);
+        expect(snap.withdrawal).toBeCloseTo(expected, 2);
+      });
+    });
+
+    it('diverges sharply from the old single-year^n compounding by the end of the window', () => {
+      const result = runSingleBacktest(1966, fixedRealConfig)!;
+      const initialWithdrawal = fixedRealConfig.startingBalance * (fixedRealConfig.withdrawalRate! / 100);
+
+      const last = result.yearlySnapshots[result.yearlySnapshots.length - 1]; // 1980
+      const yearsElapsed = result.yearlySnapshots.length - 1;
+
+      // The buggy formula compounded ONE year's CPI (here 1980's 13.5%) over the whole window.
+      const buggy = initialWithdrawal * Math.pow(1 + INFLATION_RATES[last.year] / 100, yearsElapsed);
+      const correct = initialWithdrawal * cumulativeInflationFactor(1966, yearsElapsed);
+
+      expect(last.withdrawal).toBeCloseTo(correct, 2);
+      // The two must be materially different (the bug overstated 1980 spending ~2.5×).
+      expect(Math.abs(buggy - last.withdrawal)).toBeGreaterThan(100_000);
+      expect(buggy).toBeGreaterThan(last.withdrawal * 2);
     });
   });
 

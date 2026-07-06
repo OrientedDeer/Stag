@@ -166,10 +166,27 @@ export function runSingleBacktest(
     let withdrawal: number;
     let guardrailTriggered: GuardrailTrigger = 'none';
 
-    if (useStrategy) {
-      // Use the withdrawal strategy system
+    if (useStrategy && withdrawalStrategy === 'Fixed Real') {
+      // Fixed Real: grow the year-1 withdrawal by the ACTUAL cumulative historical
+      // inflation to date — NOT a single calendar year's CPI compounded over the window.
+      //
+      // We deliberately do NOT route this through calculateStrategyWithdrawal /
+      // calculateFixedRealWithdrawal: that helper reconstructs cumulative inflation as
+      // (1 + oneYearRate)^n, which is only correct when inflation is constant (its use in
+      // the main SimulationEngine). Historical windows have inflation that varies year to
+      // year (badly through the 1970s), so we grow by the running product
+      // `cumulativeInflation`, which at this point equals ∏_{k=0}^{i-1}(1 + infl_k) — the
+      // same year-by-year accumulation the returns already get. (#196)
+      const initialWithdrawal = startingBalance * (withdrawalRate! / 100);
+      withdrawal = initialWithdrawal * cumulativeInflation;
+    } else if (useStrategy) {
+      // Percentage and Guyton-Klinger already accumulate actual year-by-year inflation
+      // correctly: Percentage ignores inflation entirely (it withdraws a % of the live
+      // portfolio), and GK carries its baseAmount forward and applies THIS year's actual
+      // CPI as a single-year step, so the per-year `inflation` passed here compounds
+      // honestly across the window. Only Fixed Real (above) needed the running product.
       const result = calculateStrategyWithdrawal({
-        strategy: withdrawalStrategy as 'Fixed Real' | 'Percentage' | 'Guyton Klinger',
+        strategy: withdrawalStrategy as 'Percentage' | 'Guyton Klinger',
         withdrawalRate: withdrawalRate!,
         currentPortfolio: balance,
         inflationRate: inflation, // Use actual historical inflation
