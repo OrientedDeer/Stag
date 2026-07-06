@@ -2027,8 +2027,16 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         // withdrawal into currentMAGI so the planner's cliff guard sees the
         // ordinary income this loop realizes. estimatedTradWithdrawal is the prior
         // iteration's value (0 on the first pass) and converges alongside LTCG.
+        //
+        // Also roll in estimatedESPPOrdinaryIncome: the ESPP bargain element is
+        // ordinary income the subsidy-repayment check below (acaMagiEstimate) counts,
+        // but the planner does NOT layer it into its internal cliff projection (unlike
+        // brokerage LTCG, which it tracks via cumulativeLTCG). Without it the planner
+        // steered on a MAGI that undercounted by the ESPP bargain element, so the
+        // solver billed the full subsidy loss for a breach its own steering couldn't
+        // see. (A planner-side ESPP cliff guard is tracked separately.)
         const acaWithdrawalOpts = acaCliffActive
-            ? { acaCliffThreshold, currentMAGI: acaBaseMAGI + estimatedTradWithdrawal }
+            ? { acaCliffThreshold, currentMAGI: acaBaseMAGI + estimatedTradWithdrawal + estimatedESPPOrdinaryIncome }
             : undefined;
 
         // Plan withdrawals - planner uses allOrdinaryIncome as starting income position
@@ -2592,9 +2600,23 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
     let withdrawalOrdinaryTax = 0;
     let totalPenalties = 0;
     let niitTax = 0;
+    // State tax on realized LTCG (#175/2): the planner grosses up brokerage LTCG at the
+    // FEDERAL rate only, so the working-year path charged no state tax on realized
+    // long-term gains. Mirror the retirement path, which folds LTCG into its state base
+    // (finalStateTax). STCG state tax is already charged by the planner (brokerageStcgTax
+    // uses the state marginal rate), so only LTCG is added here.
+    let stateLtcgTax = 0;
+    // SS torpedo (#175/5): deficit-funding ordinary withdrawals raise combined income,
+    // making more Social Security taxable than taxResult (computed pre-withdrawal)
+    // assumed. The planner charges only the withdrawal's own marginal tax, so the
+    // incremental federal tax on that extra taxable SS was charged nowhere.
+    let ssTorpedoFedTax = 0;
     let realizedLTCG = 0;
     let realizedSTCG = 0;
     let withdrawalOrdinaryIncome = 0;
+    let withdrawalDecisions: DecisionLogEntry[] = [];
+    // Taxable SS used for the year's MAGI — bumped by the SS torpedo below.
+    let effectiveTaxableSS = taxResult.taxableSS;
 
     if (initialDeficit > 0) {
         // #154: honor the user's literal withdrawal order on the working-year deficit
@@ -2611,69 +2633,138 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
             input.accounts, input.withdrawalOrder, input.currentAge, input.year, false, !input.taxOptimizationEnabled,
         );
 
-        const withdrawalResult = planWithdrawals(
-            initialDeficit,
-            accountSnapshots,
-            input.currentAge,
-            input.year,
-            input.taxState,
-            // ordinary income for LTCG bracket determination — includes the #159
-            // working-year conversion, which stacks under any realized gains.
-            taxableOrdinaryBase + conversionAmount,
-            input.assumptions,
-            'Spending deficit'
-        );
+        // Base ordinary income EXCLUDING SS (SS enters via its taxable portion below),
+        // plus any #159 working-year conversion.
+        const baseExSS = taxableOrdinaryBase - socialSecurityBenefits + conversionAmount;
+        const fedOrdinaryTaxAt = (ordinary: number): number =>
+            TaxService.calculateTotalFederalTax(
+                Math.max(0, ordinary), 0, 0, 0, preTaxDeductions, input.taxState.filingStatus, fedParams,
+            ).ordinaryTax;
+        const stateTaxAt = (base: number): number =>
+            stateParams ? TaxService.calculateTax(Math.max(0, base), preTaxDeductions, stateParams) : 0;
 
-        withdrawals = withdrawalResult.withdrawals;
-        // Split mixed (ESPP) withdrawal tax: the LTCG portion → ltcgTax, the
-        // ordinary bargain-element portion → withdrawalOrdinaryTax. Before this
-        // split, ESPP's full tax was mislabeled as capital-gains tax.
-        ltcgTax = ltcgTaxOf(withdrawalResult.withdrawals);
-        withdrawalOrdinaryTax = ordinaryTaxOf(withdrawalResult.withdrawals);
-        totalPenalties = withdrawalResult.totalPenalties;
+        // Iterate: the deficit and the taxes it triggers (NIIT, state LTCG, SS torpedo)
+        // are mutually dependent, exactly as in the retirement path — sizing the
+        // withdrawal without them fabricated a phantom unfunded deficit even with ample
+        // sellable balances (#175/1: unfundedDeficit ≈ niitTax while brokerage sat
+        // untouched). Grow the deficit by the newly-surfaced taxes and re-plan until it
+        // converges. A year with no SS and no realized gains yields zero on all three,
+        // so the loop converges after one pass, byte-identical to the prior single pass.
+        const MAX_WORKING_ITERATIONS = 6;
+        let currentDeficit = initialDeficit;
+        for (let iter = 0; iter < MAX_WORKING_ITERATIONS; iter++) {
+            // Recompute taxable SS with this iteration's deficit-funding ordinary income
+            // + gains folded into combined income (the working-year SS torpedo). The
+            // first pass uses the base position (all estimates 0).
+            const combinedExSS = baseExSS + withdrawalOrdinaryIncome + realizedLTCG + Math.max(0, realizedSTCG);
+            const iterTaxableSS = socialSecurityBenefits > 0
+                ? TaxService.getTaxableSocialSecurityBenefits(
+                    socialSecurityBenefits, combinedExSS, 0, input.taxState.filingStatus)
+                : 0;
+            // #175/4: position the planner's LTCG bracket + gross-up at base ordinary +
+            // the TAXABLE portion of SS (mirrors the retirement path), not 100% of SS —
+            // over-counting SS could push realized LTCG from the 0% into the 15% bracket.
+            // Pass the taxable SS as stateExemptIncome so the planner excludes it from
+            // state bracketing (states exempt SS).
+            const plannerOrdinaryIncome = baseExSS + iterTaxableSS;
 
-        // NIIT (3.8%) on capital gains realized to fund the deficit. The federal
-        // tax helper computes it internally from investment income; extract only
-        // the NIIT so the existing planner-based ltcgTax cash handling is kept.
-        realizedLTCG = withdrawalResult.totalLTCG;
-        realizedSTCG = withdrawalResult.totalSTCG;
-        // Ordinary income realized by deficit withdrawals (Traditional gross +
-        // ESPP bargain element) — feeds the year's MAGI for the IRMAA lookback.
-        withdrawalOrdinaryIncome = withdrawalResult.withdrawals.reduce(
-            (s, w) => s + ((w.source === 'traditional_401k' || w.source === 'traditional_ira')
-                ? w.gross
-                : (w.ordinaryIncome ?? 0)),
-            0);
-        if (realizedLTCG > 0 || realizedSTCG > 0) {
-            // NIIT MAGI must include the deficit-funding Traditional withdrawal
-            // (it's in AGI), matching how IRMAA and SS-taxability fold it in.
-            // We add withdrawalOrdinaryIncome to the ordinary base so the internal
-            // MAGI and SS-taxability see it; only .niitTax is read here, so the
-            // inflated ordinary tax (charged separately via withdrawalOrdinaryTax)
-            // is discarded.
-            niitTax = TaxService.calculateTotalFederalTax(
-                (taxableOrdinaryBase - socialSecurityBenefits) + conversionAmount + withdrawalOrdinaryIncome,
-                socialSecurityBenefits,
-                realizedSTCG,
-                realizedLTCG,
-                preTaxDeductions,
-                input.taxState.filingStatus,
-                fedParams
-            ).niitTax;
+            const withdrawalResult = planWithdrawals(
+                currentDeficit,
+                accountSnapshots,
+                input.currentAge,
+                input.year,
+                input.taxState,
+                plannerOrdinaryIncome,
+                input.assumptions,
+                'Spending deficit',
+                undefined,     // no ACA steering in working years (employer coverage; aca = 0)
+                iterTaxableSS, // stateExemptIncome
+            );
+
+            withdrawals = withdrawalResult.withdrawals;
+            // Split mixed (ESPP) withdrawal tax: the LTCG portion → ltcgTax, the ordinary
+            // bargain-element portion → withdrawalOrdinaryTax.
+            ltcgTax = ltcgTaxOf(withdrawalResult.withdrawals);
+            withdrawalOrdinaryTax = ordinaryTaxOf(withdrawalResult.withdrawals);
+            totalPenalties = withdrawalResult.totalPenalties;
+            realizedLTCG = withdrawalResult.totalLTCG;
+            realizedSTCG = withdrawalResult.totalSTCG;
+            // Ordinary income realized by deficit withdrawals (Traditional gross + ESPP
+            // bargain element) — feeds the year's MAGI and the SS torpedo.
+            withdrawalOrdinaryIncome = withdrawalResult.withdrawals.reduce(
+                (s, w) => s + ((w.source === 'traditional_401k' || w.source === 'traditional_ira')
+                    ? w.gross
+                    : (w.ordinaryIncome ?? 0)),
+                0);
+            withdrawalDecisions = withdrawalResult.decisions;
+
+            // Recompute taxable SS with THIS iteration's realized withdrawal + gains
+            // (the top-of-loop iterTaxableSS lagged one iteration — it used the prior
+            // pass's withdrawal, 0 on the first — so the torpedo and the grown deficit
+            // must use the post-planning value or the loop converges before the torpedo
+            // propagates).
+            const postCombinedExSS = baseExSS + withdrawalOrdinaryIncome + realizedLTCG + Math.max(0, realizedSTCG);
+            const postTaxableSS = socialSecurityBenefits > 0
+                ? TaxService.getTaxableSocialSecurityBenefits(
+                    socialSecurityBenefits, postCombinedExSS, 0, input.taxState.filingStatus)
+                : 0;
+            effectiveTaxableSS = postTaxableSS;
+
+            // NIIT (3.8%) on realized gains. Fold the deficit-funding Traditional
+            // withdrawal into the ordinary base so the internal MAGI/SS-taxability see it;
+            // only .niitTax is read (the inflated ordinary tax is charged separately via
+            // withdrawalOrdinaryTax).
+            niitTax = (realizedLTCG > 0 || realizedSTCG > 0)
+                ? TaxService.calculateTotalFederalTax(
+                    baseExSS + withdrawalOrdinaryIncome,
+                    socialSecurityBenefits,
+                    realizedSTCG,
+                    realizedLTCG,
+                    preTaxDeductions,
+                    input.taxState.filingStatus,
+                    fedParams,
+                ).niitTax
+                : 0;
+
+            // State tax on realized LTCG (#175/2), stacked above base ordinary income.
+            stateLtcgTax = realizedLTCG > 0
+                ? Math.max(0, stateTaxAt(baseExSS + realizedLTCG) - stateTaxAt(baseExSS))
+                : 0;
+
+            // SS torpedo (#175/5): the incremental federal ordinary tax on the EXTRA
+            // taxable SS the withdrawal created, stacked directly above the base ordinary
+            // income (matching the retirement path, whose finalFedResult prices the
+            // torpedo-inclusive taxable SS without the withdrawal below it). taxResult
+            // already priced the base taxable SS; this adds only the increment.
+            ssTorpedoFedTax = postTaxableSS > taxResult.taxableSS
+                ? Math.max(0, fedOrdinaryTaxAt(baseExSS + postTaxableSS) - fedOrdinaryTaxAt(baseExSS + taxResult.taxableSS))
+                : 0;
+
+            // These three taxes were unknown when initialDeficit was sized; grow the
+            // deficit so the next pass funds them (mirrors the retirement path's
+            // iterative deficit). Converges fast — SS taxability and the gains are
+            // monotone in the deficit.
+            const newDeficit = initialDeficit + niitTax + stateLtcgTax + ssTorpedoFedTax;
+            if (Math.abs(newDeficit - currentDeficit) < 1) {
+                currentDeficit = newDeficit;
+                break;
+            }
+            currentDeficit = newDeficit;
         }
 
-        decisions.push(...withdrawalResult.decisions);
+        decisions.push(...withdrawalDecisions);
     }
 
     // Final cash flow including withdrawals
     const totalGrossWithdrawals = withdrawals.reduce((sum, w) => sum + w.gross, 0);
-    const finalTotalTax = totalTax + ltcgTax + withdrawalOrdinaryTax + niitTax + totalPenalties + irmaaSurcharge;
+    const finalTotalTax = totalTax + ltcgTax + withdrawalOrdinaryTax + niitTax
+        + stateLtcgTax + ssTorpedoFedTax + totalPenalties + irmaaSurcharge;
 
     // The year's MAGI (≈ AGI) — stored for the year N+2 IRMAA lookback. Non-SS
-    // ordinary income (+ any #159 working-year conversion) + taxable SS +
-    // deficit-funding withdrawal income + realized gains.
+    // ordinary income (+ any #159 working-year conversion) + taxable SS (torpedo-
+    // inclusive, #175/5) + deficit-funding withdrawal income + realized gains.
     const yearMAGI = Math.max(0,
-        (taxableOrdinaryBase - socialSecurityBenefits + conversionAmount) + taxResult.taxableSS
+        (taxableOrdinaryBase - socialSecurityBenefits + conversionAmount) + effectiveTaxableSS
         + withdrawalOrdinaryIncome + realizedLTCG + realizedSTCG);
 
     // Re-derive the withholding netting against the FINAL tax (deficit withdrawals
@@ -2698,8 +2789,12 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
     }
 
     const taxSummary: YearPlanTax = {
-        federal: taxResult.totalTax,
-        state: stateTax,
+        // Federal includes the SS-torpedo increment the deficit-funding withdrawals
+        // triggered (#175/5) so the reported federal tax matches finalTotalTax.
+        federal: taxResult.totalTax + ssTorpedoFedTax,
+        // State includes the tax on realized LTCG the planner (federal-only) omitted
+        // (#175/2).
+        state: stateTax + stateLtcgTax,
         fica: ficaTax,
         capitalGainsLT: ltcgTax,
         capitalGainsST: 0,
