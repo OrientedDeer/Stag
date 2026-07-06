@@ -21,7 +21,7 @@ import {
     grossUpDivisor,
 } from '../../../services/simulation/WithdrawalPlanner';
 import { AccountBalanceSnapshot } from '../../../services/simulation/types';
-import { InvestedAccount, RSUAccount } from '../../../components/Objects/Accounts/models';
+import { InvestedAccount, RSUAccount, ESPPAccount, ESPPLot } from '../../../components/Objects/Accounts/models';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 
 const YEAR = 2025;
@@ -172,5 +172,153 @@ describe('§1211(b): RSU net capital loss capped at $3,000 on the aggregate', ()
         expect(result.totalLTCG).toBeLessThan(0);
         // ...but the NET reported loss is the §1211 cap, not the raw ~-$27k.
         expect(result.totalSTCG + result.totalLTCG).toBeCloseTo(-3000, 0);
+    });
+});
+
+// =============================================================================
+// #176: ACA look-ahead must drain the SAME Roth balance the main loop already
+// drained. Three distinct bugs, all in the brokerage ACA-cliff substitution path.
+// =============================================================================
+
+// Roth IRA with a fully-vested $50k contribution basis (costBasis == amount, no
+// conversions, no earnings). Under 59½ these dollars are tax- and penalty-free.
+function rothIRA(id: string, amount: number, costBasis = amount,
+    conversionHistory: { year: number; amount: number }[] = []): InvestedAccount {
+    return new InvestedAccount(
+        id, 'Roth IRA', amount, 0, 10, 0.07, 'Roth IRA', true, 0.2,
+        costBasis, undefined, conversionHistory,
+    );
+}
+
+// All-gains brokerage (costBasis 0 → gainRatio 1.0): any sale is 100% LTCG, so a
+// modest sale reliably breaches a low ACA cliff.
+function allGainsBrokerage(id: string, amount: number): InvestedAccount {
+    return new InvestedAccount(id, 'Brokerage', amount, 0, 10, 0.07, 'Brokerage', true, 0.2, 0);
+}
+
+describe('#176 finding 1: main-loop Roth draw is recorded so the ACA look-ahead cannot double-spend it', () => {
+    it('never withdraws more Roth gross than the account holds (Roth-before-brokerage order)', () => {
+        // Tax Opt OFF, literal order: Roth FIRST, brokerage SECOND. Age 60 so Roth
+        // is entirely tax/penalty-free. The $50k Roth is all contributions, no
+        // earnings. Net need $100k forces the main loop to drain the whole Roth,
+        // then reach the brokerage — whose ACA cliff cap triggers a Roth
+        // substitution look-ahead. Pre-fix, the look-ahead re-saw the full $50k
+        // (main loop never recorded consumption) and fabricated ~$30k of
+        // non-existent "earnings", hiding a real unfunded deficit.
+        const roth = createAccountSnapshot(rothIRA('roth-1', 50000));
+        const brok = createAccountSnapshot(allGainsBrokerage('brok-1', 200000));
+
+        const result = planWithdrawals(
+            100000,
+            [roth, brok],          // literal order: Roth first
+            60,                    // >= 59.5 → Roth earnings would be tax-free (isolates balance double-spend)
+            YEAR,
+            taxStateFor('Texas'),
+            0,
+            undefined,
+            'Spending deficit',
+            { acaCliffThreshold: 20000, currentMAGI: 0 },
+        );
+
+        // Total gross drawn from the Roth (main draw + any ACA substitution) can
+        // never exceed the account's balance.
+        const rothGross = result.withdrawals
+            .filter(w => w.accountId === 'roth-1')
+            .reduce((sum, w) => sum + w.gross, 0);
+        expect(rothGross).toBeLessThanOrEqual(50000 + 1);
+
+        // The brokerage is cliff-capped and the Roth is exhausted, so a real
+        // deficit must survive — the phantom substitution used to zero it out.
+        expect(result.remainingDeficit).toBeGreaterThan(1000);
+    });
+});
+
+describe('#176 finding 2: pooled Roth contribution basis is not double-subtracted after an ACA substitution', () => {
+    it('taps remaining contributions (penalty-free) before a young conversion layer', () => {
+        // Brokerage FIRST (triggers the ACA substitution), Roth IRA SECOND. Age 57.
+        // Roth: $100k contribution basis + a $20k conversion done 2 years ago
+        // (< 5yr → the 10% penalty layer). No earnings (amount == costBasis).
+        // The brokerage cliff cap drives a large substitution funded ENTIRELY from
+        // contributions; the main loop then needs a bit more. Pre-fix, contribAvailable
+        // was computed as (remainingPoolBasis − alreadyConsumed) — double-counting the
+        // ACA draw to 0 — so the main loop skipped the ~$20k of contributions still
+        // available and drew the young conversion instead, incurring a phantom 10% penalty.
+        const brok = createAccountSnapshot(allGainsBrokerage('brok-1', 120000));
+        const roth = createAccountSnapshot(
+            rothIRA('roth-1', 120000, 120000, [{ year: YEAR - 2, amount: 20000 }]),
+        );
+
+        const result = planWithdrawals(
+            125000,
+            [brok, roth],          // brokerage first → ACA substitution, then Roth main draw
+            57,                    // < 59.5 → a conversion < 5yr old is penalized
+            YEAR,
+            taxStateFor('Texas'),
+            0,
+            undefined,
+            'Spending deficit',
+            { acaCliffThreshold: 30000, currentMAGI: 0 },
+        );
+
+        // With the fix the main-loop Roth draw is covered by the ~$20k of
+        // contributions the substitution left behind, so essentially no early
+        // withdrawal penalty is incurred. Pre-fix the young conversion was tapped
+        // (~$1.7k penalty).
+        expect(result.totalPenalties).toBeLessThan(200);
+
+        // Total Roth gross never exceeds the account balance either.
+        const rothGross = result.withdrawals
+            .filter(w => w.accountId === 'roth-1')
+            .reduce((sum, w) => sum + w.gross, 0);
+        expect(rothGross).toBeLessThanOrEqual(120000 + 1);
+    });
+});
+
+describe('#176 finding 3: ACA cliff guard counts ESPP bargain-element ordinary income realized earlier in the pass', () => {
+    it('caps a later brokerage sale so realized MAGI (incl. ESPP ordinary income) stays under the cliff', () => {
+        // ESPP FIRST (a disqualifying lot: bargain element = ordinary income),
+        // brokerage SECOND. Pre-fix the brokerage cliff check ignored the ESPP
+        // bargain element already realized this pass, sized its sale off an
+        // over-stated headroom, and blew MAGI far past the cliff.
+        const lot: ESPPLot = {
+            id: 'lot-dq',
+            shares: 1000,
+            purchasePrice: 10,
+            purchaseDate: new Date(YEAR - 1, 5, 30), // < 1yr, < 2yr from grant → disqualifying
+            grantDate: new Date(YEAR - 1, 0, 1),
+            fmvAtPurchase: 40,                       // bargain element $30/sh × 1000 = $30k ordinary
+            fmvAtGrant: 40,
+            totalCost: 10 * 1000,
+            discountAmount: 30,
+        };
+        const espp = new ESPPAccount('espp-1', 'Company ESPP', 41000, [lot], null, undefined, 'ACME', 41);
+        const brok = allGainsBrokerage('brok-1', 60000);
+
+        const saleDate = new Date(YEAR, 5, 15);
+        const CLIFF = 45000;
+        const CURRENT_MAGI = 10000;
+
+        const result = planWithdrawals(
+            80000,
+            [createAccountSnapshot(espp, saleDate), createAccountSnapshot(brok, saleDate)],
+            57,
+            YEAR,
+            taxStateFor('Texas'),
+            0,
+            undefined,
+            'Spending deficit',
+            { acaCliffThreshold: CLIFF, currentMAGI: CURRENT_MAGI },
+        );
+
+        // Realized MAGI = base MAGI + ESPP ordinary income + all realized gains.
+        const esppOrdinary = result.withdrawals
+            .filter(w => w.source === 'espp')
+            .reduce((sum, w) => sum + (w.ordinaryIncome ?? 0), 0);
+        const realizedMAGI = CURRENT_MAGI + esppOrdinary + result.totalLTCG + result.totalSTCG;
+
+        // The ESPP sale really did realize a large bargain element...
+        expect(esppOrdinary).toBeGreaterThan(25000);
+        // ...and the brokerage sale was steered so total MAGI respects the cliff.
+        expect(realizedMAGI).toBeLessThanOrEqual(CLIFF);
     });
 });

@@ -1123,6 +1123,14 @@ export function planWithdrawals(
     let totalSTCG = 0;
     let cumulativeLTCG = 0; // Tracks LTCG from brokerage/ESPP for ACA MAGI headroom
     let cumulativeSTCG = 0; // Tracks brokerage STCG realized this loop (also in MAGI) — #75
+    // #176: ORDINARY income realized from sales earlier in THIS loop that lands in
+    // MAGI but is NOT captured by cumulativeLTCG/STCG — the ESPP bargain element and
+    // any under-59½ Roth-substitution earnings. Without this the ACA cliff guard's
+    // projected MAGI is blind to an ESPP sale (or a prior Roth substitution) that
+    // already happened this pass, so a later brokerage sale breaches the cliff
+    // un-steered. (The YearSolver-side estimate that should be folded into
+    // acaWithdrawalOptions.currentMAGI is tracked separately in #175.)
+    let cumulativeOrdinaryFromSales = 0;
     let runningOrdinaryIncome = currentOrdinaryIncome;
 
     // ACA cliff: track Roth amounts pre-consumed by look-ahead substitution.
@@ -1303,14 +1311,15 @@ export function planWithdrawals(
                 // Substitute tax-free Roth withdrawals for the remainder
                 // =================================================================
                 if (acaWithdrawalOptions && grossToWithdraw > 0) {
-                    // Both STCG and LTCG land in MAGI, so the cliff check counts both (#75).
-                    const projectedMAGI = acaWithdrawalOptions.currentMAGI + cumulativeLTCG + cumulativeSTCG + actualLTCG + actualSTCG;
+                    // STCG, LTCG, and ordinary income realized from sales earlier this
+                    // pass all land in MAGI, so the cliff check counts all three (#75, #176).
+                    const projectedMAGI = acaWithdrawalOptions.currentMAGI + cumulativeLTCG + cumulativeSTCG + cumulativeOrdinaryFromSales + actualLTCG + actualSTCG;
 
                     if (projectedMAGI > acaWithdrawalOptions.acaCliffThreshold) {
                         // Calculate how much realized-gains headroom we have
                         const magiHeadroom = Math.max(0,
                             acaWithdrawalOptions.acaCliffThreshold - ACA_WITHDRAWAL_BUFFER
-                            - acaWithdrawalOptions.currentMAGI - cumulativeLTCG - cumulativeSTCG
+                            - acaWithdrawalOptions.currentMAGI - cumulativeLTCG - cumulativeSTCG - cumulativeOrdinaryFromSales
                         );
 
                         // Convert realized-gains headroom to max safe gross withdrawal.
@@ -1354,7 +1363,7 @@ export function planWithdrawals(
                             let rothEarningsMagiRoom = Math.max(0,
                                 acaWithdrawalOptions.acaCliffThreshold - ACA_WITHDRAWAL_BUFFER
                                 - acaWithdrawalOptions.currentMAGI
-                                - cumulativeLTCG - cumulativeSTCG - actualLTCG - actualSTCG
+                                - cumulativeLTCG - cumulativeSTCG - cumulativeOrdinaryFromSales - actualLTCG - actualSTCG
                             );
 
                             for (const rothSnapshot of accountOrder) {
@@ -1390,8 +1399,14 @@ export function planWithdrawals(
                                 // loop's acaRothConsumed/effectiveVestedBalance guard on balance, this
                                 // prevents double-spend without mutating the model.
                                 const isPooledRoth = rothSnapshot.accountType === 'roth_ira';
+                                // #176: `remainingPoolBasis` is ALREADY decremented as
+                                // contributions are consumed, so subtracting
+                                // `alreadyConsumed` from it again double-counts the ACA
+                                // draw. Apply the consumed amount to the per-account
+                                // BALANCE cap only (vestedBalance − alreadyConsumed);
+                                // the pool term already reflects prior consumption.
                                 const acaContribAvailable = isPooledRoth
-                                    ? Math.max(0, Math.min(remainingPoolBasis, rothSnapshot.vestedBalance) - alreadyConsumed)
+                                    ? Math.max(0, Math.min(remainingPoolBasis, rothSnapshot.vestedBalance - alreadyConsumed))
                                     : Math.max(0, (rothSnapshot.rothContributions ?? 0) - alreadyConsumed);
                                 const acaConversionsForCall = isPooledRoth
                                     ? pooledRothConversions
@@ -1465,6 +1480,9 @@ export function planWithdrawals(
                                     // #27: those earnings consumed MAGI headroom; shrink it
                                     // so a later Roth account in this loop can't re-breach.
                                     rothEarningsMagiRoom = Math.max(0, rothEarningsMagiRoom - rothResult.fromEarnings);
+                                    // #176: also record into the cross-account MAGI tracker
+                                    // so a LATER brokerage cliff check counts these earnings.
+                                    cumulativeOrdinaryFromSales += rothResult.fromEarnings;
                                 }
 
                                 decisions.push({
@@ -1609,8 +1627,13 @@ export function planWithdrawals(
                 // Roth IRA: pool contribution basis and conversion history across all
                 // Roth IRAs (IRS Pub 590-B). Roth 401k: keep per-account treatment.
                 const isPooled = snapshot.accountType === 'roth_ira';
+                // #176: `remainingPoolBasis` already reflects the ACA look-ahead's
+                // contribution consumption, so don't subtract `acaAlreadyConsumed`
+                // from it a second time — that zeroed out real remaining basis and
+                // forced the draw into a young conversion layer (phantom 10% penalty).
+                // The consumed amount reduces the per-account BALANCE cap only.
                 const contribAvailable = isPooled
-                    ? Math.max(0, Math.min(remainingPoolBasis, snapshot.vestedBalance) - acaAlreadyConsumed)
+                    ? Math.max(0, Math.min(remainingPoolBasis, snapshot.vestedBalance - acaAlreadyConsumed))
                     : Math.max(0, (snapshot.rothContributions ?? 0) - acaAlreadyConsumed);
                 // Use the SAME conversion array the ACA look-ahead drained (pooled for
                 // roth_ira, per-account `roth401kConversions` for roth_401k). grossUpRoth
@@ -1636,6 +1659,14 @@ export function planWithdrawals(
                 }
                 const grossToWithdraw = result.gross;
                 const netReceived = grossToWithdraw - result.tax - result.penalty;
+
+                // #176: record this main-loop draw against the SAME per-slice
+                // consumption map the ACA look-ahead reads. Without this, a Roth
+                // drained here (e.g. Roth-before-brokerage order, Tax Opt OFF) is
+                // re-seen at full balance by a later brokerage cliff substitution,
+                // which then plans up to 2× the account — surfacing phantom
+                // (non-existent) earnings and hiding a real unfunded deficit.
+                acaRothConsumed.set(sliceKeyOf(snapshot), acaAlreadyConsumed + grossToWithdraw);
 
                 withdrawal = {
                     source: snapshot.accountType,
@@ -1769,6 +1800,10 @@ export function planWithdrawals(
 
                     // ESPP ordinary income affects tax bracket
                     runningOrdinaryIncome += esppOrdinaryIncome;
+                    // #176: the bargain element is ordinary income in MAGI — track it
+                    // so a later brokerage ACA-cliff check counts it (parallel to how
+                    // cumulativeSTCG/LTCG track realized gains).
+                    cumulativeOrdinaryFromSales += esppOrdinaryIncome;
 
                     cumulativeLTCG += esppLTCG;
                     remainingNetNeeded -= netReceived;
