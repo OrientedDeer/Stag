@@ -15,12 +15,20 @@
  * DP picks total).
  *
  * Cell evaluation: the year's spending need + this year's tax minus
- * cash supplied by ordinary income forms a `gap`, which flows through
- * the real-sim withdrawal order brokerage → roth → trad. Trad-spending
+ * cash supplied by ordinary income forms a `gap`, which flows through a
+ * FIXED brokerage → roth → trad spending waterfall. Trad-spending
  * is endogenous (depends on roth state and conversion size) and feeds
  * back into ordinary income; we resolve via a small fixed-point
  * iteration. `yearTax` is the year's actual tax; the V-table sums
  * (yearTax + infeasibility-penalty × unmetNeed) across the horizon.
+ * (#186) This waterfall is fixed brokerage → roth → trad — the app's
+ * DEFAULT/tax-efficient order. Since the joint drawdown-order optimizer
+ * shipped, the engine may CHOOSE a different roth-vs-trad relative order
+ * for a given scenario (recorded on year-0's `chosenWithdrawalOrder`), so
+ * this is an approximation, not the literal per-scenario engine order.
+ * Any resulting error is confined to per-path MC conversions: every
+ * deterministic plan is re-scored on the real engine by
+ * EngineDirectConversionSearch, which prices the true order.
  *
  * V-table: `V[t]` is a flat `Float64Array` of size
  * `(TRAD_BUCKETS+1) × (ROTH_BUCKETS+1)`. Backward sweep is a triple
@@ -634,9 +642,25 @@ export function buildDPYearContexts(
         // exactly what makes a normal working year's headroom zero (no gap
         // context, no conversion candidates) while a modeled income gap leaves
         // real standard-deduction headroom.
+        //
+        // #186: net out pre-tax deferrals (401k / insurance / HSA) so this is the
+        // real taxable ordinary base — the engine (YearSolver) taxes
+        // grossIncome − getPreTaxExemptions, and computeYearTax below passes
+        // preTaxDeductions=0 on the assumption that they're ALREADY netted here.
+        // Reading the STORED per-period fields (useStoredValue=true) mirrors the
+        // engine's post-increment tax path. Without this a partial-work gap year
+        // (e.g. $25k gross / $18k deferred → $7k real taxable) looks like $25k of
+        // ordinary income: the std-deduction headroom gate below wrongly skips it
+        // (no context, no candidates), and any gap year that does pass gets every
+        // conversion candidate undersized by the deferral amount. Post-retirement
+        // years have no WorkIncome, so getPreTaxExemptions is 0 and they're
+        // byte-for-byte unchanged.
+        const preTaxExemptions = TaxService.getPreTaxExemptions(
+            simYear.incomes, simYear.year, age, true,
+        );
         const nonSSOrdinaryIncomeExclRMD = Math.max(
             0,
-            grossIncome - ssBenefits,
+            grossIncome - ssBenefits - preTaxExemptions,
         );
 
         // Apply scheduled tax life events (state move / filing-status change)
@@ -884,31 +908,29 @@ export function computeYearTax(
         ctx.ssBenefits,
         0,                       // STCG
         ctx.ltcgIncome,
-        0,                       // preTaxDeductions (already in nonSSOrdinaryIncomeExclRMD)
+        0,                       // preTaxDeductions: netted out of nonSSOrdinaryIncomeExclRMD upstream (#186)
         ctx.filingStatus,
         ctx.fedParams,
     ).totalTax;
 
     let state = 0;
     if (ctx.stateParams) {
-        // Most states tax LTCG as ordinary. SS treatment mirrors the real sim's
-        // calculateUnifiedStateTax (stateTax.ts): `ordinaryIncome` here already
-        // EXCLUDES SS, so the state base is non-SS ordinary + LTCG, plus — only
-        // for states that tax SS — the IRS-taxable portion of SS. SS-taxing
-        // states (e.g. via the SS torpedo) make a conversion that raises
-        // provisional income create real state tax the DP must price in.
-        let stateBase = ordinaryIncome + ctx.ltcgIncome;
-        if (ctx.ssBenefits > 0 && ctx.stateParams.socialSecurityTreatment === 'taxable') {
-            // agiExcludingSS = non-SS ordinary + LTCG (preTaxDeductions already
-            // folded into nonSSOrdinaryIncomeExclRMD upstream).
-            const taxableSS = TaxService.getTaxableSocialSecurityBenefits(
-                ctx.ssBenefits,
-                ordinaryIncome + ctx.ltcgIncome,
-                0,
-                ctx.filingStatus,
-            );
-            stateBase += taxableSS;
-        }
+        // Most states tax LTCG as ordinary. #186: match the engine's retirement
+        // state-tax path (YearSolver), which ALWAYS excludes SS from the state
+        // base — it computes state tax as
+        // calculateTax(allOrdinaryIncome − currentSSTaxable + LTCG), i.e. the
+        // taxable SS is removed regardless of the state's SS treatment. So the
+        // state base here is just non-SS ordinary + LTCG (`ordinaryIncome`
+        // already excludes SS; preTaxDeductions are netted into it upstream, so
+        // pass 0 deductions to calculateTax).
+        //
+        // The old branch mirrored calculateUnifiedStateTax (adds taxable SS for
+        // socialSecurityTreatment === 'taxable'), but the engine never calls that
+        // in the retirement solve. With every shipped state 'exempt' the branch
+        // was dead; if a state ever flips to 'taxable' it would have priced a
+        // state-SS cost the engine never bills, biasing candidates. Mirror the
+        // engine instead.
+        const stateBase = ordinaryIncome + ctx.ltcgIncome;
         state = TaxService.calculateTax(stateBase, 0, ctx.stateParams);
     }
 
@@ -1012,9 +1034,13 @@ function buildNodeGrowthFactors(
  *
  * Tax routing mirrors the real sim's WITHHOLD path: the year's gap
  * (spending need + this-year tax − cash from ordinary income) flows
- * through the withdrawal order brokerage → roth → trad. The portion that
- * ends up coming from trad (`tradSpending`) becomes ordinary income and
- * feeds back into the tax calc. yearTax and tradSpending are coupled, so
+ * through a FIXED brokerage → roth → trad spending waterfall — the app's
+ * default/tax-efficient order (see module header: an approximation now
+ * that the joint order optimizer can pick a different roth-vs-trad order;
+ * residual error is confined to per-path MC, since deterministic plans are
+ * re-scored on the real engine). The portion that ends up coming from trad
+ * (`tradSpending`) becomes ordinary income and feeds back into the tax
+ * calc. yearTax and tradSpending are coupled, so
  * we resolve via a small fixed-point iteration. Most years converge in 0
  * iterations because there's enough brokerage + Roth (or enough ordinary
  * income from SS/RMD/pension) to keep tradSpending = 0 — the
@@ -2391,7 +2417,8 @@ export function planConversionsViaDP(
         // tracks the running roth balance forward, so `cap` reflects what
         // DP's own plan has left in Roth this year — not a baseline proxy.
         // gap = max(0, spendingNeed + yearTax − cashFromOrdinary); sourced
-        // brokerage → roth → trad in the real-sim withdrawal order.
+        // through the fixed brokerage → roth → trad waterfall (approximation of
+        // the engine's chosen order — see module header / evaluateCell docs).
         const cashFromOrd =
             ctx.nonSSOrdinaryIncomeExclRMD + ctx.ssBenefits + rmdAtB;
         const gap = Math.max(0, ctx.spendingNeed + cell.yearTax - cashFromOrd);
