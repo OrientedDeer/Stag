@@ -5,6 +5,7 @@ import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { StyledInput, StyledDisplay } from "../../Layout/InputFields/StyleUI";
 import { useModalAccessibility } from "../../../hooks/useModalAccessibility";
 import { formatDateForInput } from "../../../utils/formatters";
+import { parseDateRequired } from "../modelUtils";
 import { Button } from "../../Layout/Primitives";
 
 const generateUniqueLotId = () =>
@@ -49,8 +50,11 @@ const AddESPPLotModal: React.FC<AddESPPLotModalProps> = ({
     const dispositionStatus = useMemo(() => {
         if (!grantDate || !purchaseDate) return "Unknown";
 
-        const grant = new Date(grantDate);
-        const purchase = new Date(purchaseDate);
+        // Native date-input strings are date-only; parse them LOCAL (not UTC
+        // new Date('YYYY-MM-DD')) so persistence/display/disposition math agree
+        // and lots aren't stored a day early for west-of-UTC users (#182).
+        const grant = parseDateRequired(grantDate);
+        const purchase = parseDateRequired(purchaseDate);
         const today = new Date();
 
         // Two years from grant
@@ -84,8 +88,8 @@ const AddESPPLotModal: React.FC<AddESPPLotModalProps> = ({
 
         const lot: ESPPLot = {
             id: existingLot?.id ?? generateUniqueLotId(),
-            grantDate: new Date(grantDate),
-            purchaseDate: new Date(purchaseDate),
+            grantDate: parseDateRequired(grantDate),
+            purchaseDate: parseDateRequired(purchaseDate),
             fmvAtGrant,
             fmvAtPurchase,
             purchasePrice,

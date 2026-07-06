@@ -179,14 +179,18 @@ export function isLikelyIncome(description: string): boolean {
 export function parseCSV(content: string): ParsedCSV {
     // Strip UTF-8 BOM if present (common in bank CSV downloads)
     const cleaned = content.replace(/^\uFEFF/, '');
-    const lines = cleaned.split(/\r?\n/).filter(line => line.trim());
+    // Split into records with a quote-aware scan, not a bare newline split:
+    // RFC-4180 allows embedded newlines inside quoted fields (e.g. multi-line
+    // bank memo/description cells), and splitting on every newline would tear
+    // one transaction into several malformed rows and silently drop it (#182).
+    const records = splitCSVRecords(cleaned).filter(line => line.trim());
 
-    if (lines.length === 0) {
+    if (records.length === 0) {
         return { headers: [], rows: [], hasHeaders: true };
     }
 
-    // Parse each line, handling quoted fields
-    const parsedRows = lines.map(line => parseCSVLine(line));
+    // Parse each record, handling quoted fields
+    const parsedRows = records.map(line => parseCSVLine(line));
 
     // Detect if first row is headers (contains mostly text, not numbers)
     const hasHeaders = detectHeaders(parsedRows[0] || []);
@@ -208,6 +212,44 @@ export function parseCSV(content: string): ParsedCSV {
         rows: parsedRows,
         hasHeaders: false,
     };
+}
+
+/**
+ * Split CSV content into logical records, treating newlines inside quoted
+ * fields as part of the field (RFC-4180). Returns one string per record with
+ * the surrounding quotes preserved so parseCSVLine can interpret them.
+ */
+function splitCSVRecords(content: string): string[] {
+    const records: string[] = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < content.length; i++) {
+        const char = content[i];
+
+        if (char === '"') {
+            // A doubled "" is an escaped quote inside a quoted field — stay in
+            // the same quote state and keep both chars for parseCSVLine.
+            if (inQuotes && content[i + 1] === '"') {
+                current += '""';
+                i++;
+                continue;
+            }
+            inQuotes = !inQuotes;
+            current += char;
+        } else if ((char === '\n' || char === '\r') && !inQuotes) {
+            // Record boundary (outside quotes). Consume a \r\n pair as one break.
+            if (char === '\r' && content[i + 1] === '\n') i++;
+            records.push(current);
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+    // Trailing record (no final newline)
+    if (current.length > 0) records.push(current);
+
+    return records;
 }
 
 /**

@@ -110,17 +110,27 @@ export function bumpLastImport(blob: MergeBlob): void {
         return Number.isNaN(t) ? -Infinity : t;
     };
     const newest = formats.reduce((a, b) => (lastUsedMs(b) > lastUsedMs(a) ? b : a));
-    newest.lastUsed = new Date();
+    // Stamp a full ISO string, NOT a Date: serializeBlob runs jsonDateReplacer,
+    // which truncates any `instanceof Date` to a local 'YYYY-MM-DD' — that would
+    // drop the time and (for west-of-UTC runners) leave the "Last import"
+    // indicator permanently a day behind. A string passes the replacer untouched
+    // and reconstructs the exact instant on the browser's next load (#182). The
+    // decrypted blob's date fields are already strings here (parsed JSON), so this
+    // matches their real runtime shape despite the Date type.
+    newest.lastUsed = new Date().toISOString() as unknown as Date;
     // The saved-format name is a user-chosen label — keep it out of routine logs.
     console.log(VERBOSE ? `  bumped "Last import" via saved format "${newest.name}"` : '  bumped "Last import"');
 }
 
 /** One full attempt: GET → decrypt → merge → re-encrypt → PUT. Returns false on 409 (retry). */
 async function mergeOnce(): Promise<boolean> {
+    // The doc id is the per-user Google `sub` — keep it out of routine logs unless
+    // STAG_VERBOSE=1, matching the file's redaction policy (used below too).
+    const docLabel = VERBOSE ? DOC_ID : 'user doc';
     const doc = await getDoc();
     if (!doc) {
         throw new Error(
-            `No backup doc "${DOC_ID}" in "${DB}". The browser creates it lazily on first cloud save — ` +
+            `No backup doc "${docLabel}" in "${DB}". The browser creates it lazily on first cloud save — ` +
                 `save once in the app first. stag-feed will not create the doc itself.`,
         );
     }
@@ -160,8 +170,6 @@ async function mergeOnce(): Promise<boolean> {
         throw new Error(`Encrypted blob ${(size / 1048576).toFixed(2)} MB exceeds 5 MB cap — refusing to write.`);
     }
 
-    // The doc id is the per-user Google `sub` — keep it out of routine logs.
-    const docLabel = VERBOSE ? DOC_ID : 'user doc';
     if (!WRITE) {
         console.log(`[dry-run] merge OK; would PUT ${docLabel} (${(size / 1024).toFixed(1)} KB). Set STAG_WRITE=1 to commit.`);
         return true;

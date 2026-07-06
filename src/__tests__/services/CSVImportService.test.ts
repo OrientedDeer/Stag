@@ -248,6 +248,23 @@ describe('parseCSV', () => {
             const result = parseCSV('a,b\n"quoted value",normal');
             expect(result.rows[0]).toEqual(['quoted value', 'normal']);
         });
+
+        it('should keep an embedded newline inside a quoted field (RFC-4180)', () => {
+            // Bank memo fields sometimes contain a literal newline. Splitting on
+            // newlines before quote parsing tore this into two malformed rows and
+            // silently dropped/truncated the transaction (#182).
+            const result = parseCSV('Date,Amount,Memo\n2026-06-03,-4.50,"POS DEBIT\nCoffee Shop"');
+            expect(result.rows).toHaveLength(1);
+            expect(result.rows[0]).toEqual(['2026-06-03', '-4.50', 'POS DEBIT\nCoffee Shop']);
+        });
+
+        it('should keep an embedded CRLF inside a quoted field and not lose following rows', () => {
+            const csv = 'Date,Amount,Memo\r\n2026-06-03,-4.50,"line1\r\nline2"\r\n2026-06-04,-9.00,Plain';
+            const result = parseCSV(csv);
+            expect(result.rows).toHaveLength(2);
+            expect(result.rows[0]).toEqual(['2026-06-03', '-4.50', 'line1\r\nline2']);
+            expect(result.rows[1]).toEqual(['2026-06-04', '-9.00', 'Plain']);
+        });
     });
 
     describe('header detection', () => {

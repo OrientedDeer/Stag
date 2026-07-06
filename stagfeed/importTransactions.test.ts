@@ -44,7 +44,7 @@ import {
     serializeBlob as serializeBlobShared,
 } from './importShared';
 import { applyTransactions, type BalanceFlag, type MergeBlob } from '../src/services/backupMerge';
-import { parseDate } from '../src/components/Objects/modelUtils';
+import { reconstituteBudgetMonths } from '../src/components/Objects/Budget/BudgetContext';
 
 const HEADER = 'Date,Description,Amount,Source,Id';
 
@@ -103,13 +103,17 @@ describe('serializeBlob — transaction date round-trip (issue #73)', () => {
         applyTransactions(blob, csvToTransactionsShared(csv), { dedup: 'id' });
 
         // Round-trip through the importer's real serialization (JSON only; the
-        // encrypt() layer is a transparent passthrough for date semantics).
+        // encrypt() layer is a transparent passthrough for date semantics), then
+        // rehydrate through the SAME production reader the browser uses on import
+        // (reconstituteBudgetMonths) — not a parseDate stand-in, so this test would
+        // catch a regression in the reader too (#182).
         const reloaded: MergeBlob = JSON.parse(serializeBlobShared(blob));
-        const txns = (reloaded.budget?.months ?? []).flatMap((m) => m.transactions ?? []);
+        const months = reconstituteBudgetMonths(reloaded.budget?.months ?? []);
+        const txns = months.flatMap((m) => m.transactions ?? []);
         expect(txns).toHaveLength(2);
 
-        const byId = Object.fromEntries(txns.map((t) => [t.id, parseDate(t.date)!]));
-        // parseDate reads 'YYYY-MM-DD' locally — must match the source calendar day.
+        const byId = Object.fromEntries(txns.map((t) => [t.id, t.date as Date]));
+        // The reader parses 'YYYY-MM-DD' locally — must match the source calendar day.
         expect(byId['tx-1'].getFullYear()).toBe(2026);
         expect(byId['tx-1'].getMonth()).toBe(5); // June (0-based)
         expect(byId['tx-1'].getDate()).toBe(3);
@@ -123,10 +127,12 @@ describe('serializeBlob — transaction date round-trip (issue #73)', () => {
         applyTransactions(blob, csvToTransactionsShared(csv), { dedup: 'id' });
 
         const reloaded: MergeBlob = JSON.parse(JSON.stringify(blob));
-        const txns = (reloaded.budget?.months ?? []).flatMap((m) => m.transactions ?? []);
-        const byId = Object.fromEntries(txns.map((t) => [t.id, parseDate(t.date)!]));
-        // Without the replacer, the UTC ISO ('2026-06-02T14:00:00.000Z') reloads
-        // as June 2 — the wrong day. (Documents the failure mode.)
+        const months = reconstituteBudgetMonths(reloaded.budget?.months ?? []);
+        const txns = months.flatMap((m) => m.transactions ?? []);
+        const byId = Object.fromEntries(txns.map((t) => [t.id, t.date as Date]));
+        // Without the replacer, the UTC ISO ('2026-06-02T14:00:00.000Z') carries
+        // the already-shifted calendar day, and the reader reads June 2 — the wrong
+        // day. (Documents the failure mode the serializer + reader prevent.)
         expect(byId['tx-1'].getDate()).toBe(2);
         expect(byId['tx-2'].getMonth()).toBe(5); // July 1 slipped back into June
         expect(byId['tx-2'].getDate()).toBe(30);
@@ -161,12 +167,10 @@ describe('importBalances serializeBlob — string-date snapshots survive the re-
     it('round-trips the snapshot string date unchanged through the shared serializer', () => {
         const reloaded = JSON.parse(serializeBlobBalances(blobWithBalanceSnapshot())) as MergeBlob;
         const point = reloaded.amountHistory!['acct-1'][0];
-        // parseDate reads 'YYYY-MM-DD' locally — assert calendar components, not a
-        // TZ-derived literal, so the test is offset-agnostic if the pinned TZ moves.
-        const d = parseDate(point.date)!;
-        expect(d.getFullYear()).toBe(2026);
-        expect(d.getMonth()).toBe(5); // June (0-based) — never slips to May
-        expect(d.getDate()).toBe(1);
+        // amountHistory dates are date-only STRINGS end to end (AccountContext keeps
+        // them as strings; consumers compare via localeCompare), so the exact string
+        // must survive the serializer with no TZ shift.
+        expect(point.date).toBe('2026-06-01');
         expect(point.num).toBe(12345);
     });
 });
@@ -181,6 +185,15 @@ describe('csvToTransactions — malformed Date rows (issue #3)', () => {
             txns = csvToTransactionsShared(csv);
         }).not.toThrow();
         expect(txns).toHaveLength(0);
+    });
+
+    it('skips a blank Amount cell instead of importing a $0 transaction (#182)', () => {
+        // Number('') is 0 (finite), so a blank Amount would import as a real $0
+        // transaction; id-dedup would then lock it in even after the feed re-sends
+        // the real amount under the same id. It must be treated as unparseable.
+        const csv = `${HEADER}\n2026-06-03,Coffee,,Card,tx-1\n2026-06-04,Rent,-2000,Card,tx-2`;
+        const txns = csvToTransactionsShared(csv);
+        expect(txns.map((t) => t.id)).toEqual(['tx-2']);
     });
 
     it('skips a present-but-blank Date cell instead of bucketing under NaN-NaN (Mode B)', () => {
@@ -331,6 +344,21 @@ describe('bumpLastImport picks the newest valid saved format (issue #6)', () => 
         ]);
         bumpLastImport(blob);
         expect(bumpedName(blob)).toBe('New');
+    });
+
+    it('stamps lastUsed as a full instant that survives serializeBlob (#182)', () => {
+        // serializeBlob runs jsonDateReplacer, which truncates any live Date to a
+        // local 'YYYY-MM-DD'. bumpLastImport must stamp an ISO STRING (not a Date)
+        // so the re-encrypted blob keeps the time and the "Last import" indicator
+        // isn't left a day behind west of UTC.
+        const blob = blobWithFormats([{ name: 'Only', lastUsed: '2024-01-01T00:00:00Z' }]);
+        bumpLastImport(blob);
+
+        const reloaded = JSON.parse(serializeBlobShared(blob)) as MergeBlob;
+        const lastUsed = reloaded.budget!.importSettings!.savedCSVFormats![0].lastUsed as unknown as string;
+        expect(typeof lastUsed).toBe('string');
+        expect(lastUsed).toContain('T'); // full ISO instant, not a truncated 'YYYY-MM-DD'
+        expect(Math.abs(new Date(lastUsed).getTime() - Date.now())).toBeLessThan(5000);
     });
 
     it('no-ops cleanly when there are no saved formats', () => {

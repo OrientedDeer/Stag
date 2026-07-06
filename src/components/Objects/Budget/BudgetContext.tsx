@@ -28,6 +28,11 @@ import type {
 
 // Shared id minter (utils/id) so CSVImportService and backupMerge mint ids the same way.
 import { generateId } from '../../../utils/id';
+// Local-date parsing for date-only transaction fields. The backup path serializes
+// Dates via jsonDateReplacer as local 'YYYY-MM-DD'; parsing those with the raw
+// `new Date('YYYY-MM-DD')` UTC constructor shifts them a day earlier for west-of-UTC
+// users, ratcheting every transaction date one day per export/import cycle (#182).
+import { parseDate } from '../modelUtils';
 
 const now = new Date();
 
@@ -443,9 +448,13 @@ export function reconstituteBudgetMonths(rawMonths: unknown): MonthlySnapshot[] 
             const trans = t as Record<string, unknown>;
             return {
                 ...trans,
-                date: trans.date ? new Date(trans.date as string) : new Date(),
-                postedDate: trans.postedDate ? new Date(trans.postedDate as string) : undefined,
-                statementDate: trans.statementDate ? new Date(trans.statementDate as string) : undefined,
+                // Transaction dates are date-only values (serialized as local
+                // 'YYYY-MM-DD' by jsonDateReplacer on backup). parseDate reads that
+                // portion as LOCAL midnight so a west-of-UTC export/import round-trip
+                // doesn't walk the date a day earlier and defeat dedupe (#182).
+                date: trans.date ? parseDate(trans.date, new Date()) : new Date(),
+                postedDate: trans.postedDate ? parseDate(trans.postedDate) : undefined,
+                statementDate: trans.statementDate ? parseDate(trans.statementDate) : undefined,
             } as Transaction;
         });
         return {

@@ -425,6 +425,44 @@ describe('AccountContext', () => {
         });
       });
 
+      it('should replace today\'s entry even when it is not the last in an unsorted history (#182)', () => {
+        let amountHistory!: any;
+        let dispatch!: any;
+
+        const TestComponent = () => {
+          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
+          return null;
+        };
+
+        render(
+          <AccountProvider>
+            <TestComponent />
+          </AccountProvider>
+        );
+
+        const account = new SavedAccount('1', 'Savings', 1000);
+
+        act(() => {
+          dispatch({ type: 'ADD_ACCOUNT', payload: account }); // seeds today (MOCK_DATE)
+        });
+
+        // A later-dated entry pushes today's entry out of the last slot.
+        act(() => {
+          dispatch({ type: 'ADD_HISTORY_ENTRY', payload: { id: '1', date: '2024-02-01', num: 2000 } });
+        });
+
+        // Snapshotting today must REPLACE today's existing entry, not append a
+        // duplicate just because a last-entry check missed it.
+        act(() => {
+          dispatch({ type: 'ADD_AMOUNT_SNAPSHOT', payload: { id: '1', amount: 1100 } });
+        });
+
+        expect(amountHistory['1']).toHaveLength(2);
+        // Stays date-sorted so reverse().find() reads the latest balance.
+        expect(amountHistory['1'].map((e: any) => e.date)).toEqual([MOCK_DATE, '2024-02-01']);
+        expect(amountHistory['1'][0]).toEqual({ date: MOCK_DATE, num: 1100 });
+      });
+
       it('should replace snapshot if added on same day', () => {
         let amountHistory!: any;
         let dispatch!: any;
@@ -534,6 +572,41 @@ describe('AccountContext', () => {
           date: '2024-01-20',
           num: 1500,
         });
+      });
+
+      it('should re-sort the history after a date edit moves an entry out of order (#182)', () => {
+        let amountHistory!: any;
+        let dispatch!: any;
+
+        const TestComponent = () => {
+          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
+          return null;
+        };
+
+        render(
+          <AccountProvider>
+            <TestComponent />
+          </AccountProvider>
+        );
+
+        const account = new SavedAccount('1', 'Savings', 1000);
+
+        act(() => {
+          dispatch({ type: 'ADD_ACCOUNT', payload: account }); // seeds MOCK_DATE (2024-01-15)
+        });
+        act(() => {
+          dispatch({ type: 'ADD_HISTORY_ENTRY', payload: { id: '1', date: '2024-02-01', num: 2000 } });
+        });
+        // history is now [2024-01-15, 2024-02-01]
+
+        // Edit the LAST entry's date to be the earliest of the three days.
+        act(() => {
+          dispatch({ type: 'UPDATE_HISTORY_ENTRY', payload: { id: '1', index: 1, date: '2024-01-01', num: 2000 } });
+        });
+
+        // Must re-sort so consumers using reverse().find() don't read a stale
+        // (now-misplaced) balance.
+        expect(amountHistory['1'].map((e: any) => e.date)).toEqual(['2024-01-01', MOCK_DATE]);
       });
 
       it('should not update if index does not exist', () => {

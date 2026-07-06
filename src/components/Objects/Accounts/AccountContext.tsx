@@ -88,13 +88,17 @@ function accountReducer(state: AccountState, action: Action): AccountState {
       const { id, amount } = action.payload;
       const today = getTodayString();
       const currentHistory = state.amountHistory[id] || [];
-      const lastEntry = currentHistory[currentHistory.length - 1];
       const newEntry: AmountHistoryEntry = { date: today, num: amount };
 
-      // Replace today's entry if it exists, otherwise append
-      const newHistory = lastEntry?.date === today
-        ? [...currentHistory.slice(0, -1), newEntry]
+      // Replace today's entry wherever it sits (not just the last slot: an
+      // edited/imported history may not be sorted, so a last-entry-only check
+      // would append a duplicate today entry). Otherwise append, then keep the
+      // list date-sorted so reverse().find() consumers read the latest balance.
+      const existingIdx = currentHistory.findIndex(e => e.date === today);
+      const newHistory = existingIdx >= 0
+        ? currentHistory.map((e, i) => (i === existingIdx ? newEntry : e))
         : [...currentHistory, newEntry];
+      newHistory.sort((a, b) => a.date.localeCompare(b.date));
 
       return { ...state, amountHistory: { ...state.amountHistory, [id]: newHistory } };
     }
@@ -111,6 +115,9 @@ function accountReducer(state: AccountState, action: Action): AccountState {
       const history = [...(state.amountHistory[id] || [])];
       if (!history[index]) return state;
       history[index] = { ...history[index], date, num };
+      // A date edit can move this entry out of order; re-sort so reverse().find()
+      // consumers (Networth, projectionHistory) don't read a stale balance.
+      history.sort((a, b) => a.date.localeCompare(b.date));
       return { ...state, amountHistory: { ...state.amountHistory, [id]: history } };
     }
 
@@ -194,7 +201,9 @@ export function AccountProvider({ children }: { children: ReactNode }): React.Re
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `stag_backup_${new Date().toISOString().split('T')[0]}.json`;
+    // Local date (not toISOString, which is UTC): an evening export in a
+    // negative-offset timezone would otherwise be stamped with tomorrow's date.
+    a.download = `stag_backup_${formatDateForInput(new Date())}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }, []);

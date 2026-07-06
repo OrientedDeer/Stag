@@ -42,7 +42,12 @@ export function csvToTransactions(csvText: string): Transaction[] {
     const out: Transaction[] = [];
     let skipped = 0;
     for (const r of rows) {
-        const amount = Number(r[idx.amount]);
+        // A blank Amount cell must be treated as unparseable, NOT $0: Number('')
+        // is 0 (finite), so a blank would import as a real $0 transaction and the
+        // id-dedup would then lock it in even when the feed re-sends the real
+        // amount under the same id (#182). Guard the raw cell before Number().
+        const rawAmount = (r[idx.amount] ?? '').trim();
+        const amount = rawAmount === '' ? NaN : Number(rawAmount);
         const id = (r[idx.id] ?? '').trim();
         // Read date defensively: a short row (fewer cells than the Date column)
         // would make r[idx.date] undefined and .trim() throw — aborting the whole
