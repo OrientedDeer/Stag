@@ -9,6 +9,7 @@ import { AnyIncome } from '../components/Objects/Income/models';
 import { AnyExpense } from '../components/Objects/Expense/models';
 import { TaxState } from '../components/Objects/Taxes/TaxContext';
 import { AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
+import { totalTaxesOf } from '../components/Charts/taxTotals';
 
 // ============================================================================
 // Types
@@ -59,6 +60,26 @@ function formatCurrency(value: number): number {
 
 function getAge(year: number, assumptions: AssumptionsState): number {
     return year - getBirthYear(assumptions.milestones);
+}
+
+// Net-worth totals mirroring the app's canonical getAccountTotals (FutureUtils):
+// a financed PropertyAccount carries its outstanding mortgage in `loanAmount`,
+// which is a liability. Counting only the home's value as an asset (and ignoring
+// the mortgage) overstates net worth by the entire outstanding principal.
+function accountNetWorthTotals(accounts: AnyAccount[]): { assets: number; liabilities: number; netWorth: number } {
+    let assets = 0;
+    let liabilities = 0;
+    for (const acc of accounts) {
+        if (acc instanceof DebtAccount || acc instanceof DeficitDebtAccount) {
+            liabilities += acc.amount;
+        } else {
+            assets += acc.amount;
+            if (acc instanceof PropertyAccount && acc.loanAmount) {
+                liabilities += acc.loanAmount;
+            }
+        }
+    }
+    return { assets, liabilities, netWorth: assets - liabilities };
 }
 
 function generateFilename(): string {
@@ -118,7 +139,7 @@ function numberFormats(
 // Sheet Builders
 // ============================================================================
 
-function buildSummarySheet(data: ExportData): SheetContent {
+export function buildSummarySheet(data: ExportData): SheetContent {
     const { simulation, assumptions } = data;
 
     const rows: unknown[][] = [];
@@ -130,20 +151,22 @@ function buildSummarySheet(data: ExportData): SheetContent {
     for (const year of simulation) {
         const age = getAge(year.year, assumptions);
         const grossIncome = year.cashflow.totalIncome;
-        const totalTaxes = year.taxDetails.fed + year.taxDetails.state + year.taxDetails.fica + year.taxDetails.capitalGains;
-        const effTaxRate = grossIncome > 0 ? (totalTaxes / grossIncome) * 100 : 0;
+        // Sum ALL tax components (fed/state/FICA + withdrawal ordinary, cap-gains,
+        // NIIT, IRMAA, ACA) so a retiree drawing a Traditional IRA doesn't export
+        // ~$0 taxes. Single-sourced with the Data tab / Sankey via totalTaxesOf (#189/#195).
+        const totalTaxes = totalTaxesOf(year.taxDetails);
+        // Rate against the year's AGI-equivalent tax base (magi) — the income that
+        // GENERATED those taxes. cashflow.totalIncome excludes the gross account
+        // withdrawals the withdrawal/cap-gains taxes are levied on, so dividing by
+        // it produced an impossible >100% rate. Fall back for pre-magi snapshots.
+        const taxBase = year.magi
+            ?? (grossIncome + (year.rothConversion?.amount || 0) + year.cashflow.withdrawals);
+        const effTaxRate = taxBase > 0 ? (totalTaxes / taxBase) * 100 : 0;
         const livingExpenses = year.cashflow.totalExpense - totalTaxes;
         const netSavings = year.cashflow.totalInvested;
 
-        // Calculate net worth from accounts
-        let netWorth = 0;
-        for (const acc of year.accounts) {
-            if (acc instanceof DebtAccount || acc instanceof DeficitDebtAccount) {
-                netWorth -= acc.amount;
-            } else {
-                netWorth += acc.amount;
-            }
-        }
+        // Net worth via the canonical math (mortgage principal counts as a liability).
+        const netWorth = accountNetWorthTotals(year.accounts).netWorth;
 
         rows.push([
             year.year,
@@ -162,7 +185,7 @@ function buildSummarySheet(data: ExportData): SheetContent {
     return { rows, formats: numberFormats([2, 3, 5, 6, 7], [4], 2, rows.length - 1) };
 }
 
-function buildAccountsSheet(data: ExportData): SheetContent {
+export function buildAccountsSheet(data: ExportData): SheetContent {
     const { simulation, assumptions } = data;
 
     // Collect all unique account names
@@ -181,8 +204,6 @@ function buildAccountsSheet(data: ExportData): SheetContent {
     for (const year of simulation) {
         const age = getAge(year.year, assumptions);
         const accountBalances: number[] = [];
-        let totalAssets = 0;
-        let totalDebt = 0;
 
         for (const name of accountNames) {
             const account = year.accounts.find(a => a.name === name);
@@ -191,15 +212,19 @@ function buildAccountsSheet(data: ExportData): SheetContent {
             if (account) {
                 if (account instanceof DebtAccount || account instanceof DeficitDebtAccount) {
                     balance = -account.amount;
-                    totalDebt += account.amount;
                 } else {
                     balance = account.amount;
-                    totalAssets += balance;
                 }
             }
 
             accountBalances.push(formatCurrency(balance));
         }
+
+        // Totals via the canonical net-worth math so a financed home's outstanding
+        // mortgage (PropertyAccount.loanAmount) lands in Total Debt and doesn't
+        // overstate Net Worth. Iterates the real accounts (not the deduped name
+        // list), so same-named accounts are all counted.
+        const { assets: totalAssets, liabilities: totalDebt, netWorth } = accountNetWorthTotals(year.accounts);
 
         rows.push([
             year.year,
@@ -207,7 +232,7 @@ function buildAccountsSheet(data: ExportData): SheetContent {
             ...accountBalances,
             formatCurrency(totalAssets),
             formatCurrency(totalDebt),
-            formatCurrency(totalAssets - totalDebt)
+            formatCurrency(netWorth)
         ]);
     }
 
@@ -298,19 +323,22 @@ function buildExpenseSheet(data: ExportData): SheetContent {
     return { rows, formats: numberFormats(currencyCols, [], 2, rows.length - 1) };
 }
 
-function buildTaxSheet(data: ExportData): SheetContent {
+export function buildTaxSheet(data: ExportData): SheetContent {
     const { simulation, assumptions } = data;
 
     const rows: unknown[][] = [];
     addMetadataRow(rows, simulation);
 
-    // Headers
-    rows.push(['Year', 'Age', 'Federal', 'State', 'FICA', 'Capital Gains', 'Total Taxes', 'PreTax Deductions', 'Insurance']);
+    // Headers. The retirement-era components (withdrawal ordinary tax, NIIT,
+    // IRMAA, ACA repayment) are broken out so 'Total Taxes' is transparent and
+    // self-consistent — previously they were omitted entirely and a retiree's
+    // total read ~$0 (#189/#195).
+    rows.push(['Year', 'Age', 'Federal', 'State', 'FICA', 'Capital Gains', 'Withdrawal Tax', 'NIIT', 'IRMAA', 'ACA Repayment', 'Total Taxes', 'PreTax Deductions', 'Insurance']);
 
     for (const year of simulation) {
         const age = getAge(year.year, assumptions);
-        const { fed, state, fica, capitalGains, preTax, insurance } = year.taxDetails;
-        const totalTaxes = fed + state + fica + capitalGains;
+        const { fed, state, fica, capitalGains, withdrawalOrdinaryTax, niit, irmaa, aca, preTax, insurance } = year.taxDetails;
+        const totalTaxes = totalTaxesOf(year.taxDetails);
 
         rows.push([
             year.year,
@@ -319,14 +347,18 @@ function buildTaxSheet(data: ExportData): SheetContent {
             formatCurrency(state),
             formatCurrency(fica),
             formatCurrency(capitalGains),
+            formatCurrency(withdrawalOrdinaryTax || 0),
+            formatCurrency(niit || 0),
+            formatCurrency(irmaa || 0),
+            formatCurrency(aca || 0),
             formatCurrency(totalTaxes),
             formatCurrency(preTax),
             formatCurrency(insurance)
         ]);
     }
 
-    // Columns 2-8 are all currency
-    return { rows, formats: numberFormats([2, 3, 4, 5, 6, 7, 8], [], 2, rows.length - 1) };
+    // Columns 2-12 are all currency
+    return { rows, formats: numberFormats([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], [], 2, rows.length - 1) };
 }
 
 function buildCashflowSheet(data: ExportData): SheetContent {

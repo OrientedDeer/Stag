@@ -9,7 +9,13 @@ import { describe, it, expect } from 'vitest';
 import {
     registerSheetBuilder,
     getRegisteredSheets,
+    buildSummarySheet,
+    buildAccountsSheet,
+    buildTaxSheet,
+    ExportData,
 } from '../../services/ExcelExportService';
+import { PropertyAccount } from '../../components/Objects/Accounts/models';
+import { SimulationYear } from '../../services/simulation/types';
 
 // =============================================================================
 // Note on Testing Approach
@@ -136,6 +142,89 @@ describe('registerSheetBuilder', () => {
         for (const defaultSheet of DEFAULT_SHEETS) {
             expect(sheets).toContain(defaultSheet);
         }
+    });
+});
+
+// =============================================================================
+// #195: Total Taxes must sum all components; net worth must net out the mortgage
+// =============================================================================
+
+/** A retiree year: a $500k home financed with a $200k mortgage, drawing $100k
+ *  gross from a Traditional IRA against $20k of Social Security. The bulk of the
+ *  tax bill lives in the withdrawal/cap-gains components. */
+function makeRetireeExportData(): ExportData {
+    const home = new PropertyAccount('p1', 'Home', 500_000, 'Financed', 200_000, 250_000, '', 3);
+    const year: SimulationYear = {
+        year: 2050,
+        incomes: [],
+        expenses: [],
+        accounts: [home],
+        cashflow: {
+            totalIncome: 20_000,
+            totalExpense: 130_000,
+            livingExpenses: 100_000,
+            discretionary: 0,
+            investedUser: 0,
+            investedMatch: 0,
+            totalInvested: 0,
+            bucketAllocations: 0,
+            bucketDetail: {},
+            withdrawals: 100_000,
+            withdrawalDetail: {},
+        },
+        taxDetails: {
+            fed: 5_000, state: 0, fica: 0,
+            preTax: 0, insurance: 0, postTax: 0,
+            capitalGains: 3_000, withdrawalOrdinaryTax: 22_000, niit: 0,
+        },
+        magi: 120_000,
+        logs: [],
+    };
+    return {
+        simulation: [year],
+        // getAge only needs milestones; an empty list falls back to a default birth year.
+        assumptions: { milestones: [] } as unknown as ExportData['assumptions'],
+        taxState: {} as unknown as ExportData['taxState'],
+        currentAccounts: [home],
+        currentIncomes: [],
+        currentExpenses: [],
+    };
+}
+
+describe('ExcelExportService retirement taxes + mortgage net worth (#195)', () => {
+    it('Summary Total Taxes sums all 8 components, not the 4-part partial', () => {
+        const { rows } = buildSummarySheet(makeRetireeExportData());
+        // rows[0]=metadata, rows[1]=headers, rows[2]=first data year.
+        // headers: [Year, Age, Gross Income, Total Taxes, Eff Tax %, Living, Net Savings, Net Worth]
+        // 5000 + 3000 + 22000 = 30,000 (old partial fed+state+fica+capGains = 8,000).
+        expect(rows[2][3]).toBe(30_000);
+    });
+
+    it('Summary Eff Tax % rates against magi so it stays sane (no >100%)', () => {
+        const { rows } = buildSummarySheet(makeRetireeExportData());
+        // 30,000 / 120,000 magi = 25% (old code divided by $20k income => 150%).
+        expect(rows[2][4]).toBeCloseTo(25);
+    });
+
+    it('Summary Net Worth subtracts the outstanding mortgage principal', () => {
+        const { rows } = buildSummarySheet(makeRetireeExportData());
+        // $500k home value − $200k mortgage = $300k (old code showed the full $500k).
+        expect(rows[2][7]).toBe(300_000);
+    });
+
+    it('Accounts sheet Total Debt / Net Worth account for the mortgage', () => {
+        const { rows } = buildAccountsSheet(makeRetireeExportData());
+        // headers: [Year, Age, Home, Total Assets, Total Debt, Net Worth]
+        expect(rows[2][3]).toBe(500_000); // Total Assets (home value)
+        expect(rows[2][4]).toBe(200_000); // Total Debt (mortgage) — was 0
+        expect(rows[2][5]).toBe(300_000); // Net Worth — was 500,000
+    });
+
+    it('Tax sheet Total Taxes carries the full retirement-era bill', () => {
+        const { rows } = buildTaxSheet(makeRetireeExportData());
+        // headers: [..., Capital Gains, Withdrawal Tax, NIIT, IRMAA, ACA, Total Taxes, ...]
+        expect(rows[2][6]).toBe(22_000); // Withdrawal Tax column (newly broken out)
+        expect(rows[2][10]).toBe(30_000); // Total Taxes (old partial was 8,000)
     });
 });
 
