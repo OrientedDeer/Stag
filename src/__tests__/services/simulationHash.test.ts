@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest';
 import { hashString, getSimulationInputHash } from '../../services/simulationHash';
 import { AssumptionsState } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { WorkIncome } from '../../components/Objects/Income/models';
 
 // =============================================================================
 // Mock Objects
@@ -40,6 +41,20 @@ function createMockIncome(overrides: Partial<{ id: string; name: string; amount:
         getAnnualAmount: () => amount,
         constructor: { name: 'MockIncome' },
     };
+}
+
+/**
+ * Real WorkIncome instance (so `income instanceof WorkIncome` in the hash's
+ * serializer takes the WorkIncome branch — a plain mock never would). Built
+ * with defaults, then any WorkIncome field is overridden so the sensitivity
+ * tests can flip exactly one (insurance, matchAccountId, the ESPP config) and
+ * assert it changes the hash.
+ */
+function createMockWorkIncome(overrides: Partial<WorkIncome> = {}): WorkIncome {
+    // Positional args through matchAccountId (no default); everything after uses
+    // constructor defaults, then `Object.assign` applies the overrides.
+    const inc = new WorkIncome('inc-1', 'Test Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'match-acc');
+    return Object.assign(inc, overrides);
 }
 
 /**
@@ -555,6 +570,196 @@ describe('getSimulationInputHash', () => {
             const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses as any, assumptions, taxState2);
 
             expect(hash1).not.toBe(hash2);
+        });
+
+        // Regression for #180: these six TaxState fields all steer the projection
+        // (current-year overrides + calibration carry-forward; scheduled
+        // state/filing tax events; the survivor scenario) but were omitted from
+        // the hash, so editing them left the cached result stale with no banner.
+        const baseArgs = () => ({
+            accounts: [createMockAccount()] as any,
+            incomes: [createMockIncome()] as any,
+            expenses: [createMockExpense()] as any,
+            assumptions: createMockAssumptions(),
+        });
+
+        it('should return different hash when fedOverride changes', () => {
+            const { accounts, incomes, expenses, assumptions } = baseArgs();
+            const t1 = createMockTaxState({ fedOverride: null });
+            const t2 = createMockTaxState({ fedOverride: 5000 });
+            expect(getSimulationInputHash(accounts, incomes, expenses, assumptions, t1))
+                .not.toBe(getSimulationInputHash(accounts, incomes, expenses, assumptions, t2));
+        });
+
+        it('should return different hash when ficaOverride changes', () => {
+            const { accounts, incomes, expenses, assumptions } = baseArgs();
+            const t1 = createMockTaxState({ ficaOverride: null });
+            const t2 = createMockTaxState({ ficaOverride: 1200 });
+            expect(getSimulationInputHash(accounts, incomes, expenses, assumptions, t1))
+                .not.toBe(getSimulationInputHash(accounts, incomes, expenses, assumptions, t2));
+        });
+
+        it('should return different hash when stateOverride changes', () => {
+            const { accounts, incomes, expenses, assumptions } = baseArgs();
+            const t1 = createMockTaxState({ stateOverride: null });
+            const t2 = createMockTaxState({ stateOverride: 800 });
+            expect(getSimulationInputHash(accounts, incomes, expenses, assumptions, t1))
+                .not.toBe(getSimulationInputHash(accounts, incomes, expenses, assumptions, t2));
+        });
+
+        it('should return different hash when calibrateFutureYears toggles', () => {
+            const { accounts, incomes, expenses, assumptions } = baseArgs();
+            const t1 = createMockTaxState({ fedOverride: 5000, calibrateFutureYears: false });
+            const t2 = createMockTaxState({ fedOverride: 5000, calibrateFutureYears: true });
+            expect(getSimulationInputHash(accounts, incomes, expenses, assumptions, t1))
+                .not.toBe(getSimulationInputHash(accounts, incomes, expenses, assumptions, t2));
+        });
+
+        it('should return different hash when a scheduled tax event is added/edited', () => {
+            const { accounts, incomes, expenses, assumptions } = baseArgs();
+            const t1 = createMockTaxState({ taxEvents: [] });
+            const t2 = createMockTaxState({
+                taxEvents: [{ id: 'ev-1', kind: 'stateResidency', value: 'TX', year: 2034 }],
+            });
+            const t3 = createMockTaxState({
+                taxEvents: [{ id: 'ev-1', kind: 'stateResidency', value: 'FL', year: 2034 }],
+            });
+            const h1 = getSimulationInputHash(accounts, incomes, expenses, assumptions, t1);
+            const h2 = getSimulationInputHash(accounts, incomes, expenses, assumptions, t2);
+            const h3 = getSimulationInputHash(accounts, incomes, expenses, assumptions, t3);
+            expect(h1).not.toBe(h2); // adding an event
+            expect(h2).not.toBe(h3); // editing the destination state
+        });
+
+        it('should return different hash when the survivor scenario is enabled/edited', () => {
+            const { accounts, incomes, expenses, assumptions } = baseArgs();
+            const t1 = createMockTaxState({ survivorScenario: { enabled: false, deathYear: 2040 } });
+            const t2 = createMockTaxState({ survivorScenario: { enabled: true, deathYear: 2040 } });
+            const t3 = createMockTaxState({ survivorScenario: { enabled: true, deathYear: 2040, expenseFactor: 0.8 } });
+            const h1 = getSimulationInputHash(accounts, incomes, expenses, assumptions, t1);
+            const h2 = getSimulationInputHash(accounts, incomes, expenses, assumptions, t2);
+            const h3 = getSimulationInputHash(accounts, incomes, expenses, assumptions, t3);
+            expect(h1).not.toBe(h2); // enabling
+            expect(h2).not.toBe(h3); // changing the expense factor
+        });
+
+        it('should NOT throw and stays stable on default data (taxEvents/survivorScenario undefined)', () => {
+            const { accounts, incomes, expenses, assumptions } = baseArgs();
+            // No taxEvents / survivorScenario set — the default-data shape.
+            const t = createMockTaxState();
+            const h1 = getSimulationInputHash(accounts, incomes, expenses, assumptions, t);
+            const h2 = getSimulationInputHash(accounts, incomes, expenses, assumptions, t);
+            expect(h1).toBe(h2);
+            expect(typeof h1).toBe('string');
+        });
+    });
+
+    // Regression for #180: WorkIncome hash omitted insurance, matchAccountId, and
+    // the ESPP config (discount / lookback / offering period / linked account /
+    // expected growth) — all consumed by the sim but not by getAnnualAmount().
+    describe('sensitivity to WorkIncome field changes', () => {
+        const baseArgs = () => ({
+            accounts: [createMockAccount()] as any,
+            expenses: [createMockExpense()] as any,
+            assumptions: createMockAssumptions(),
+            taxState: createMockTaxState(),
+        });
+
+        it('should return different hash when insurance changes', () => {
+            const { accounts, expenses, assumptions, taxState } = baseArgs();
+            const i1 = [createMockWorkIncome({ insurance: 2000 })];
+            const i2 = [createMockWorkIncome({ insurance: 4000 })];
+            expect(getSimulationInputHash(accounts, i1 as any, expenses, assumptions, taxState))
+                .not.toBe(getSimulationInputHash(accounts, i2 as any, expenses, assumptions, taxState));
+        });
+
+        it('should return different hash when matchAccountId is re-pointed', () => {
+            const { accounts, expenses, assumptions, taxState } = baseArgs();
+            const i1 = [createMockWorkIncome({ matchAccountId: 'acc-A' })];
+            const i2 = [createMockWorkIncome({ matchAccountId: 'acc-B' })];
+            expect(getSimulationInputHash(accounts, i1 as any, expenses, assumptions, taxState))
+                .not.toBe(getSimulationInputHash(accounts, i2 as any, expenses, assumptions, taxState));
+        });
+
+        it('should return different hash when esppDiscountPercent changes (15% -> 5%)', () => {
+            const { accounts, expenses, assumptions, taxState } = baseArgs();
+            const i1 = [createMockWorkIncome({ esppContributionType: 'PERCENTAGE', esppContributionAmount: 10, esppDiscountPercent: 15 })];
+            const i2 = [createMockWorkIncome({ esppContributionType: 'PERCENTAGE', esppContributionAmount: 10, esppDiscountPercent: 5 })];
+            expect(getSimulationInputHash(accounts, i1 as any, expenses, assumptions, taxState))
+                .not.toBe(getSimulationInputHash(accounts, i2 as any, expenses, assumptions, taxState));
+        });
+
+        it('should return different hash when esppHasLookback toggles', () => {
+            const { accounts, expenses, assumptions, taxState } = baseArgs();
+            const i1 = [createMockWorkIncome({ esppHasLookback: true })];
+            const i2 = [createMockWorkIncome({ esppHasLookback: false })];
+            expect(getSimulationInputHash(accounts, i1 as any, expenses, assumptions, taxState))
+                .not.toBe(getSimulationInputHash(accounts, i2 as any, expenses, assumptions, taxState));
+        });
+
+        it('should return different hash when esppOfferingPeriodMonths changes', () => {
+            const { accounts, expenses, assumptions, taxState } = baseArgs();
+            const i1 = [createMockWorkIncome({ esppOfferingPeriodMonths: 6 })];
+            const i2 = [createMockWorkIncome({ esppOfferingPeriodMonths: 12 })];
+            expect(getSimulationInputHash(accounts, i1 as any, expenses, assumptions, taxState))
+                .not.toBe(getSimulationInputHash(accounts, i2 as any, expenses, assumptions, taxState));
+        });
+
+        it('should return different hash when esppAccountId is re-pointed', () => {
+            const { accounts, expenses, assumptions, taxState } = baseArgs();
+            const i1 = [createMockWorkIncome({ esppAccountId: 'espp-A' })];
+            const i2 = [createMockWorkIncome({ esppAccountId: 'espp-B' })];
+            expect(getSimulationInputHash(accounts, i1 as any, expenses, assumptions, taxState))
+                .not.toBe(getSimulationInputHash(accounts, i2 as any, expenses, assumptions, taxState));
+        });
+
+        it('should return different hash when esppExpectedStockGrowth changes', () => {
+            const { accounts, expenses, assumptions, taxState } = baseArgs();
+            const i1 = [createMockWorkIncome({ esppExpectedStockGrowth: 7 })];
+            const i2 = [createMockWorkIncome({ esppExpectedStockGrowth: 10 })];
+            expect(getSimulationInputHash(accounts, i1 as any, expenses, assumptions, taxState))
+                .not.toBe(getSimulationInputHash(accounts, i2 as any, expenses, assumptions, taxState));
+        });
+
+        it('should return the SAME hash for two identical WorkIncomes (no false invalidation)', () => {
+            const { accounts, expenses, assumptions, taxState } = baseArgs();
+            const make = () => [createMockWorkIncome({ insurance: 3000, esppDiscountPercent: 15 })];
+            expect(getSimulationInputHash(accounts, make() as any, expenses, assumptions, taxState))
+                .toBe(getSimulationInputHash(accounts, make() as any, expenses, assumptions, taxState));
+        });
+    });
+
+    // Regression for #180: expense hash omitted is_tax_deductible / tax_deductible
+    // — flipping a mortgage/medical expense to Itemized/Yes changes every year's
+    // federal taxes (taxService/deductions.ts) but never marked the sim stale.
+    describe('sensitivity to expense deductibility changes', () => {
+        const deductibleExpense = (overrides: Record<string, unknown> = {}) => ({
+            ...createMockExpense(),
+            is_tax_deductible: 'No',
+            tax_deductible: 0,
+            ...overrides,
+        });
+
+        it('should return different hash when is_tax_deductible flips to Itemized', () => {
+            const accounts = [createMockAccount()];
+            const incomes = [createMockIncome()];
+            const assumptions = createMockAssumptions();
+            const taxState = createMockTaxState();
+            const e1 = [deductibleExpense({ is_tax_deductible: 'No' })];
+            const e2 = [deductibleExpense({ is_tax_deductible: 'Itemized', tax_deductible: 8000 })];
+            expect(getSimulationInputHash(accounts as any, incomes as any, e1 as any, assumptions, taxState))
+                .not.toBe(getSimulationInputHash(accounts as any, incomes as any, e2 as any, assumptions, taxState));
+        });
+
+        it('should return different hash when tax_deductible amount changes', () => {
+            const accounts = [createMockAccount()];
+            const incomes = [createMockIncome()];
+            const assumptions = createMockAssumptions();
+            const taxState = createMockTaxState();
+            const e1 = [deductibleExpense({ is_tax_deductible: 'Itemized', tax_deductible: 5000 })];
+            const e2 = [deductibleExpense({ is_tax_deductible: 'Itemized', tax_deductible: 9000 })];
+            expect(getSimulationInputHash(accounts as any, incomes as any, e1 as any, assumptions, taxState))
+                .not.toBe(getSimulationInputHash(accounts as any, incomes as any, e2 as any, assumptions, taxState));
         });
     });
 

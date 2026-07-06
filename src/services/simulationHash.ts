@@ -53,8 +53,25 @@ function serializeIncomeFields(income: AnyIncome): Record<string, unknown> {
             employerMatchMax: income.employerMatchMax,
             autoMax401k: income.autoMax401k,
             hsaContribution: income.hsaContribution,
+            // insurance is a payroll deduction the engine prorates and subtracts
+            // (SimulationEngine getProratedAnnual(inc.insurance) / take-home), and
+            // matchAccountId routes the employer match to a specific account
+            // (CashflowDetailBuilder / IncomeProjection). Neither is in
+            // getAnnualAmount(), so editing them must invalidate the cache.
+            insurance: income.insurance,
+            matchAccountId: income.matchAccountId,
             esppContributionType: income.esppContributionType,
             esppContributionAmount: income.esppContributionAmount,
+            // The full ESPP configuration drives the modeled purchase price,
+            // discount, lookback, and stock-growth in AccountGrowth/IncomeProjection.
+            // esppContributionType/Amount alone don't capture the discount (15%→5%),
+            // lookback toggle, offering-period length, linked account, or growth
+            // assumption — all consumed by the sim, so include them here.
+            esppDiscountPercent: income.esppDiscountPercent,
+            esppHasLookback: income.esppHasLookback,
+            esppOfferingPeriodMonths: income.esppOfferingPeriodMonths,
+            esppAccountId: income.esppAccountId,
+            esppExpectedStockGrowth: income.esppExpectedStockGrowth,
             rsuVestingSchedule: income.rsuVestingSchedule,
             rsuGrantShares: income.rsuGrantShares,
             rsuVestFrequency: income.rsuVestFrequency,
@@ -221,6 +238,15 @@ export function getSimulationInputHash(
             goalType: e.goalType,
             intervalYears: e.intervalYears,
             goalAccountId: e.goalAccountId,
+            // Deductibility drives itemized-deduction totals (taxService/deductions.ts
+            // reads is_tax_deductible === 'Itemized'|'Yes' and sums tax_deductible),
+            // so flipping a mortgage/medical expense to Itemized/Yes changes every
+            // year's federal taxes. Present only on the subset of expense subclasses
+            // that carry them (SimpleExpense subtypes don't) — guard with `in`, the
+            // same narrowing deductions.ts uses.
+            ...('is_tax_deductible' in e
+                ? { is_tax_deductible: e.is_tax_deductible, tax_deductible: e.tax_deductible }
+                : {}),
         })),
         assumptions: {
             demographics: assumptions.demographics,
@@ -236,6 +262,35 @@ export function getSimulationInputHash(
             filingStatus: taxState.filingStatus,
             stateResidency: taxState.stateResidency,
             deductionMethod: taxState.deductionMethod,
+            // Current-year dollar overrides (applied to the projection's year 0) and
+            // the calibration flag that carries the fed/state override forward as a
+            // multiplicative rate scale — all steer the tax bill, so editing them
+            // must invalidate the cache.
+            fedOverride: taxState.fedOverride,
+            ficaOverride: taxState.ficaOverride,
+            stateOverride: taxState.stateOverride,
+            calibrateFutureYears: taxState.calibrateFutureYears ?? false,
+            // Scheduled state-residency / filing-status changes (resolveTaxEventsForYear)
+            // and the survivor scenario (SurvivorScenario: filing→Single + one SS
+            // benefit + scaled expenses from deathYear on) reshape future years' taxes
+            // and cashflow. Serialize both structurally with a FIXED key order so the
+            // hash is independent of object-key insertion order; all fields are
+            // primitives (no Date), so no date normalization is needed. Both are
+            // optional — undefined on default data — so guard before mapping.
+            taxEvents: (taxState.taxEvents ?? []).map(ev => ({
+                id: ev.id,
+                kind: ev.kind,
+                value: ev.value,
+                year: ev.year ?? null,
+                milestoneId: ev.milestoneId ?? null,
+            })),
+            survivorScenario: taxState.survivorScenario
+                ? {
+                    enabled: taxState.survivorScenario.enabled,
+                    deathYear: taxState.survivorScenario.deathYear,
+                    expenseFactor: taxState.survivorScenario.expenseFactor ?? null,
+                }
+                : null,
         }
     });
 
