@@ -75,6 +75,18 @@ function createFixedExpense(id: string, name: string, amount: number): AnyExpens
     return expense;
 }
 
+// Helper to create a long-term goal ("Longer term" cadence). `amount` is the
+// goal's TOTAL cost; goalType makes getAnnualAmount() return 0 (funded as a
+// set-aside, not a recurring outflow). isDiscretionary defaults true for the
+// archetypal goal type, which is exactly why it must be excluded from creep.
+function createGoalExpense(id: string, name: string, amount: number): AnyExpense {
+    const expense = new VacationExpense(id, name, amount, 'Annually', new Date('2020-01-01'));
+    expense.isDiscretionary = true;
+    expense.goalType = 'targetDate';
+    expense.endDate = new Date('2035-01-01');
+    return expense;
+}
+
 // Helper to create WorkIncome
 function createWorkIncome(id: string, amount: number): WorkIncome {
     return new WorkIncome(
@@ -352,6 +364,34 @@ describe('SpendingStrategy', () => {
                 // Total after creep should be $15k
                 const total = result.reduce((sum, e) => sum + e.getAnnualAmount(), 0);
                 expect(total).toBeCloseTo(15000, 0);
+            });
+        });
+
+        // #177: a long-term goal defaults to isDiscretionary=true but its `amount`
+        // is the goal's TOTAL cost, which must stay STATIC (see the goal-amount
+        // invariant on Expense.getAnnualAmount). Lifestyle creep must not scale it.
+        describe('long-term goals are excluded from creep (goal-amount stays static)', () => {
+            it('does not scale a discretionary goal amount, only recurring discretionary', () => {
+                const goal = createGoalExpense('goal-1', 'Vacation Goal', 30000);
+                const recurring = createDiscretionaryExpense('rec-1', 'Dining Out', 5000);
+                const expenses = [goal, recurring];
+                const incomes = [createWorkIncome('w1', 100000)];
+                const assumptions = createTestAssumptions({
+                    salaryGrowth: 3,      // $3k raise
+                    lifestyleCreep: 100,  // 100% of raise
+                });
+                const logs: string[] = [];
+
+                const result = applyLifestyleCreep(expenses, incomes, assumptions, 2025, false, logs);
+
+                const resultGoal = result.find(e => e.id === 'goal-1')!;
+                const resultRecurring = result.find(e => e.id === 'rec-1')!;
+
+                // The goal's TOTAL cost is unchanged (pre-fix: 30000 × 1.6 = 48000).
+                expect(resultGoal.amount).toBe(30000);
+                // The full $3k creep lands on the recurring discretionary spend
+                // (the goal contributes $0 to the denominator), so $5k → $8k.
+                expect(resultRecurring.getAnnualAmount()).toBeCloseTo(8000, 0);
             });
         });
 

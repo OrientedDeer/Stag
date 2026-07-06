@@ -242,6 +242,13 @@ export function allocateSurplus(
     // would independently see the full annual limit as available room.
     let rothIRAContributedSoFar = settings.rothIRAContributedThisYear ?? 0;
 
+    // Running total of earned income still available to back Roth IRA contributions
+    // across ALL buckets in this pass. A Roth IRA contribution can't exceed earned
+    // (compensation) income; without this accumulator each Roth IRA bucket would
+    // independently see the full `earnedIncome` as available, letting multiple
+    // buckets together contribute more than was earned (e.g. $7k on $4k comp).
+    let earnedIncomeRemaining = earnedIncome;
+
     // [0] Running total paid to each debt across ALL buckets in this pass. The cap
     // (the loan balance) is fixed for the year, so a debt appearing in TWO buckets
     // would otherwise allocate up-to-cap TWICE and over-consume `remaining` (the
@@ -408,13 +415,13 @@ export function allocateSurplus(
                 // Calculate available contribution room against the running
                 // total so multiple Roth IRA buckets share the per-person limit.
                 const contributionRoom = Math.max(0, settings.rothIRALimit - rothIRAContributedSoFar);
-                const maxContribution = Math.min(maxForBucket, earnedIncome, contributionRoom);
+                const maxContribution = Math.min(maxForBucket, earnedIncomeRemaining, contributionRoom);
 
                 if (maxContribution > 0) {
                     allocations.push({
                         accountId: account.id,
                         amount: maxContribution,
-                        reason: `Roth IRA contribution (earned income: $${earnedIncome.toLocaleString()}, room: $${contributionRoom.toLocaleString()})`,
+                        reason: `Roth IRA contribution (earned income: $${earnedIncomeRemaining.toLocaleString()}, room: $${contributionRoom.toLocaleString()})`,
                     });
 
                     decisions.push({
@@ -426,6 +433,7 @@ export function allocateSurplus(
 
                     remaining -= maxContribution;
                     rothIRAContributedSoFar += maxContribution;
+                    earnedIncomeRemaining -= maxContribution;
                 } else if (contributionRoom <= 0) {
                     decisions.push({
                         category: 'surplus',

@@ -660,6 +660,34 @@ describe('SurplusAllocator', () => {
             const iraAlloc = result.allocations.find(a => a.accountId === 'ira-1');
             expect(iraAlloc?.amount).toBe(8000);
         });
+
+        // #177: a Roth IRA contribution can't exceed earned (compensation) income.
+        // The earned-income cap must be tracked ACROSS buckets, like the annual
+        // dollar limit — otherwise two Roth IRA buckets each see the full earned
+        // income and together contribute more than was earned.
+        it('caps TOTAL Roth IRA contributions across multiple buckets at earned income', () => {
+            const rothA = new InvestedAccount('ira-a', 'Roth IRA A', 10000, 0, 0, 0.1, 'Roth IRA');
+            const rothB = new InvestedAccount('ira-b', 'Roth IRA B', 10000, 0, 0, 0.1, 'Roth IRA');
+
+            const result = allocateSurplus(
+                20000,
+                [rothA, rothB],
+                [
+                    { accountId: 'ira-a', priority: 1, capType: 'MAX', capValue: 5000 },
+                    { accountId: 'ira-b', priority: 2, capType: 'MAX', capValue: 5000 },
+                ],
+                4000, // only $4000 of earned income to back Roth contributions
+                defaultSettings(), // rothIRALimit $7000 (dollar limit is not the binding cap here)
+            );
+
+            const contribA = result.allocations.find(a => a.accountId === 'ira-a')?.amount ?? 0;
+            const contribB = result.allocations.find(a => a.accountId === 'ira-b')?.amount ?? 0;
+
+            // Pre-fix each bucket saw the full $4k earned income → $4k + $3k = $7k
+            // (capped only by the annual dollar limit). The total must not exceed
+            // the $4k earned.
+            expect(contribA + contribB).toBeLessThanOrEqual(4000);
+        });
     });
 
     describe('catch-all allocation', () => {

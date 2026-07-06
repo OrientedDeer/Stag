@@ -1,4 +1,4 @@
-import { AnyExpense, MortgageExpense, LoanExpense } from "../../components/Objects/Expense/models";
+import { AnyExpense, MortgageExpense, LoanExpense, isLongTermGoal } from "../../components/Objects/Expense/models";
 import { AnyIncome, WorkIncome } from "../../components/Objects/Income/models";
 import { AnyAccount } from "../../components/Objects/Accounts/models";
 import { sumInvestedAssets } from "../../components/Objects/Accounts/accountUtils";
@@ -60,7 +60,14 @@ export function applyLifestyleCreep(
     if (totalRaise <= 0) return expenses;
 
     const lifestyleCreepAmount = totalRaise * (assumptions.expenses.lifestyleCreep / 100);
-    const discretionaryExpenses = expenses.filter(exp => exp.isDiscretionary);
+    // Long-term goals default to isDiscretionary=true but their `amount` is the
+    // goal's TOTAL cost, which must stay static (see the goal-amount invariant in
+    // Expense.getAnnualAmount). A goal contributes $0 to the recurring denominator
+    // (getAnnualAmount returns 0 for goalType), yet adjustAmount would still scale
+    // its stored total — compounding it every working year. Exclude goals from both
+    // the denominator and the adjustment so creep only touches recurring spending.
+    const isCreepEligible = (exp: AnyExpense): boolean => exp.isDiscretionary && !isLongTermGoal(exp);
+    const discretionaryExpenses = expenses.filter(isCreepEligible);
     const totalDiscretionary = discretionaryExpenses.reduce((sum, exp) => {
         return sum + exp.getAnnualAmount(year);
     }, 0);
@@ -69,7 +76,7 @@ export function applyLifestyleCreep(
 
     const increaseRatio = 1 + (lifestyleCreepAmount / totalDiscretionary);
     const result = expenses.map(exp => {
-        if (exp.isDiscretionary) {
+        if (isCreepEligible(exp)) {
             return exp.adjustAmount(increaseRatio);
         }
         return exp;
