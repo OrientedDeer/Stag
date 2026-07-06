@@ -16,7 +16,7 @@
  */
 
 import { AnyAccount, InvestedAccount } from "../../components/Objects/Accounts/models";
-import { AnyIncome, FERSPensionIncome, PassiveIncome } from "../../components/Objects/Income/models";
+import { AnyIncome, FERSPensionIncome, PassiveIncome, isSocialSecurity } from "../../components/Objects/Income/models";
 import { AnyExpense, LoanExpense } from "../../components/Objects/Expense/models";
 import { isOfferableDebt, DEBT_PAYOFF_EPSILON } from "./SurplusAllocator";
 import { TaxParameters } from "../../data/TaxData";
@@ -42,7 +42,7 @@ import { planWithdrawals, createOrderedSnapshots, grossUpBrokerage } from "./Wit
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
 import { getLTCGRate } from "../../components/Objects/Taxes/taxService/capitalGainsTax";
 import { calculateEffectiveConversionTax, ACAOptions, IRMAAConversionOptions } from "./helpers";
-import { getRMDStartAge } from "../../data/RMDData";
+import { getRMDStartAge, calculateRMD, isAccountSubjectToRMD } from "../../data/RMDData";
 import { getIRMAAAnnualSurcharge, getIRMAASchedule, resolveIrmaaLookbackMAGI, MEDICARE_ELIGIBILITY_AGE } from "../../data/IRMAAData";
 import {
     calculateDynamicConversionCeiling,
@@ -286,6 +286,54 @@ function getFirstTraditionalAccount(accounts: AnyAccount[]): InvestedAccount | n
     ) as InvestedAccount | null;
 }
 
+/**
+ * Per-account RMD reservation amounts. RMDService drains each RMD-subject
+ * Traditional account by its OWN required distribution (prior-year vested
+ * balance ÷ life-expectancy factor, capped at the account's vested balance),
+ * recording it as a negative userInflow applied later by growAccounts. The
+ * solver reads the raw (undrained) balances, so the discretionary planner must
+ * reserve each account's RMD from its snapshot — otherwise it could plan to
+ * withdraw dollars the RMD already took.
+ *
+ * This mirrors RMDService.processRMDs exactly (same prior-year source, same
+ * `calculateRMD`, same vested cap), so the reserved amount equals what was
+ * actually drained per account. Reserving the WHOLE RMD against only the first
+ * Traditional account (the prior behavior) over-reserved that account and left
+ * the withdrawal-source account under-reserved, fabricating phantom spendable
+ * cash and stranding balance in the over-reserved account.
+ */
+function computePerAccountRMD(
+    accounts: AnyAccount[],
+    previousSimulation: YearSolverInput['previousSimulation'],
+    currentAge: number,
+): Map<string, number> {
+    const perAccount = new Map<string, number>();
+    const priorSim = previousSimulation && previousSimulation.length > 0
+        ? previousSimulation[previousSimulation.length - 1]
+        : undefined;
+
+    for (const account of accounts) {
+        if (!(account instanceof InvestedAccount)) continue;
+        if (!isAccountSubjectToRMD(account.taxType)) continue;
+
+        let priorYearBalance = account.vestedAmount;
+        if (priorSim) {
+            const priorAccount = priorSim.accounts.find(a => a.id === account.id);
+            if (priorAccount instanceof InvestedAccount) {
+                priorYearBalance = priorAccount.vestedAmount;
+            }
+        }
+
+        const rmd = calculateRMD(priorYearBalance, currentAge);
+        if (rmd <= 0) continue;
+        const withdrawn = Math.min(rmd, account.vestedAmount);
+        if (withdrawn > 0) {
+            perAccount.set(account.id, (perAccount.get(account.id) ?? 0) + withdrawn);
+        }
+    }
+    return perAccount;
+}
+
 function getFirstRothAccount(accounts: AnyAccount[]): InvestedAccount | null {
     return accounts.find(a =>
         a instanceof InvestedAccount &&
@@ -511,10 +559,27 @@ function computeCeilingContext(
 
     const futureSS = input.incomes.find(i => i.className === 'FutureSocialSecurityIncome') as
         { calculatedPIA?: number; claimingAge?: number; name?: string; amount?: number; projectedPIA?: number } | undefined;
+    // Fall back to any not-yet-claimed Social Security income (e.g. a plain
+    // SocialSecurityIncome with a claiming age we haven't reached — still a current
+    // app-produced shape, not just legacy) when there's no FutureSocialSecurityIncome
+    // and SS isn't already being received this year. Without this the ceiling lookup
+    // matched only className==='FutureSocialSecurityIncome' and projected ssAtRMD=0,
+    // understating the SS torpedo and lifting the conversion ceiling too high.
+    const unclaimedLegacySS = (!futureSS && socialSecurityBenefits <= 0)
+        ? input.incomes.find(i =>
+            isSocialSecurity(i) &&
+            typeof (i as { claimingAge?: number }).claimingAge === 'number' &&
+            (i as { claimingAge: number }).claimingAge > input.currentAge) as
+            (AnyIncome & { claimingAge?: number }) | undefined
+        : undefined;
+    // getAnnualAmount() with NO year returns the raw (un-prorated) annual benefit —
+    // a not-yet-active income prorates to 0 for the current year, so we must skip the
+    // active-multiplier here to recover its claiming-age benefit.
+    const legacyMonthlyPIA = unclaimedLegacySS ? unclaimedLegacySS.getAnnualAmount() / 12 : 0;
     const futureSS_PIA = (futureSS?.projectedPIA && futureSS.projectedPIA > 0)
         ? futureSS.projectedPIA
-        : (futureSS?.amount ? futureSS.amount / 12 : (futureSS?.calculatedPIA ?? 0));
-    const ssClaimingAge = futureSS?.claimingAge ?? 67;
+        : (futureSS?.amount ? futureSS.amount / 12 : (futureSS?.calculatedPIA ?? legacyMonthlyPIA));
+    const ssClaimingAge = futureSS?.claimingAge ?? unclaimedLegacySS?.claimingAge ?? 67;
 
     const inflationAdjusted = input.assumptions.macro.inflationAdjusted;
     const ssCola = inflationAdjusted ? 0.02 : 0;
@@ -1699,34 +1764,45 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         input.accounts, input.withdrawalOrder, input.currentAge, input.year, true, !input.taxOptimizationEnabled,
     );
 
-    // Keep reserved goal sinking-fund accounts out of the includeUnorderedSellable
-    // fallback tier. createOrderedSnapshots appends every sellable account the order
-    // OMITS so a spending shortfall can reach it, but a goal fund the user left out of
-    // the order is reserved for its goal — draining it for general living expenses
-    // means the goal can't be funded at its due year. We only drop a reserved account
-    // when it isn't an explicit member of the user's order; if the user deliberately
-    // placed it in the order, that choice still binds.
+    // Keep reserved goal sinking-fund accounts out of the general drawdown until
+    // everything else is exhausted. A goal fund accumulates committed deposits the
+    // engine credits directly; draining it for general living expenses means the
+    // goal can't be funded at its due year.
+    //
+    // The prior guard only dropped a reserved account when it was NOT an explicit
+    // member of the user's order — but the app-wide reconciler syncs EVERY eligible
+    // account into withdrawalStrategy (the withdrawal-order UI is reorder-only; an
+    // account can't be removed), so a reserved goal fund is ALWAYS in the order and
+    // the guard never fired. Result: tax-opt drained the goal fund first while other
+    // accounts sat untouched. Fix: move reserved accounts to the END of the drawdown
+    // (last-resort) regardless of order membership, so a genuine total shortfall can
+    // still reach them (avoiding fabricated deficit debt) but they're never tapped
+    // for living expenses while any non-reserved balance remains.
     if (input.reservedAccountIds && input.reservedAccountIds.length > 0) {
         const reserved = new Set(input.reservedAccountIds);
-        const orderedIds = new Set(input.withdrawalOrder.map(o => o.accountId));
-        accountSnapshots = accountSnapshots.filter(
-            s => !(reserved.has(s.accountId) && !orderedIds.has(s.accountId)),
-        );
+        const nonReserved = accountSnapshots.filter(s => !reserved.has(s.accountId));
+        const reservedSnapshots = accountSnapshots.filter(s => reserved.has(s.accountId));
+        accountSnapshots = [...nonReserved, ...reservedSnapshots];
     }
 
-    // Reserve the RMD against the Traditional account it draws from. The RMD already
-    // claims `input.rmdAmount` from that account (recorded as a negative userInflow,
-    // applied later by growAccounts), but createOrderedSnapshots reads the raw balance,
-    // so without this the discretionary planner could plan to withdraw dollars the RMD
-    // already took — over-draining the account and surfacing phantom spendable cash.
+    // Reserve the RMD against the account(s) it draws from. RMDService drains each
+    // RMD-subject Traditional account by its OWN required distribution (recorded as a
+    // negative userInflow, applied later by growAccounts), but createOrderedSnapshots
+    // reads the raw balance, so without this the discretionary planner could plan to
+    // withdraw dollars the RMD already took — over-draining the account and surfacing
+    // phantom spendable cash. Reserve PER ACCOUNT (not the whole RMD against the first
+    // Traditional account): with two Traditional accounts, reserving the total against
+    // account A alone under-reserved account B (the actual draw source) and stranded
+    // balance in A.
     if (input.rmdAmount > 0) {
-        const rmdAccount = getFirstTraditionalAccount(input.accounts);
-        if (rmdAccount) {
-            accountSnapshots = accountSnapshots.map(s =>
-                s.accountId === rmdAccount.id
-                    ? { ...s, vestedBalance: Math.max(0, s.vestedBalance - input.rmdAmount) }
-                    : s
-            );
+        const perAccountRMD = computePerAccountRMD(input.accounts, input.previousSimulation, input.currentAge);
+        if (perAccountRMD.size > 0) {
+            accountSnapshots = accountSnapshots.map(s => {
+                const reserved = perAccountRMD.get(s.accountId);
+                return reserved
+                    ? { ...s, vestedBalance: Math.max(0, s.vestedBalance - reserved) }
+                    : s;
+            });
         }
     }
 
