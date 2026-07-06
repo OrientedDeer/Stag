@@ -201,6 +201,7 @@ async function startAuthedBackend(): Promise<void> {
 async function spawnBackend(opts: {
   couchUrl: string;
   backupDb: string;
+  env?: Record<string, string>;
 }): Promise<{ port: number; kill: () => void }> {
   const port = await freePort();
   const stub = resolvePath(__dirname, "..", "src", "stub-google.cjs");
@@ -214,6 +215,7 @@ async function spawnBackend(opts: {
       BACKUP_DB: opts.backupDb,
       GOOGLE_CLIENT_ID: "test-client-id",
       CORS_ORIGIN: "https://example.test",
+      ...(opts.env || {}),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -488,6 +490,137 @@ test("ISSUE 7: a burst of POSTs during a missing-db window triggers only ONE cre
     assert.ok(
       createsFromBurst <= 1,
       `a 6-POST burst should coalesce onto one self-heal loop (<=1 create PUT), saw ${createsFromBurst}`
+    );
+  } finally {
+    be.kill();
+    await fake.close();
+  }
+});
+
+// ---- ISSUE 193 / allow-list: ALLOWED_SUBS gates who may authenticate ----
+test("ISSUE 193: with ALLOWED_SUBS set, an allowed sub stores (200) and an unlisted sub is 403", async () => {
+  const fake = new FakeCouch();
+  await fake.listen();
+  const be = await spawnBackend({
+    couchUrl: fake.url,
+    backupDb: BACKUP_DB,
+    env: { ALLOWED_SUBS: "allowed-user, other-allowed" },
+  });
+  try {
+    await new Promise((r) => setTimeout(r, 400)); // startup db-provision
+    const ok = await reqTo(be.port, "POST", "/backup", {
+      headers: { "content-type": "application/json", authorization: "Bearer stub:allowed-user" },
+      body: JSON.stringify({ blob: "ciphertext", rev: null }),
+    });
+    assert.equal(ok.status, 200, `allowed sub should store, got ${ok.status}: ${ok.body}`);
+
+    const denied = await reqTo(be.port, "POST", "/backup", {
+      headers: { "content-type": "application/json", authorization: "Bearer stub:intruder" },
+      body: JSON.stringify({ blob: "ciphertext", rev: null }),
+    });
+    assert.equal(denied.status, 403, `unlisted sub should be 403, got ${denied.status}: ${denied.body}`);
+    assert.match(denied.body, /not permitted/i);
+  } finally {
+    be.kill();
+    await fake.close();
+  }
+});
+
+// ---- ISSUE 193 / allow-list: ALLOWED_EMAILS matches the verified email ----
+test("ISSUE 193: with ALLOWED_EMAILS set, a listed email is admitted (case-insensitively) and others 403", async () => {
+  const fake = new FakeCouch();
+  await fake.listen();
+  const be = await spawnBackend({
+    couchUrl: fake.url,
+    backupDb: BACKUP_DB,
+    env: { ALLOWED_EMAILS: "me@example.com" },
+  });
+  try {
+    await new Promise((r) => setTimeout(r, 400));
+    // token carries an email via the "sub|email" stub form; different casing must still match.
+    const ok = await reqTo(be.port, "POST", "/backup", {
+      headers: { "content-type": "application/json", authorization: "Bearer stub:u1|Me@Example.COM" },
+      body: JSON.stringify({ blob: "ciphertext", rev: null }),
+    });
+    assert.equal(ok.status, 200, `listed email should store, got ${ok.status}: ${ok.body}`);
+
+    const denied = await reqTo(be.port, "POST", "/backup", {
+      headers: { "content-type": "application/json", authorization: "Bearer stub:u2|nope@example.com" },
+      body: JSON.stringify({ blob: "ciphertext", rev: null }),
+    });
+    assert.equal(denied.status, 403, `unlisted email should be 403, got ${denied.status}: ${denied.body}`);
+  } finally {
+    be.kill();
+    await fake.close();
+  }
+});
+
+// ---- ISSUE 193 / rate limit: too many writes from one sub yields 429 ----
+test("ISSUE 193: per-sub write rate limit returns 429 once the window's budget is spent", async () => {
+  const fake = new FakeCouch();
+  await fake.listen();
+  const be = await spawnBackend({
+    couchUrl: fake.url,
+    backupDb: BACKUP_DB,
+    env: { WRITE_RATE_LIMIT: "2", WRITE_RATE_WINDOW_MS: "60000" },
+  });
+  try {
+    await new Promise((r) => setTimeout(r, 400));
+    const post = (sub: string) =>
+      reqTo(be.port, "POST", "/backup", {
+        headers: { "content-type": "application/json", authorization: `Bearer stub:${sub}` },
+        body: JSON.stringify({ blob: "ciphertext", rev: null }),
+      });
+
+    const a = await post("rl-user");
+    const b = await post("rl-user");
+    const c = await post("rl-user"); // 3rd write in the window -> limited
+    assert.equal(a.status, 200, `1st write should store, got ${a.status}: ${a.body}`);
+    assert.equal(b.status, 200, `2nd write should store, got ${b.status}: ${b.body}`);
+    assert.equal(c.status, 429, `3rd write should be rate-limited, got ${c.status}: ${c.body}`);
+    assert.match(c.body, /rate limit/i);
+
+    // The limit is PER sub: a different account is unaffected.
+    const other = await post("rl-other");
+    assert.equal(other.status, 200, `a different sub should not be limited, got ${other.status}: ${other.body}`);
+  } finally {
+    be.kill();
+    await fake.close();
+  }
+});
+
+// ---- ISSUE 193 / body limit: derived-from-MAX_BLOB_BYTES + 413-not-502 relabel ----
+test("ISSUE 193: a body over the DERIVED parser limit is a 413 'request body too large', not a 502 (nor a fixed 12MB limit)", async () => {
+  // Shrink MAX_BLOB_BYTES so the derived wire limit (2*MAX + 64KiB) is small.
+  // The test body is ~200 KB: WELL over the derived limit, but WELL under the old
+  // hard-coded 12 MB parser cap. Two things are proven at once:
+  //   (a) the parser limit tracks MAX_BLOB_BYTES (a fixed-12MB parser would have
+  //       accepted this body, then hit the route's per-blob check -> the 413
+  //       "blob too large" message); and
+  //   (b) the parser's 413 is surfaced verbatim, not re-labeled as a 502 by the
+  //       catch-all middleware.
+  // The distinct "request body too large" wording (vs. the route's "blob too
+  // large") is what discriminates the parser path from the per-blob path.
+  const fake = new FakeCouch();
+  await fake.listen();
+  const maxBlob = 1024;
+  const be = await spawnBackend({
+    couchUrl: fake.url,
+    backupDb: BACKUP_DB,
+    env: { MAX_BLOB_BYTES: String(maxBlob) },
+  });
+  try {
+    await new Promise((r) => setTimeout(r, 400));
+    const oversized = JSON.stringify({ blob: "x".repeat(200 * 1024), rev: null }); // ~200 KB
+    const res = await reqTo(be.port, "POST", "/backup", {
+      headers: { "content-type": "application/json", authorization: "Bearer stub:big-body" },
+      body: oversized,
+    });
+    assert.equal(res.status, 413, `over-limit body should be 413, got ${res.status}: ${res.body}`);
+    assert.match(
+      res.body,
+      /request body too large/i,
+      `expected the parser-limit 413 (derived from MAX_BLOB_BYTES), got: ${res.body}`
     );
   } finally {
     be.kill();

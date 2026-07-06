@@ -13,7 +13,6 @@ set -euo pipefail
 
 SELFHOST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SELFHOST_DIR/.." && pwd)"
-PROFILE_ARGS=(--profile tunnel)
 
 DO_PULL=1
 [[ "${1:-}" == "--no-pull" ]] && DO_PULL=0
@@ -21,6 +20,25 @@ DO_PULL=1
 if [[ ! -f "$SELFHOST_DIR/.env" ]]; then
   echo "!! $SELFHOST_DIR/.env not found — copy .env.example to .env and fill it in." >&2
   exit 1
+fi
+
+# Read a single KEY=value from .env (last match wins), or print nothing. The
+# `|| true` keeps a missing key from failing the pipeline under `set -o pipefail`
+# (a bare grep miss would otherwise abort the whole script mid-deploy).
+read_env() {
+  { grep -E "^$1=" "$SELFHOST_DIR/.env" || true; } | tail -1 | cut -d= -f2-
+}
+
+# The Cloudflare tunnel is OPTIONAL. Only enable its Compose profile when a
+# TUNNEL_TOKEN is actually set — otherwise cloudflared boots with an empty token
+# and crash-loops. Without a token the stack is meant to sit behind your own
+# reverse proxy (see selfhost/docker-compose.yml + docs/SELF_HOSTING_PLAN.md).
+PROFILE_ARGS=()
+if [[ -n "$(read_env TUNNEL_TOKEN)" ]]; then
+  PROFILE_ARGS=(--profile tunnel)
+  echo "==> TUNNEL_TOKEN set — enabling the Cloudflare tunnel profile"
+else
+  echo "==> TUNNEL_TOKEN empty — skipping the tunnel profile (expose via your own reverse proxy, or set TUNNEL_TOKEN)"
 fi
 
 if [[ "$DO_PULL" == "1" ]]; then
@@ -39,14 +57,14 @@ fi
 cd "$SELFHOST_DIR"
 
 echo "==> rebuilding + restarting compose stack"
-docker compose "${PROFILE_ARGS[@]}" up -d --build
+docker compose ${PROFILE_ARGS[@]+"${PROFILE_ARGS[@]}"} up -d --build
 
 echo "==> container status"
-docker compose "${PROFILE_ARGS[@]}" ps --format "table {{.Name}}\t{{.Status}}"
+docker compose ${PROFILE_ARGS[@]+"${PROFILE_ARGS[@]}"} ps --format "table {{.Name}}\t{{.Status}}"
 
 # Public URL for the health check comes from CORS_ORIGIN in .env (the app origin).
 echo "==> verifying public endpoint"
-PUBLIC_URL="$(grep -E '^CORS_ORIGIN=' .env | head -1 | cut -d= -f2-)"
+PUBLIC_URL="$(read_env CORS_ORIGIN)"
 PUBLIC_URL="${PUBLIC_URL%/}/"
 if [[ -z "$PUBLIC_URL" || "$PUBLIC_URL" == "/" ]]; then
   echo "    (CORS_ORIGIN not set in .env — skipping public check; verify manually)"

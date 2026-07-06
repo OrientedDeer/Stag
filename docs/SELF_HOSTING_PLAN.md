@@ -77,18 +77,38 @@ health:
 
 ```bash
 docker compose ps
-curl -s http://localhost:8080/healthz      # backend liveness
+docker compose exec backend wget -qO- http://localhost:8080/healthz   # backend liveness
 ```
+
+> By **default no service publishes a host port** — the stack is reachable only
+> from inside the Compose network (via the tunnel or an on-network reverse
+> proxy). That's why the health check runs *inside* the `backend` container. To
+> hit `http://localhost:8080/healthz` from the host instead, uncomment the
+> `backend` `ports:` block in `docker-compose.yml` and re-run `up -d`.
 
 ## 4. Expose it (pick one)
 
 - **Cloudflare tunnel (bundled):** put your named-tunnel token in `TUNNEL_TOKEN`,
-  then `docker compose --profile tunnel up -d`. Point the tunnel's public
-  hostnames at the `frontend` (port 80) and `backend` (port 8080) services.
-- **Your own reverse proxy:** terminate TLS and route your app origin → the
-  `frontend` container and your API origin → the `backend` container. Make sure
-  the API origin matches `VITE_CLOUD_API_ENDPOINT`, and your app origin matches
-  `CORS_ORIGIN` and the Google **Authorized JavaScript origin**.
+  then `docker compose --profile tunnel up -d` (or just `./deploy.sh`, which
+  enables the tunnel profile automatically when `TUNNEL_TOKEN` is set). Point the
+  tunnel's public hostnames at the `frontend` (port 80) and `backend` (port 8080)
+  services — the tunnel reaches them over the internal network, so no host ports
+  are needed.
+- **Your own reverse proxy on the Docker network:** terminate TLS and route your
+  app origin → the `frontend` container and your API origin → the `backend`
+  container. Make sure the API origin matches `VITE_CLOUD_API_ENDPOINT`, and your
+  app origin matches `CORS_ORIGIN` and the Google **Authorized JavaScript
+  origin**.
+- **A host-level proxy (or plain local access):** uncomment the `ports:` blocks
+  in `docker-compose.yml` to publish `frontend`/`backend` to the host, then point
+  your host proxy at those published ports. The blocks are commented out by
+  default so a fresh stack never silently exposes CouchDB or an unauthenticated
+  port.
+
+> **Restricting access (optional):** the backend accepts any Google account that
+> signs in. For a shared host, set `ALLOWED_SUBS` / `ALLOWED_EMAILS` in `.env` to
+> an allow-list (see `.env.example`). A per-user write rate limit
+> (`WRITE_RATE_LIMIT`) is on by default.
 
 ## 5. Use it
 

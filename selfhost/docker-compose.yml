@@ -4,7 +4,21 @@
 # Quick start:
 #   1. cp .env.example .env   and fill it in (see that file for each value).
 #   2. docker compose up -d --build
-#   3. (optional public access) docker compose --profile tunnel up -d
+#   3. Expose it — pick ONE:
+#        a. Cloudflare tunnel: set TUNNEL_TOKEN in .env, then
+#           `docker compose --profile tunnel up -d`.
+#        b. Your own reverse proxy on the Docker network (route your app origin
+#           -> frontend:80 and API origin -> backend:8080).
+#        c. Local access / a host-level proxy: UNCOMMENT the `ports:` blocks
+#           below to publish frontend/backend (and, if you must, couchdb) to the
+#           host. They are commented out by DEFAULT so a fresh stack does not
+#           silently expose CouchDB or an unauthenticated port.
+#
+# NOTE: by default NO service publishes a host port — the stack is reachable only
+# from inside the Compose network (i.e. via the tunnel or an on-network proxy).
+# That is intentional; uncomment a `ports:` block below only if you understand
+# what you are exposing. (`deploy.sh` enables the tunnel profile automatically
+# only when TUNNEL_TOKEN is set.)
 #
 # All secrets come from .env — nothing sensitive is hard-coded here. The
 # frontend's VITE_* values are BUILD-time (baked into the static bundle), so
@@ -23,6 +37,11 @@ services:
     volumes:
       - ./couchdb/data:/opt/couchdb/data
       - ./couchdb/config:/opt/couchdb/etc/local.d
+    # CouchDB holds the (encrypted) backups. Keep it INTERNAL to the Compose
+    # network. Only publish it if you know you need direct admin access, and then
+    # bind to loopback so it is not reachable from the LAN/Internet:
+    # ports:
+    #   - "127.0.0.1:5984:5984"
 
   backend:
     build: ./backend
@@ -39,8 +58,19 @@ services:
       # The app's public origin, e.g. https://stag.example.com (CORS allow-list).
       CORS_ORIGIN: ${CORS_ORIGIN:-}
       MAX_BLOB_BYTES: ${MAX_BLOB_BYTES:-5242880}
+      # OPTIONAL access controls (see .env.example). Empty = open (any verified
+      # Google account); set to restrict who may use this backend.
+      ALLOWED_SUBS: ${ALLOWED_SUBS:-}
+      ALLOWED_EMAILS: ${ALLOWED_EMAILS:-}
+      WRITE_RATE_LIMIT: ${WRITE_RATE_LIMIT:-30}
+      WRITE_RATE_WINDOW_MS: ${WRITE_RATE_WINDOW_MS:-60000}
     depends_on:
       - couchdb
+    # Backend /backup API. Left unpublished by default (reach it via the tunnel
+    # or an on-network reverse proxy). Uncomment to publish to the host, e.g. for
+    # a host-level proxy or `curl localhost:8080/healthz`:
+    # ports:
+    #   - "8080:8080"
 
   frontend:
     # Builds the SPA from the repo root (this bundle lives in ./selfhost).
@@ -58,6 +88,11 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+    # Static SPA (nginx on :80). Left unpublished by default (reach it via the
+    # tunnel or an on-network reverse proxy). Uncomment to publish to the host,
+    # e.g. to browse the app at http://localhost:8000:
+    # ports:
+    #   - "8000:80"
 
   # Optional: expose the stack publicly via a named Cloudflare tunnel.
   # Enable with:  docker compose --profile tunnel up -d

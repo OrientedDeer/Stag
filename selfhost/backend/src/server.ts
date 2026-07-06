@@ -28,6 +28,35 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "";
 const MAX_BLOB_BYTES = parseInt(process.env.MAX_BLOB_BYTES || String(5 * 1024 * 1024), 10);
 
+// OPTIONAL access allow-list. Empty/absent (the default) keeps the current open
+// behavior — ANY Google account that passes verification is accepted — so an
+// existing single-user deploy is unaffected. Set either (comma-separated) to
+// restrict who may authenticate: ALLOWED_SUBS matches the Google `sub` claim,
+// ALLOWED_EMAILS the verified `email`. A token is admitted if it matches EITHER
+// list. Emails are compared case-insensitively.
+const parseList = (v: string | undefined) =>
+  (v || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+const ALLOWED_SUBS = parseList(process.env.ALLOWED_SUBS);
+const ALLOWED_EMAILS = parseList(process.env.ALLOWED_EMAILS).map((e) => e.toLowerCase());
+const HAS_ALLOWLIST = ALLOWED_SUBS.length > 0 || ALLOWED_EMAILS.length > 0;
+
+// Per-`sub` write rate limit (dependency-free, in-memory sliding window). Bounds
+// storage/DoS abuse from a single account without adding a rate-limit library.
+// A human backing up by hand never approaches the default; set WRITE_RATE_LIMIT=0
+// to disable entirely.
+const WRITE_RATE_LIMIT = parseInt(process.env.WRITE_RATE_LIMIT || "30", 10);
+const WRITE_RATE_WINDOW_MS = parseInt(process.env.WRITE_RATE_WINDOW_MS || "60000", 10);
+
+// Body-parser wire limit, DERIVED from the blob cap (not a fixed 12 MB). The
+// blob rides inside a JSON string, so escaping + the envelope can inflate a
+// MAX_BLOB_BYTES payload past that on the wire; 2× plus a fixed 64 KiB envelope
+// margin comfortably covers it while still bounding what an authed client can
+// make us buffer. The precise per-blob byte cap is still enforced below.
+const BODY_LIMIT_BYTES = MAX_BLOB_BYTES * 2 + 64 * 1024;
+
 const couchAuth = "Basic " + Buffer.from(`${COUCHDB_USER}:${COUCHDB_PASSWORD}`).toString("base64");
 const googleClient = new OAuth2Client();
 
@@ -140,12 +169,15 @@ const asyncHandler =
 const app = express();
 app.disable("x-powered-by");
 
-// Accept generous bodies; we enforce the precise 5 MB limit on the blob itself
-// below (JSON-string escaping can inflate a 5 MB blob past 5 MB on the wire).
-// NOTE: this parser is mounted only on the authenticated POST route (after
-// requireGoogle), NOT globally — so an unauthenticated client can't make us
-// buffer + parse a 12 MB body before we reject it. It runs after the auth check.
-const parseJsonBody = express.json({ limit: "12mb" });
+// Accept bodies up to BODY_LIMIT_BYTES (derived from MAX_BLOB_BYTES); we enforce
+// the precise per-blob byte cap below (JSON-string escaping can inflate a blob
+// past its raw size on the wire). NOTE: this parser is mounted only on the
+// authenticated POST route (after requireGoogle + the rate limiter), NOT
+// globally — so an unauthenticated (or rate-limited) client can't make us buffer
+// + parse a large body before we reject it. A body that exceeds this limit makes
+// express.json emit a 413 error, which the final middleware surfaces as a 413
+// (not a generic 502).
+const parseJsonBody = express.json({ limit: BODY_LIMIT_BYTES });
 
 // CORS: allow exactly the Stag app's public origin. The `cors` middleware also
 // answers the OPTIONS preflight that a cross-origin Authorization header triggers.
@@ -174,11 +206,50 @@ async function requireGoogle(req: AuthedRequest, res: Response, next: NextFuncti
     const ticket = await googleClient.verifyIdToken({ idToken: m[1], audience: GOOGLE_CLIENT_ID });
     const payload = ticket.getPayload();
     if (!payload?.sub) return res.status(401).json({ error: "invalid token" });
+    // OPTIONAL allow-list gate. When neither list is configured this is a no-op
+    // (open behavior). Otherwise the account must match a listed sub OR email.
+    if (HAS_ALLOWLIST) {
+      const email = (payload.email || "").toLowerCase();
+      const permitted =
+        ALLOWED_SUBS.includes(payload.sub) || (email !== "" && ALLOWED_EMAILS.includes(email));
+      if (!permitted) return res.status(403).json({ error: "account not permitted" });
+    }
     req.sub = payload.sub;
     next();
   } catch {
     return res.status(401).json({ error: "token verification failed" });
   }
+}
+
+// Per-`sub` sliding-window write limiter (in-memory; dependency-free). Runs
+// AFTER requireGoogle (so `req.sub` is set) but BEFORE the body parser, so a
+// rate-limited client is rejected before we buffer its body. Timestamps older
+// than the window are dropped on each touch; the map is pruned when it grows
+// large so an open (no allow-list) deploy can't leak unbounded memory.
+const writeHits = new Map<string, number[]>();
+function rateLimitWrites(req: AuthedRequest, res: Response, next: NextFunction) {
+  if (WRITE_RATE_LIMIT <= 0) return next();
+  const sub = req.sub!;
+  const now = Date.now();
+  const windowStart = now - WRITE_RATE_WINDOW_MS;
+
+  if (writeHits.size > 10000) {
+    for (const [k, v] of writeHits) {
+      const fresh = v.filter((t) => t > windowStart);
+      if (fresh.length) writeHits.set(k, fresh);
+      else writeHits.delete(k);
+    }
+  }
+
+  const hits = (writeHits.get(sub) || []).filter((t) => t > windowStart);
+  if (hits.length >= WRITE_RATE_LIMIT) {
+    const retryMs = hits[0] + WRITE_RATE_WINDOW_MS - now;
+    res.setHeader("Retry-After", String(Math.max(1, Math.ceil(retryMs / 1000))));
+    return res.status(429).json({ error: "rate limit exceeded" });
+  }
+  hits.push(now);
+  writeHits.set(sub, hits);
+  next();
 }
 
 // GET /backup
@@ -193,10 +264,12 @@ app.get(
   })
 );
 
-// POST /backup — requireGoogle runs FIRST; only then do we parse the body.
+// POST /backup — requireGoogle runs FIRST, then the per-sub rate limiter, and
+// only then do we parse the body.
 app.post(
   "/backup",
   requireGoogle,
+  rateLimitWrites,
   parseJsonBody,
   asyncHandler(async (req, res) => {
     const blob = req.body?.blob;
@@ -261,6 +334,17 @@ app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
   // If a response is already streaming, defer to Express's default handler,
   // which closes the connection rather than corrupting the in-flight reply.
   if (res.headersSent) return next(err);
+  // Client errors thrown by upstream middleware (chiefly express.json: a 413
+  // when the body exceeds BODY_LIMIT_BYTES, or a 400 on malformed JSON) carry an
+  // HTTP status on the error. Pass a 4xx through instead of re-labeling it as a
+  // 502 'store error' — a too-large body is the client's fault, not the store's.
+  const status = (err as { status?: number; statusCode?: number } | null)?.status
+    ?? (err as { statusCode?: number } | null)?.statusCode;
+  if (typeof status === "number" && status >= 400 && status < 500) {
+    // Distinct wording from the route's own per-blob "blob too large" (413): this
+    // fires when the RAW request body exceeds BODY_LIMIT_BYTES on the wire.
+    return res.status(status).json({ error: status === 413 ? "request body too large" : "bad request" });
+  }
   res.status(502).json({ error: "store error" });
 });
 
@@ -269,7 +353,19 @@ app.listen(PORT, () => {
   console.log(`  couchdb:        ${COUCHDB_URL} (db=${BACKUP_DB})`);
   console.log(`  google client:  ${GOOGLE_CLIENT_ID ? "set" : "UNSET — /backup will 503"}`);
   console.log(`  cors origin:    ${CORS_ORIGIN || "UNSET — cross-origin blocked"}`);
-  console.log(`  max blob bytes: ${MAX_BLOB_BYTES}`);
+  console.log(`  max blob bytes: ${MAX_BLOB_BYTES} (body limit ${BODY_LIMIT_BYTES})`);
+  console.log(
+    `  allow-list:     ${
+      HAS_ALLOWLIST
+        ? `${ALLOWED_SUBS.length} sub(s) + ${ALLOWED_EMAILS.length} email(s)`
+        : "OPEN — any verified Google account"
+    }`
+  );
+  console.log(
+    `  write limit:    ${
+      WRITE_RATE_LIMIT > 0 ? `${WRITE_RATE_LIMIT} / ${WRITE_RATE_WINDOW_MS}ms per user` : "disabled"
+    }`
+  );
   // Idempotently provision the backup DB (retries past CouchDB's boot race).
   // Failure here is logged but non-fatal: the POST route also self-heals on 404.
   ensureBackupDb().catch((err) =>
