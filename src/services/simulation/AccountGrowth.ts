@@ -154,6 +154,44 @@ export function processInflows(
         }
     });
 
+    // 5a-HSA. Payroll HSA contributions → deposit into the HSA account.
+    // hsaContribution is a pre-tax, FICA-exempt payroll deduction: YearSolver
+    // subtracts it from spendable cash (getPreTaxExemptions), so — exactly like a
+    // 401k deferral — it must be DEPOSITED somewhere or net worth silently loses
+    // it every working year (#179; six figures over a career for HSA maximizers).
+    // Unlike the 401k there is no persisted hsaAccountId link on WorkIncome yet, so
+    // route it to the account the user modeled as an HSA (InvestedAccount with
+    // taxType 'HSA') when EXACTLY ONE exists. If none or several exist we can't know
+    // the destination, so we WARN (visible in the year's Simulation Logs) rather
+    // than drop the money silently. Deposited via userInflows (additively) so
+    // growAccounts grows it like any other contribution — mirroring the 401k path.
+    const hsaAccounts = accounts.filter(
+        (acc): acc is InvestedAccount => acc instanceof InvestedAccount && acc.taxType === 'HSA'
+    );
+    let totalHSAContribution = 0;
+    incomesWithEarningsTest.forEach(inc => {
+        if (!(inc instanceof WorkIncome)) return;
+        if (!(inc.hsaContribution > 0)) return;
+        const activeMultiplier = getIncomeActiveMultiplier(inc, year);
+        if (activeMultiplier === 0) return;
+        // getProratedAnnual converts the per-period field to the annual deposit and
+        // already folds in the active-period multiplier (same as the 401k path).
+        const annualHSA = inc.getProratedAnnual(inc.hsaContribution, year);
+        if (annualHSA > 0) totalHSAContribution += annualHSA;
+    });
+    if (totalHSAContribution > 0) {
+        const fmtHSA = totalHSAContribution.toLocaleString(undefined, { maximumFractionDigits: 0 });
+        if (hsaAccounts.length === 1) {
+            const hsaId = hsaAccounts[0].id;
+            withdrawalState.userInflows[hsaId] =
+                (withdrawalState.userInflows[hsaId] || 0) + totalHSAContribution;
+        } else if (hsaAccounts.length === 0) {
+            logs.push(`[WARN] HSA: $${fmtHSA} of payroll HSA contributions have no HSA account to receive them — the money reduces cash and taxes but isn't deposited anywhere. Add an HSA-type account so it's tracked.`);
+        } else {
+            logs.push(`[WARN] HSA: $${fmtHSA} of payroll HSA contributions could not be deposited — ${hsaAccounts.length} HSA accounts exist and there's no link specifying which one. Consolidate to a single HSA account.`);
+        }
+    }
+
     // 5a-2. ESPP Purchase Processing
     let totalESPPFMVThisYear = 0;
     const esppLimit = getESPPLimit();
@@ -384,7 +422,16 @@ export function growAccounts(
                         pref === 'disqualifying_first' || pref === 'qualifying_first' || pref === 'fifo'
                             ? pref
                             : 'fifo';
-                    workingAccount = workingAccount.removeSoldShares(sharesToSell, fmvPerShare, undefined, lotOrder);
+                    // Classify lots at the SAME mid-year sale date the planner used to
+                    // tax them (WithdrawalPlanner: new Date(year, 5, 15)). With a
+                    // wall-clock `new Date()` here, qualifying_first/disqualifying_first
+                    // would sort lots by a DIFFERENT disposition boundary than the tax
+                    // was computed at, so the lots removed would diverge from the lots
+                    // taxed and corrupt future-year lot state (#179). Both sides use
+                    // all lots (getEligibleLots is skipped consistently on both), so
+                    // only the date needed to be aligned.
+                    const saleDate = new Date(year, 5, 15);
+                    workingAccount = workingAccount.removeSoldShares(sharesToSell, fmvPerShare, saleDate, lotOrder);
                 }
             }
 

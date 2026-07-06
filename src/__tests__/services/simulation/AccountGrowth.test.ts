@@ -279,6 +279,111 @@ describe('AccountGrowth', () => {
             });
         });
 
+        describe('HSA payroll contributions', () => {
+            // Build a WorkIncome that only defers to an HSA (no 401k/ESPP/RSU).
+            function createWorkIncomeWithHSA(id: string, annualHSA: number, startDate = new Date('2020-01-01'), endDate?: Date): WorkIncome {
+                return new WorkIncome(
+                    id, 'HSA Job', 100000, 'Annually', 'Yes',
+                    0,     // preTax401k
+                    0,     // insurance
+                    0,     // roth401k
+                    0,     // employerMatch
+                    '',    // matchAccountId
+                    null,  // taxType
+                    'FIXED',
+                    startDate,
+                    endDate,
+                    annualHSA, // hsaContribution (annual, since frequency is 'Annually')
+                );
+            }
+
+            it('deposits the payroll HSA contribution into the single HSA account (#179)', () => {
+                // Regression: before the fix, hsaContribution reduced spendable cash and
+                // taxes but was never deposited anywhere, silently leaking net worth.
+                const hsa = new InvestedAccount('hsa1', 'My HSA', 5000, 0, 0, 0.1, 'HSA');
+                const income = createWorkIncomeWithHSA('job1', 4000);
+                const withdrawalState = createWithdrawalState();
+                const assumptions = createTestAssumptions();
+                const logs: string[] = [];
+
+                processInflows(
+                    [income], [hsa], assumptions, 2025, withdrawalState,
+                    50000, undefined, 40000, 35, logs
+                );
+
+                // The full annual HSA contribution lands in the HSA account as an inflow.
+                expect(withdrawalState.userInflows['hsa1']).toBeCloseTo(4000, -1);
+                expect(logs.some(l => l.includes('[WARN] HSA'))).toBe(false);
+            });
+
+            it('deposits additively when it shares an account with a same-year drain', () => {
+                // A pre-existing negative inflow (e.g. a withdrawal) must be preserved.
+                const hsa = new InvestedAccount('hsa1', 'My HSA', 5000, 0, 0, 0.1, 'HSA');
+                const income = createWorkIncomeWithHSA('job1', 4000);
+                const withdrawalState = createWithdrawalState({ userInflows: { hsa1: -1000 } });
+                const assumptions = createTestAssumptions();
+                const logs: string[] = [];
+
+                processInflows(
+                    [income], [hsa], assumptions, 2025, withdrawalState,
+                    50000, undefined, 40000, 35, logs
+                );
+
+                expect(withdrawalState.userInflows['hsa1']).toBeCloseTo(3000, -1);
+            });
+
+            it('warns (and drops nothing silently) when there is no HSA account', () => {
+                const brokerage = new InvestedAccount('b1', 'Brokerage', 5000, 0, 0, 0.1, 'Brokerage');
+                const income = createWorkIncomeWithHSA('job1', 4000);
+                const withdrawalState = createWithdrawalState();
+                const assumptions = createTestAssumptions();
+                const logs: string[] = [];
+
+                processInflows(
+                    [income], [brokerage], assumptions, 2025, withdrawalState,
+                    50000, undefined, 40000, 35, logs
+                );
+
+                expect(withdrawalState.userInflows['b1']).toBeUndefined();
+                expect(logs.some(l => l.includes('[WARN] HSA'))).toBe(true);
+            });
+
+            it('warns when multiple HSA accounts exist (ambiguous destination)', () => {
+                const hsaA = new InvestedAccount('hsaA', 'HSA A', 5000, 0, 0, 0.1, 'HSA');
+                const hsaB = new InvestedAccount('hsaB', 'HSA B', 5000, 0, 0, 0.1, 'HSA');
+                const income = createWorkIncomeWithHSA('job1', 4000);
+                const withdrawalState = createWithdrawalState();
+                const assumptions = createTestAssumptions();
+                const logs: string[] = [];
+
+                processInflows(
+                    [income], [hsaA, hsaB], assumptions, 2025, withdrawalState,
+                    50000, undefined, 40000, 35, logs
+                );
+
+                expect(withdrawalState.userInflows['hsaA']).toBeUndefined();
+                expect(withdrawalState.userInflows['hsaB']).toBeUndefined();
+                expect(logs.some(l => l.includes('[WARN] HSA'))).toBe(true);
+            });
+
+            it('does not deposit for an inactive work income', () => {
+                const hsa = new InvestedAccount('hsa1', 'My HSA', 5000, 0, 0, 0.1, 'HSA');
+                // Income ended before the test year.
+                const income = createWorkIncomeWithHSA('job1', 4000, new Date('2020-01-01'), new Date('2024-12-31'));
+                const withdrawalState = createWithdrawalState();
+                const assumptions = createTestAssumptions();
+                const logs: string[] = [];
+
+                processInflows(
+                    [income], [hsa], assumptions, 2025, withdrawalState,
+                    50000, undefined, 40000, 35, logs
+                );
+
+                expect(withdrawalState.userInflows['hsa1']).toBeUndefined();
+                expect(logs.some(l => l.includes('[WARN] HSA'))).toBe(false);
+            });
+        });
+
         describe('ESPP purchase processing', () => {
             it('should create ESPP lots for each purchase period', () => {
                 const esppAccount = new ESPPAccount('espp1', 'Company ESPP', 10000);
@@ -892,6 +997,54 @@ describe('AccountGrowth', () => {
                 const updated = result.find(a => a.id === 'espp1') as ESPPAccount;
                 // $10k * 0.90 = $9,000
                 expect(updated.amount).toBeCloseTo(9000, 0);
+            });
+
+            it('removes the lots classified at the SIM-YEAR sale date, not wall-clock (#179)', () => {
+                // Regression: removeSoldShares was called with saleDate=undefined, so it
+                // classified lot dispositions at the WALL-CLOCK date while the planner
+                // taxed them at new Date(year, 5, 15). With disqualifying_first and mixed
+                // dispositions, the lot REMOVED here then diverged from the lot TAXED.
+                //
+                // Sim year 2030 → sale date 2030-06-15. Two equal 100-share lots:
+                //   'stable' — grant/purchase 2020: QUALIFYING at both 2030 and today.
+                //   'flip'   — grant/purchase 2028: QUALIFYING at 2030-06-15, but
+                //              DISQUALIFYING at any wall-clock date before 2030.
+                // Under 'disqualifying_first', selling exactly one lot's shares:
+                //   correct (sim-date): both qualifying → FIFO → 'stable' sold, 'flip' kept.
+                //   buggy (wall-clock): 'flip' is disqualifying → sold first, 'stable' kept.
+                const stableLot = {
+                    id: 'stable',
+                    grantDate: new Date(2020, 0, 1),
+                    purchaseDate: new Date(2020, 5, 30),
+                    fmvAtGrant: 100, fmvAtPurchase: 100, purchasePrice: 85,
+                    shares: 100, totalCost: 8500, discountAmount: 15,
+                };
+                const flipLot = {
+                    id: 'flip',
+                    grantDate: new Date(2028, 0, 1),
+                    purchaseDate: new Date(2028, 5, 30),
+                    fmvAtGrant: 100, fmvAtPurchase: 100, purchasePrice: 85,
+                    shares: 100, totalCost: 8500, discountAmount: 15,
+                };
+                // amount 20000 over 200 shares → $100/share. Sell 100 shares ⇒ withdraw 10000.
+                const account = new ESPPAccount(
+                    'espp1', 'Company ESPP', 20000, [stableLot, flipLot],
+                    null, undefined, undefined, undefined, 'disqualifying_first',
+                );
+                const withdrawalState = createWithdrawalState({ userInflows: { espp1: -10000 } });
+                const assumptions = createTestAssumptions({ ror: 0, inflationAdjusted: false });
+                const logs: string[] = [];
+
+                const result = growAccounts(
+                    [account], [], withdrawalState, {}, {}, {}, 0, undefined,
+                    assumptions, 2030, 0, logs
+                );
+
+                const updated = result.find(a => a.id === 'espp1') as ESPPAccount;
+                expect(updated.lots).toHaveLength(1);
+                // The QUALIFYING (at sim-date) lot the planner would have taxed as a
+                // qualifying disposition must survive — 'stable' is the one sold.
+                expect(updated.lots[0].id).toBe('flip');
             });
         });
 
