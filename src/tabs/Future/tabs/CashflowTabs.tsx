@@ -74,7 +74,9 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: Sim
     // retiree who is actually over the real (lower) cliff. Filing status is
     // mapped the same way YearSolver derives `acaFiling`.
     const acaFiling = taxState.filingStatus === 'Married Filing Jointly' ? 'married_filing_jointly' : 'single';
-    const acaCliff = getAcaCliffThreshold(acaFiling, previewYear);
+    // assumptions param inflates post-2026 thresholds with the plan (#185),
+    // matching what the engine/DP now charge.
+    const acaCliff = getAcaCliffThreshold(acaFiling, previewYear, assumptions);
     // MAGI (not cashflow.totalIncome) is what the ACA cliff is measured against:
     // totalIncome excludes Traditional/RMD withdrawals and realized gains, so a
     // retiree living entirely off withdrawals showed $0 here and the banner stayed
