@@ -49,12 +49,13 @@ const KEY_MAP: Record<string, string> = {
     fedOverride: 'O1', ficaOverride: 'O2', stateOverride: 'O3',
     // Assumptions
     inflationRate: 'ir', healthcareInflation: 'hi', inflationAdjusted: 'ia',
+    taxBracketShiftPct: 'tb', taxBracketShiftStartYear: 'ts',
     salaryGrowth: 'sg', qualifiesForSocialSecurity: 'ss', socialSecurityFundingPercent: 'sp',
     lifestyleCreep: 'lc', housingAppreciation: 'ha', rentInflation: 'ri',
     ror: 'rr', withdrawalStrategy: 'ws', withdrawalRate: 'wr', withdrawalRateMode: 'wm',
     gkUpperGuardrail: 'gu', gkLowerGuardrail: 'gl', gkAdjustmentPercent: 'ga', autoRothConversions: 'ar',
     retirementAge: 'ra', lifeExpectancy: 'le', birthYear: 'by', priorYearMode: 'pm',
-    useCompactCurrency: 'cc', showExperimentalFeatures: 'ef', hsaEligible: 'he',
+    useCompactCurrency: 'cc', showExperimentalFeatures: 'ef', hsaEligible: 'he', showDevTools: 'dt',
     // Assumptions - Roth conversion / tax optimization flags
     rothConversionStrategy: 'rs', rothConversionMinRateGap: 'rg', rothConversionDPBackloadDelta: 'rd',
     rothConversionUserSituation: 'ru',
@@ -341,6 +342,16 @@ export function expandAssumptions(flat: Record<string, unknown>): Record<string,
             inflationRate: flat.inflationRate ?? ASSUMPTIONS_DEFAULTS.inflationRate,
             healthcareInflation: flat.healthcareInflation ?? ASSUMPTIONS_DEFAULTS.healthcareInflation,
             inflationAdjusted: flat.inflationAdjusted ?? ASSUMPTIONS_DEFAULTS.inflationAdjusted,
+            // Future tax-regime fields (#181). Present-only: a pre-field QR omits
+            // them and readers fall back to 0 = current law. Without this a user
+            // who modeled a future tax increase (e.g. a TCJA sunset) would have it
+            // silently reverted to current-law brackets on the receiving device.
+            ...(flat.taxBracketShiftPct !== undefined
+                ? { taxBracketShiftPct: flat.taxBracketShiftPct }
+                : {}),
+            ...(flat.taxBracketShiftStartYear !== undefined
+                ? { taxBracketShiftStartYear: flat.taxBracketShiftStartYear }
+                : {}),
         },
         income: {
             salaryGrowth: flat.salaryGrowth ?? ASSUMPTIONS_DEFAULTS.salaryGrowth,
@@ -383,6 +394,11 @@ export function expandAssumptions(flat: Record<string, unknown>): Record<string,
             useCompactCurrency: flat.useCompactCurrency ?? ASSUMPTIONS_DEFAULTS.useCompactCurrency,
             showExperimentalFeatures: flat.showExperimentalFeatures ?? ASSUMPTIONS_DEFAULTS.showExperimentalFeatures,
             hsaEligible: flat.hsaEligible ?? ASSUMPTIONS_DEFAULTS.hsaEligible,
+            // Present-only (#181): older QR codes omit the Dev-Tools flag;
+            // migrateAssumptions backfills the default (false) on those.
+            ...(flat.showDevTools !== undefined
+                ? { showDevTools: flat.showDevTools }
+                : {}),
         },
         priorities: flat.priorities ?? [],
         // Top-level Burn-Order array was flattened under the synthetic `burnOrder` key.

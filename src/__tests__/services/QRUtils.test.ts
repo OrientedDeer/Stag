@@ -19,6 +19,7 @@ import {
   exceedsQRLimit,
 } from '../../components/Objects/Accounts/QRTransfer/qrUtils';
 import { parseDate } from '../../components/Objects/modelUtils';
+import { defaultAssumptions } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { reconstituteAccount, RSUAccount } from '../../components/Objects/Accounts/models';
 import { reconstituteIncome, WorkIncome } from '../../components/Objects/Income/models';
 
@@ -1409,6 +1410,137 @@ describe('qrUtils', () => {
       expect(Object.keys(compacted).length).toBe(1);
       expect(compacted.by).toBe(1985);
     });
+  });
+
+  // ============================================
+  // #181: QR whitelist must not silently drop assumptions fields
+  // ============================================
+
+  describe('#181: macro tax-shift + showDevTools survive a QR round-trip', () => {
+    it('restores taxBracketShiftPct / taxBracketShiftStartYear / showDevTools', () => {
+      // A user who modeled a future tax increase (bracket shift) + turned on
+      // dev tools, then transferred via QR. Pre-fix these were dropped by the
+      // expandAssumptions whitelist even though the bytes were in the payload.
+      const original = {
+        macro: {
+          inflationRate: 2.6,
+          healthcareInflation: 3.9,
+          inflationAdjusted: true,
+          taxBracketShiftPct: 5,
+          taxBracketShiftStartYear: 2030,
+        },
+        display: {
+          useCompactCurrency: true,
+          showExperimentalFeatures: false,
+          hsaEligible: true,
+          showDevTools: true,
+        },
+      };
+
+      const expanded = expandCompactAssumptions(compactAssumptions(original)) as {
+        macro: Record<string, unknown>;
+        display: Record<string, unknown>;
+      };
+
+      expect(expanded.macro.taxBracketShiftPct).toBe(5);
+      expect(expanded.macro.taxBracketShiftStartYear).toBe(2030);
+      expect(expanded.display.showDevTools).toBe(true);
+    });
+
+    it('leaves the fields absent for a legacy (pre-field) QR payload', () => {
+      // Present-only restore: an old QR code that never carried these fields must
+      // arrive without them so migrateAssumptions can backfill the defaults.
+      const legacy = {
+        macro: { inflationRate: 2.6, healthcareInflation: 3.9, inflationAdjusted: true },
+        display: { useCompactCurrency: true, showExperimentalFeatures: false, hsaEligible: true },
+      };
+
+      const expanded = expandCompactAssumptions(compactAssumptions(legacy)) as {
+        macro: Record<string, unknown>;
+        display: Record<string, unknown>;
+      };
+
+      expect('taxBracketShiftPct' in expanded.macro).toBe(false);
+      expect('taxBracketShiftStartYear' in expanded.macro).toBe(false);
+      expect('showDevTools' in expanded.display).toBe(false);
+    });
+  });
+
+  // Generated guard: walk the REAL defaultAssumptions and prove every primitive
+  // leaf survives compactAssumptions -> expandCompactAssumptions. Any future
+  // AssumptionsState field the QR whitelist forgets to restore — the exact class
+  // of bug as #181 — turns this test red instead of silently shipping a plan that
+  // reverts on import.
+  describe('#181: every AssumptionsState primitive leaf survives a QR round-trip', () => {
+    // Leaves that legitimately do NOT round-trip through the QR pipeline. Keep
+    // this list SHORT and justified — each entry must be a conscious design
+    // decision, never a way to silence a real field drop.
+    //   (empty today: every persisted primitive leaf round-trips. The runtime-only
+    //    macro.taxCalibration is never present in defaults, so the walk never
+    //    reaches it and it needs no entry.)
+    const NON_ROUNDTRIP_LEAVES = new Set<string>([]);
+
+    const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+      typeof v === 'object' && v !== null && !Array.isArray(v);
+
+    // Dotted paths to every primitive leaf. Arrays (priorities, the burn-order
+    // withdrawalStrategy, milestones) have their own round-trip tests and are
+    // skipped here.
+    const collectLeafPaths = (obj: Record<string, unknown>, prefix = ''): string[] => {
+      const paths: string[] = [];
+      for (const [key, value] of Object.entries(obj)) {
+        const path = prefix ? `${prefix}.${key}` : key;
+        if (isPlainObject(value)) {
+          paths.push(...collectLeafPaths(value, path));
+        } else if (!Array.isArray(value)) {
+          paths.push(path);
+        }
+      }
+      return paths;
+    };
+
+    const getAt = (obj: unknown, path: string): unknown =>
+      path.split('.').reduce<unknown>(
+        (acc, k) => (acc == null ? acc : (acc as Record<string, unknown>)[k]),
+        obj
+      );
+
+    const setAt = (obj: Record<string, unknown>, path: string, value: unknown): void => {
+      const keys = path.split('.');
+      let cursor = obj;
+      for (let i = 0; i < keys.length - 1; i++) {
+        cursor = cursor[keys[i]] as Record<string, unknown>;
+      }
+      cursor[keys[keys.length - 1]] = value;
+    };
+
+    // A distinctive value guaranteed to differ from the default, so that a
+    // dropped field (restored to its default / omitted) fails the assertion.
+    const distinct = (v: unknown): unknown => {
+      if (typeof v === 'number') return v + 137.5;
+      if (typeof v === 'boolean') return !v;
+      if (typeof v === 'string') return `${v}_ROUNDTRIP`;
+      return v;
+    };
+
+    const leafPaths = collectLeafPaths(defaultAssumptions as unknown as Record<string, unknown>);
+
+    it('walks a non-trivial set of leaves (guards against an empty walk)', () => {
+      expect(leafPaths.length).toBeGreaterThan(15);
+    });
+
+    for (const path of leafPaths) {
+      const runner = NON_ROUNDTRIP_LEAVES.has(path) ? it.skip : it;
+      runner(`preserves ${path}`, () => {
+        const original = structuredClone(defaultAssumptions) as unknown as Record<string, unknown>;
+        const marker = distinct(getAt(original, path));
+        setAt(original, path, marker);
+
+        const expanded = expandCompactAssumptions(compactAssumptions(original));
+
+        expect(getAt(expanded, path)).toEqual(marker);
+      });
+    }
   });
 
   // ============================================
