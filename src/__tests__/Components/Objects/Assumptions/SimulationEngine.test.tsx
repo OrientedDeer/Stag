@@ -215,7 +215,10 @@ describe('Simulation Engine', () => {
 
     it('should handle DebtAccount with linked loan and payment', () => {
         const debtAccount = new DebtAccount('debt-1', 'Car Loan', 5000, 'loan-1', 5.0);
-        const loanExpense = new LoanExpense('loan-1', 'Car Payment', 5000, 'Monthly', 5, "Compounding", 250, "No", 0, 'debt-1');
+        // Explicit 2024 start: the sim year below is 2024, and since #178 a loan
+        // whose startDate defaults to "today" correctly holds its balance in
+        // years before it starts — this fixture predates that gate.
+        const loanExpense = new LoanExpense('loan-1', 'Car Payment', 5000, 'Monthly', 5, "Compounding", 250, "No", 0, 'debt-1', new Date(2024, 0, 1));
         const income = new WorkIncome('inc-1', 'Job', 60000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED');
 
         const result = simulateOneYear(2024, [income], [loanExpense], [debtAccount], cleanAssumptions, mockTaxState);
