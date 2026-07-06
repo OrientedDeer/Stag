@@ -30,13 +30,31 @@ export function classifyIncome(
 ): IncomeClassificationResult {
     const decisions: DecisionLogEntry[] = [];
 
+    // Derive the RMD from the incomes list as a fallback when the caller passes 0.
+    // processRMDs drains the Trad account and surfaces the distribution as a
+    // PassiveIncome with sourceType 'RMD'; the retirement path passes that same total
+    // in as `rmdAmount`, but solveWorkingYear passes 0 (working-year path). Without
+    // this, a plan that keeps working PAST the RMD age loses the RMD dollars entirely:
+    // the account is drained, the loop below strips the RMD-sourced passive income (it's
+    // meant to be re-added via `rmdAmount`), and adding 0 back means those dollars are
+    // never taxed and never arrive as spendable cash. When `rmdAmount` is supplied
+    // (retirement path) it equals this sum, so `rmdAmount > 0` keeps that path
+    // byte-identical; only the working-year 0 case falls back to the list.
+    const rmdFromList = incomes.reduce((sum, income) => {
+        if (income instanceof PassiveIncome && income.sourceType === 'RMD') {
+            return sum + Math.max(0, income.getAnnualAmount(year));
+        }
+        return sum;
+    }, 0);
+    const effectiveRmdAmount = rmdAmount > 0 ? rmdAmount : rmdFromList;
+
     // Initialize breakdown
     const breakdown = {
         wages: 0,
         socialSecurity: 0,
         pensions: 0,
         passive: 0,
-        rmd: rmdAmount,
+        rmd: effectiveRmdAmount,
         reinvested: 0,
     };
 
@@ -103,8 +121,8 @@ export function classifyIncome(
         }
     }
 
-    // RMD is always spendable (passed in separately)
-    spendable += rmdAmount;
+    // RMD is always spendable (tracked separately from the stripped RMD passive income).
+    spendable += effectiveRmdAmount;
 
     // Calculate taxable total:
     // - All spendable income is taxable
@@ -116,7 +134,7 @@ export function classifyIncome(
     const classified: ClassifiedIncome = {
         spendable,
         reinvested,
-        rmdIncome: rmdAmount,
+        rmdIncome: effectiveRmdAmount,
         conversionIncome: conversionAmount,
         taxableTotal,
         breakdown,
