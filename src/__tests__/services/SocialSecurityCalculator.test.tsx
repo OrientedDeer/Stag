@@ -6,6 +6,7 @@ import {
   applyClaimingAdjustment,
   extractEarningsFromSimulation,
   calculateEarningsTestReduction,
+  shouldApplyEarningsTest,
   validateEarningsRecord,
   EarningsRecord,
 } from '../../services/SocialSecurityCalculator';
@@ -882,6 +883,104 @@ describe('SocialSecurityCalculator', () => {
         expect(result.reducedBenefit).toBe(30000);
         expect(result.amountWithheld).toBe(0);
       });
+    });
+
+    describe('shouldApplyEarningsTest (caller age gate)', () => {
+      // The production caller must gate on this helper, NOT `currentAge < fra`. A strict
+      // `< fra` skips the FRA-attainment year (attained age === ceil(fra)), so that year's
+      // lenient $1/$3 withholding is never applied even though it should be.
+      it('includes every year up to and INCLUDING the FRA-attainment year (FRA 67)', () => {
+        expect(shouldApplyEarningsTest(62, 67)).toBe(true);
+        expect(shouldApplyEarningsTest(66, 67)).toBe(true);
+        expect(shouldApplyEarningsTest(67, 67)).toBe(true); // FRA year — a strict `< fra` would drop this
+        expect(shouldApplyEarningsTest(68, 67)).toBe(false); // fully past FRA
+      });
+
+      it('rounds a fractional FRA up (FRA 66.5 → age 67 is still the FRA year)', () => {
+        expect(shouldApplyEarningsTest(66, 66.5)).toBe(true);
+        expect(shouldApplyEarningsTest(67, 66.5)).toBe(true); // ceil(66.5) = 67
+        expect(shouldApplyEarningsTest(68, 66.5)).toBe(false);
+      });
+
+      it('agrees with calculateEarningsTestReduction: the FRA year it admits is not a no-op', () => {
+        // Gate admits the FRA year, and the reduction fn applies the lenient $1/$3 there.
+        expect(shouldApplyEarningsTest(67, 67)).toBe(true);
+        const fraYear = calculateEarningsTestReduction(24000, 89520, 67, 67, 2024);
+        expect(fraYear.appliesTest).toBe(true);
+        expect(fraYear.reason).toContain('year of FRA');
+        // Gate excludes the year after; the reduction fn no-ops there anyway.
+        expect(shouldApplyEarningsTest(68, 67)).toBe(false);
+        const pastFRA = calculateEarningsTestReduction(24000, 89520, 68, 67, 2024);
+        expect(pastFRA.appliesTest).toBe(false);
+      });
+    });
+  });
+
+  describe('pre-2000 wage base (issue #188)', () => {
+    // Before the fix, SS_WAGE_BASE started at 2000 ($76,200), so any pre-2000 year fell
+    // through lookupYearlyData to the earliest entry (2000) and was over-capped at $76,200.
+    // The real published contribution-and-benefit bases are far lower (e.g. 1985 $39,600).
+    it('getWageBase returns the real historical cap, not the 2000 fallback', () => {
+      expect(getWageBase(1985)).toBe(39600);
+      expect(getWageBase(1990)).toBe(51300);
+      expect(getWageBase(1995)).toBe(61200);
+      expect(getWageBase(1999)).toBe(72600);
+      // Sanity: none of these equal the old 2000-base fallback.
+      expect(getWageBase(1985)).not.toBe(76200);
+    });
+
+    it('caps auto-generated pre-2000 earnings at the year cap (not $76,200)', () => {
+      // High earner ($200k) whose job started in 1995; simulation starts in 2000.
+      // Auto-generated 1995-1999 earnings must be capped at each year's real wage base.
+      // extractEarningsFromSimulation only reads year/incomes; the rest is padding.
+      const mockSimulation = [
+        {
+          year: 2000,
+          incomes: [
+            new WorkIncome('1', 'Job', 200000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED',
+              new Date(1995, 0, 1), undefined),
+          ],
+          expenses: [],
+          accounts: [],
+          cashflow: {},
+          taxDetails: {},
+          logs: [],
+        },
+      ] as unknown as SimulationYear[];
+
+      const earnings = extractEarningsFromSimulation(mockSimulation);
+      const y1995 = earnings.find(e => e.year === 1995);
+      const y1999 = earnings.find(e => e.year === 1999);
+
+      // After the fix: capped at the real base. Before the fix these were $76,200.
+      expect(y1995!.amount).toBe(61200);
+      expect(y1999!.amount).toBe(72600);
+    });
+  });
+
+  describe('calculateAIME eligibilityYear fallback (issue #188)', () => {
+    // When birthYear is omitted, the eligibility year (year turning 62) must be derived as
+    // (calculationYear - claimingAge) + 62, i.e. birthYear + 62 — NOT with an extra +62.
+    // The old code added +62 twice, landing ~62 years too late and pulling bend points from
+    // the far-future projection (inflating PIA). All current callers pass birthYear, so this
+    // is latent, but the derived path must match the explicit path.
+    it('derives the same result with and without birthYear for a matched scenario', () => {
+      const earnings: EarningsRecord[] = [];
+      for (let year = 1988; year <= 2022; year++) {
+        earnings.push({ year, amount: 60000 });
+      }
+      const birthYear = 1962;
+      const claimingAge = 62;
+      const calculationYear = birthYear + claimingAge; // 2024
+
+      const withBirthYear = calculateAIME(earnings, calculationYear, claimingAge, birthYear);
+      const withoutBirthYear = calculateAIME(earnings, calculationYear, claimingAge);
+
+      // Bend points are frozen at eligibilityYear; the derived path must land on the same year.
+      expect(withoutBirthYear.bendPoints).toEqual(withBirthYear.bendPoints);
+      // Old bug: fallback eligibilityYear = birthYear + 124 → far-future projected bend
+      // points → inflated PIA. Fixed: derived PIA matches the explicit-birthYear PIA.
+      expect(withoutBirthYear.pia).toBeCloseTo(withBirthYear.pia, 2);
     });
   });
 

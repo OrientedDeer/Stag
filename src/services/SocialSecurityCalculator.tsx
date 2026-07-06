@@ -335,7 +335,11 @@ export function calculateAIME(
   // Step 5: Calculate PIA using bend points frozen at the worker's eligibility
   // year (year they turn 62). SSA fixes bend points based on the NAW for that
   // year — they don't move as we run projections in later years.
-  const eligibilityYear = (birthYear ?? calculationYear - (claimingAge - 62)) + 62;
+  // eligibilityYear = the year the worker turns 62. With birthYear it's simply
+  // birthYear + 62. Without it, derive birthYear as (calculationYear - claimingAge)
+  // first, THEN add 62 — the fallback must yield birthYear, not birthYear + 62, or the
+  // outer `+ 62` double-counts and lands ~62 years too late (bend points from the far future).
+  const eligibilityYear = (birthYear ?? calculationYear - claimingAge) + 62;
   const pia = calculatePIA(aime, eligibilityYear, wageGrowthRate, inflationAdjusted);
 
   // Step 6: Apply claiming age adjustment
@@ -370,6 +374,23 @@ export function calculateAIME(
 export function validateEarningsRecord(record: EarningsRecord, inflationAdjusted: boolean = true, wageGrowthRate: number = 0.025): boolean {
   const wageBase = getWageBase(record.year, wageGrowthRate, inflationAdjusted);
   return record.amount >= 0 && record.amount <= wageBase;
+}
+
+/**
+ * Whether the SS earnings test can apply in a given calendar year, based on the age the
+ * worker ATTAINS that year (`currentAge = year - birthYear`, as the engine computes it).
+ *
+ * The test applies for every year up to and INCLUDING the year the worker reaches FRA
+ * (attained age === ceil(FRA)); that FRA year uses the lenient higher limit and 1/3
+ * withholding on earnings before the FRA month. Only years FULLY past FRA are exempt.
+ *
+ * Callers MUST gate on this instead of `currentAge < fra`: a strict `< fra` skips the
+ * FRA-attainment year entirely, so its lenient-limit/1-3 withholding is never applied
+ * ($0 withheld in a year that should still withhold). calculateEarningsTestReduction()
+ * itself already no-ops for years past FRA, so calling it in the FRA year is safe.
+ */
+export function shouldApplyEarningsTest(currentAge: number, fra: number): boolean {
+  return currentAge <= Math.ceil(fra);
 }
 
 /**
