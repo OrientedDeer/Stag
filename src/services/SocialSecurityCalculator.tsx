@@ -378,19 +378,22 @@ export function validateEarningsRecord(record: EarningsRecord, inflationAdjusted
 
 /**
  * Whether the SS earnings test can apply in a given calendar year, based on the age the
- * worker ATTAINS that year (`currentAge = year - birthYear`, as the engine computes it).
+ * worker ATTAINS that year (`currentAge = year - birthYear`, as the engine computes it)
+ * and the age the benefit was claimed.
  *
- * The test applies for every year up to and INCLUDING the year the worker reaches FRA
- * (attained age === ceil(FRA)); that FRA year uses the lenient higher limit and 1/3
- * withholding on earnings before the FRA month. Only years FULLY past FRA are exempt.
+ * The test only exists for benefits claimed BEFORE FRA (claiming at/after FRA means no
+ * benefit month ever precedes FRA, so there is nothing to withhold — ever). For an early
+ * claimer it applies through the year the worker reaches FRA (attained age === ceil(FRA));
+ * that FRA-attainment year uses the lenient higher limit and 1/3 withholding on earnings
+ * before the FRA month. Only years FULLY past FRA are exempt.
  *
  * Callers MUST gate on this instead of `currentAge < fra`: a strict `< fra` skips the
  * FRA-attainment year entirely, so its lenient-limit/1-3 withholding is never applied
  * ($0 withheld in a year that should still withhold). calculateEarningsTestReduction()
  * itself already no-ops for years past FRA, so calling it in the FRA year is safe.
  */
-export function shouldApplyEarningsTest(currentAge: number, fra: number): boolean {
-  return currentAge <= Math.ceil(fra);
+export function shouldApplyEarningsTest(currentAge: number, fra: number, claimingAge: number): boolean {
+  return claimingAge < fra && currentAge <= Math.ceil(fra);
 }
 
 /**

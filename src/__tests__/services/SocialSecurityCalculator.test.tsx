@@ -889,27 +889,34 @@ describe('SocialSecurityCalculator', () => {
       // The production caller must gate on this helper, NOT `currentAge < fra`. A strict
       // `< fra` skips the FRA-attainment year (attained age === ceil(fra)), so that year's
       // lenient $1/$3 withholding is never applied even though it should be.
-      it('includes every year up to and INCLUDING the FRA-attainment year (FRA 67)', () => {
-        expect(shouldApplyEarningsTest(62, 67)).toBe(true);
-        expect(shouldApplyEarningsTest(66, 67)).toBe(true);
-        expect(shouldApplyEarningsTest(67, 67)).toBe(true); // FRA year — a strict `< fra` would drop this
-        expect(shouldApplyEarningsTest(68, 67)).toBe(false); // fully past FRA
+      it('includes every year up to and INCLUDING the FRA-attainment year (FRA 67, claimed early)', () => {
+        expect(shouldApplyEarningsTest(62, 67, 62)).toBe(true);
+        expect(shouldApplyEarningsTest(66, 67, 62)).toBe(true);
+        expect(shouldApplyEarningsTest(67, 67, 62)).toBe(true); // FRA year — a strict `< fra` would drop this
+        expect(shouldApplyEarningsTest(68, 67, 62)).toBe(false); // fully past FRA
       });
 
-      it('rounds a fractional FRA up (FRA 66.5 → age 67 is still the FRA year)', () => {
-        expect(shouldApplyEarningsTest(66, 66.5)).toBe(true);
-        expect(shouldApplyEarningsTest(67, 66.5)).toBe(true); // ceil(66.5) = 67
-        expect(shouldApplyEarningsTest(68, 66.5)).toBe(false);
+      it('never applies to a benefit claimed at or after FRA (no pre-FRA benefit months)', () => {
+        expect(shouldApplyEarningsTest(67, 67, 67)).toBe(false); // claimed AT FRA
+        expect(shouldApplyEarningsTest(70, 67, 70)).toBe(false); // delayed claim
+        expect(shouldApplyEarningsTest(67, 66.5, 66.5)).toBe(false);
+      });
+
+      it('rounds a fractional FRA up (FRA 66.5 → age 67 is still the FRA year, claimed early)', () => {
+        expect(shouldApplyEarningsTest(66, 66.5, 63)).toBe(true);
+        expect(shouldApplyEarningsTest(67, 66.5, 63)).toBe(true); // ceil(66.5) = 67
+        expect(shouldApplyEarningsTest(68, 66.5, 63)).toBe(false);
       });
 
       it('agrees with calculateEarningsTestReduction: the FRA year it admits is not a no-op', () => {
-        // Gate admits the FRA year, and the reduction fn applies the lenient $1/$3 there.
-        expect(shouldApplyEarningsTest(67, 67)).toBe(true);
+        // Gate admits the FRA year (for an early claimer), and the reduction fn
+        // applies the lenient $1/$3 there.
+        expect(shouldApplyEarningsTest(67, 67, 62)).toBe(true);
         const fraYear = calculateEarningsTestReduction(24000, 89520, 67, 67, 2024);
         expect(fraYear.appliesTest).toBe(true);
         expect(fraYear.reason).toContain('year of FRA');
         // Gate excludes the year after; the reduction fn no-ops there anyway.
-        expect(shouldApplyEarningsTest(68, 67)).toBe(false);
+        expect(shouldApplyEarningsTest(68, 67, 62)).toBe(false);
         const pastFRA = calculateEarningsTestReduction(24000, 89520, 68, 67, 2024);
         expect(pastFRA.appliesTest).toBe(false);
       });

@@ -361,11 +361,12 @@ export function projectIncomes(
             // to inc.amount/12 only when projectedPIA is unset (0).
             const fullMonthlyPIA = inc.projectedPIA > 0 ? inc.projectedPIA : inc.amount / 12;
 
-            // shouldApplyEarningsTest (<= ceil(fra)) rather than < fra: the
-            // FRA-attainment year still has the lenient pre-FRA-months test
-            // ($1/$3 rule), which a strict < fra gate made unreachable (#188).
-            // calculateEarningsTestReduction itself no-ops past FRA.
-            if (shouldApplyEarningsTest(currentAge, fra) && fullMonthlyPIA > 0) {
+            // shouldApplyEarningsTest (claimed early && <= ceil(fra)) rather than
+            // < fra: the FRA-attainment year still has the lenient pre-FRA-months
+            // test ($1/$3 rule), which a strict < fra gate made unreachable (#188)
+            // — but only for EARLY claimers; claiming at/after FRA never has a
+            // benefit month before FRA, so nothing is ever withheld.
+            if (shouldApplyEarningsTest(currentAge, fra, inc.claimingAge) && fullMonthlyPIA > 0) {
                 const earnedIncome = TaxService.getEarnedIncome(nextIncomes, year);
                 const annualSSBenefit = inc.getProratedAnnual(fullMonthlyPIA * 12, year);
                 const wageGrowthRate = assumptions.macro.inflationRate / 100;
