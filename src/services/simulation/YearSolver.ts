@@ -617,7 +617,9 @@ function computeCeilingContext(
         acaOptions = {
             currentAge: input.currentAge,
             acaSubsidyAware: true,
-            acaCliffThreshold: getAcaCliffThreshold(acaFiling, input.year),
+            // #185: pass assumptions so the FPL cliff inflates forward past the latest
+            // published table, matching RothConversionDP and the Cashflow UI preview.
+            acaCliffThreshold: getAcaCliffThreshold(acaFiling, input.year, input.assumptions),
             estimatedSubsidyLoss: input.assumptions.investments.acaAnnualSubsidyLoss ?? ACA_SUBSIDY_LOSS_DEFAULT,
         };
     }
@@ -1877,7 +1879,10 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     const acaCliffThreshold = acaCliffActive
         ? getAcaCliffThreshold(
             input.taxState.filingStatus === 'Married Filing Jointly' ? 'married_filing_jointly' : 'single',
-            input.year
+            input.year,
+            // #185: inflate the FPL cliff forward (same threshold the DP/UI use), so the
+            // deficit-loop cliff guard + subsidy-charge test don't freeze at 2026 nominal.
+            input.assumptions
         )
         : 0;
     const acaBaseMAGI = taxableBase + conversionPlan.additionalOrdinaryIncome;

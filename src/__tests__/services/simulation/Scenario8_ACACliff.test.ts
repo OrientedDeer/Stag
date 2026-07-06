@@ -27,6 +27,7 @@ import { AccountBalanceSnapshot } from '../../../services/simulation/types';
 
 // Level 2: Solver imports
 import { solveRetirementYear, YearSolverInput } from '../../../services/simulation/YearSolver';
+import { getAcaCliffThreshold } from '../../../services/simulation/TaxOptimizedWithdrawal';
 
 // Level 3: Full simulation imports
 import { simulateOneYear } from '../../../components/Objects/Assumptions/SimulationEngine';
@@ -916,5 +917,82 @@ describe('Scenario 8: ACA Cliff Brokerage → Roth Withdrawal Substitution', () 
                 expect(magi).toBeLessThan(100000);
             }
         });
+    });
+});
+
+// =============================================================================
+// #185: the ENGINE's own ACA-cliff enforcement must inflate the 400% FPL
+// threshold forward past the latest published table, matching the value the DP
+// (RothConversionDP) and the Cashflow UI already use. Two YearSolver enforcement
+// sites previously called the 2-arg (frozen) getAcaCliffThreshold form, freezing
+// the cliff at its 2026 nominal value while every other bracket inflated.
+// =============================================================================
+describe('#185: engine ACA-cliff enforcement inflates the 400% FPL threshold for years > 2026', () => {
+    const FUTURE_YEAR = 2050; // 24 years past the latest published FPL (2026)
+
+    function futureAcaAssumptions(inflationAdjusted = true): AssumptionsState {
+        return {
+            ...defaultAssumptions,
+            macro: { ...defaultAssumptions.macro, inflationAdjusted },
+            milestones: createBuiltinMilestones(FUTURE_YEAR - 58, 55, 95), // age 58 in FUTURE_YEAR
+            // Conversions off: we isolate the SUBSIDY-CHARGE enforcement site, whose
+            // MAGI is driven purely by the Traditional withdrawal that funds expenses.
+            investments: { ...defaultAssumptions.investments, taxOptimizationEnabled: false },
+            withdrawalStrategy: [{ id: 'ws-1', name: 'Traditional', accountId: 'trad-1' }],
+        };
+    }
+
+    function solveFutureYear(expenses: number, inflationAdjusted = true) {
+        const assumptions = futureAcaAssumptions(inflationAdjusted);
+        const traditional = new InvestedAccount(
+            'trad-1', 'Traditional IRA', 1_500_000, 0, 15, 0.05, 'Traditional IRA',
+        );
+        const living = new OtherExpense('living-1', 'Living Expenses', expenses, 'Annually', new Date('2020-01-01'));
+        const taxState: TaxState = {
+            filingStatus: 'Single', stateResidency: 'Texas', deductionMethod: 'Standard',
+            fedOverride: null, ficaOverride: null, stateOverride: null, year: FUTURE_YEAR,
+        };
+        const input: YearSolverInput = {
+            year: FUTURE_YEAR, currentAge: 58, isRetired: true, incomes: [], expenses: [living],
+            totalLivingExpenses: expenses, rmdAmount: 0, accounts: [traditional],
+            withdrawalOrder: [{ accountId: 'trad-1' }],
+            taxState, assumptions, taxOptimizationEnabled: false, acaAware: true,
+        } as YearSolverInput;
+        return { yearPlan: solveRetirementYear(input), assumptions };
+    }
+
+    it('inflates the FPL cliff (3-arg) above the frozen 2026 value for a far-future year', () => {
+        const assumptions = futureAcaAssumptions();
+        const inflated = getAcaCliffThreshold('single', FUTURE_YEAR, assumptions);
+        const frozen = getAcaCliffThreshold('single', FUTURE_YEAR); // 2-arg = frozen 2026 nominal
+        expect(frozen).toBeCloseTo(64_400, 0);          // 400% × $16,100 (2026 single FPL)
+        expect(inflated).toBeGreaterThan(frozen * 1.5); // ~$119k at 2.6% for 24 years
+    });
+
+    it('does NOT charge the ACA subsidy when MAGI sits between the frozen and inflated cliffs', () => {
+        // $70k expenses → the Traditional withdrawal drives MAGI to ~$84.5k, which is
+        // ABOVE the frozen 2026 cliff ($64.4k) but BELOW the inflated 2050 cliff (~$119k).
+        // With the fix the engine enforces the inflated cliff → no subsidy repayment.
+        // Pre-fix it enforced the frozen cliff → MAGI $84.5k ≥ $64.4k → a phantom $12k charge.
+        const { yearPlan, assumptions } = solveFutureYear(70_000);
+        const inflated = getAcaCliffThreshold('single', FUTURE_YEAR, assumptions);
+        const frozen = getAcaCliffThreshold('single', FUTURE_YEAR);
+
+        // Confirm the scenario really sits in the diagnostic band.
+        expect(yearPlan.magi).toBeGreaterThan(frozen);
+        expect(yearPlan.magi).toBeLessThan(inflated);
+
+        // The enforcement site used the INFLATED cliff (matching the DP/UI), so no charge.
+        expect(yearPlan.tax.aca).toBe(0);
+    });
+
+    it('still charges the subsidy once MAGI actually exceeds the inflated cliff', () => {
+        // $100k expenses → MAGI ~$140k > inflated cliff (~$119k): a genuine breach, so the
+        // engine DOES charge the subsidy loss (proves the guard still fires when warranted,
+        // not that it was simply disabled).
+        const { yearPlan, assumptions } = solveFutureYear(100_000);
+        const inflated = getAcaCliffThreshold('single', FUTURE_YEAR, assumptions);
+        expect(yearPlan.magi).toBeGreaterThan(inflated);
+        expect(yearPlan.tax.aca).toBeGreaterThan(0);
     });
 });

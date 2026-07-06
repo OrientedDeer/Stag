@@ -24,6 +24,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { solveRetirementYear, YearSolverInput } from '../../../services/simulation/YearSolver';
+import { getAcaCliffThreshold } from '../../../services/simulation/TaxOptimizedWithdrawal';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { PassiveIncome } from '../../../components/Objects/Income/models';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
@@ -31,7 +32,10 @@ import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '.
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 
 const BIRTH_YEAR = 1970; // Age 60 in 2030: retired, sub-65 (ACA cliff active), no early-withdrawal penalty
-const ACA_CLIFF_SINGLE_2030 = 64_400; // 400% FPL, single, most recent known FPL year (2026)
+// 400% FPL, single, INFLATED forward to 2030 from the latest published table (2026)
+// — the same #185-inflated cliff the engine now enforces. (Was hardcoded to the frozen
+// $64,400 2026 value, which under-#185 let the solver correctly raise the ceiling.)
+const ACA_CLIFF_SINGLE_2030 = getAcaCliffThreshold('single', 2030, defaultAssumptions);
 
 function buildInput(): YearSolverInput {
     const traditional = new InvestedAccount('trad-1', 'Traditional IRA', 2500000, 0, 20, 0.05, 'Traditional IRA');
