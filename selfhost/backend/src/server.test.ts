@@ -43,6 +43,9 @@ class FakeCouch {
   // Delay (ms) applied to the create-db PUT so a concurrency test can hold a
   // missing-db window open while several POSTs pile up.
   createDbDelayMs = 0;
+  // When set, a GET /<db>/<doc> returns this stored document (200) instead of a
+  // 404 — used to exercise the read paths (full GET vs ?meta=1).
+  docToReturn: Record<string, unknown> | null = null;
 
   constructor(public dbSegment: string = BACKUP_DB) {
     this.server = http.createServer((req, res) => {
@@ -84,6 +87,7 @@ class FakeCouch {
     }
     // GET /<db>/<doc>
     if (method === "GET" && url.startsWith(`${dbUrl}/`)) {
+      if (this.docToReturn) return send(200, this.docToReturn);
       return send(404, { error: "not_found" });
     }
     return send(404, { error: "not_found" });
@@ -587,6 +591,64 @@ test("ISSUE 193: per-sub write rate limit returns 429 once the window's budget i
     be.kill();
     await fake.close();
   }
+});
+
+// ---- ISSUE 194 / metadata-only GET: ?meta=1 omits the blob but keeps rev/timestamp/size ----
+test("ISSUE 194: GET /backup?meta=1 returns rev/timestamp/size WITHOUT the (multi-KB) blob", async () => {
+  // Store a doc with a large blob, then read it two ways off the SAME backend.
+  couch.docToReturn = {
+    _id: "user-meta",
+    _rev: "7-meta",
+    blob: "x".repeat(50 * 1024), // 50 KB of ciphertext
+    size: 50 * 1024,
+    timestamp: "2026-07-06T00:00:00.000Z",
+  };
+  try {
+    // Full GET carries the blob.
+    const full = await reqTo(authedPort, "GET", "/backup", {
+      headers: { authorization: "Bearer stub:user-meta" },
+    });
+    assert.equal(full.status, 200, `full GET should 200, got ${full.status}: ${full.body}`);
+    const fullBody = JSON.parse(full.body);
+    assert.equal(typeof fullBody.blob, "string", "full GET must include the blob");
+    assert.equal(fullBody.rev, "7-meta");
+
+    // Metadata GET omits the blob but keeps the metadata fields.
+    const meta = await reqTo(authedPort, "GET", "/backup?meta=1", {
+      headers: { authorization: "Bearer stub:user-meta" },
+    });
+    assert.equal(meta.status, 200, `meta GET should 200, got ${meta.status}: ${meta.body}`);
+    const metaBody = JSON.parse(meta.body);
+    assert.equal(metaBody.blob, undefined, "meta GET must NOT include the blob");
+    assert.equal(metaBody.rev, "7-meta");
+    assert.equal(metaBody.timestamp, "2026-07-06T00:00:00.000Z");
+    assert.equal(metaBody.size, 50 * 1024);
+    // And it must be markedly smaller on the wire than the full response.
+    assert.ok(
+      meta.body.length < full.body.length / 10,
+      `meta response (${meta.body.length}B) should be far smaller than full (${full.body.length}B)`
+    );
+  } finally {
+    couch.docToReturn = null;
+  }
+});
+
+test("ISSUE 194: GET /backup?meta=1 still 404s when no backup exists", async () => {
+  couch.docToReturn = null; // no stored doc -> couch 404s
+  const meta = await reqTo(authedPort, "GET", "/backup?meta=1", {
+    headers: { authorization: "Bearer stub:no-backup" },
+  });
+  assert.equal(meta.status, 404, `meta GET on missing backup should 404, got ${meta.status}: ${meta.body}`);
+});
+
+test("ISSUE 194: GET /backup?meta=1 still requires a valid bearer token (auth not bypassed)", async () => {
+  const noAuth = await reqTo(authedPort, "GET", "/backup?meta=1", {});
+  assert.equal(noAuth.status, 401, `meta GET without a token must 401, got ${noAuth.status}: ${noAuth.body}`);
+
+  const badToken = await reqTo(authedPort, "GET", "/backup?meta=1", {
+    headers: { authorization: "Bearer not-a-stub-token" },
+  });
+  assert.equal(badToken.status, 401, `meta GET with a bad token must 401, got ${badToken.status}: ${badToken.body}`);
 });
 
 // ---- ISSUE 193 / body limit: derived-from-MAX_BLOB_BYTES + 413-not-502 relabel ----

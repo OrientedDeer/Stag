@@ -2,7 +2,8 @@
  * stag-backend — a zero-knowledge per-user encrypted-blob store.
  *
  * It implements exactly the contract the Stag client expects:
- *   GET    /backup  -> 200 { blob, rev, timestamp, size } | 404
+ *   GET    /backup        -> 200 { blob, rev, timestamp, size } | 404
+ *   GET    /backup?meta=1 -> 200 { rev, timestamp, size }        | 404  (blob omitted)
  *   POST   /backup  -> body { blob, rev } -> 200 { rev, timestamp } | 409 | 413
  *   DELETE /backup  -> 200 (404 tolerated)
  *
@@ -252,14 +253,28 @@ function rateLimitWrites(req: AuthedRequest, res: Response, next: NextFunction) 
   next();
 }
 
-// GET /backup
+// GET /backup            -> full document (blob + metadata)
+// GET /backup?meta=1      -> metadata ONLY (rev/timestamp/size), blob omitted
+//
+// The client polls metadata on every sign-in AND panel open just to read the
+// current rev/timestamp; without the flag that pulls the entire (potentially
+// multi-MB) ciphertext blob over the wire each time. `?meta=1` returns exactly
+// the same metadata fields WITHOUT the blob. It adds no plaintext-derived data
+// (rev/timestamp/size are already in the full response), so the zero-knowledge
+// property is unchanged. Existence is signalled by 200 vs 404 as before — a
+// meta response legitimately carries no blob. This is a read; the write rate
+// limiter (POST-only) does not apply.
 app.get(
   "/backup",
   requireGoogle,
   asyncHandler(async (req, res) => {
+    const metaOnly = req.query.meta === "1" || req.query.meta === "true";
     const { status, json } = await couch("GET", docPath(req.sub!));
     if (status === 404) return res.status(404).json({ error: "no backup" });
     if (status !== 200) return res.status(502).json({ error: "store error" });
+    if (metaOnly) {
+      return res.json({ rev: json._rev, timestamp: json.timestamp, size: json.size });
+    }
     return res.json({ blob: json.blob, rev: json._rev, timestamp: json.timestamp, size: json.size });
   })
 );

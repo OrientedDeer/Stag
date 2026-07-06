@@ -114,12 +114,22 @@ export async function downloadBackup(
 
 /**
  * Check whether a backup exists and read its metadata (including current rev).
+ *
+ * This is polled on every sign-in AND every panel open, so it asks for metadata
+ * only (`?meta=1`): a backend that understands the flag omits the (potentially
+ * multi-MB) ciphertext blob and returns just { rev, timestamp, size }, saving
+ * that whole download. An OLDER backend that predates the flag simply ignores
+ * the unknown query param and returns the full document (blob included) — still
+ * correct here, since we only read rev/timestamp/size and never touch the blob.
+ * So the fallback is automatic: no separate request, nothing to break mid-
+ * upgrade. Existence is determined by HTTP 200 vs 404 (a meta response carries
+ * no blob by design), not by whether a blob field is present.
  */
 export async function getBackupMetadata(
     apiEndpoint: string,
     idToken: string
 ): Promise<BackupMetadata> {
-    const response = await fetch(`${apiEndpoint}/backup`, {
+    const response = await fetch(`${apiEndpoint}/backup?meta=1`, {
         method: 'GET',
         headers: authHeaders(idToken),
     });
@@ -132,10 +142,6 @@ export async function getBackupMetadata(
     }
 
     const data = await response.json();
-    if (!data?.blob) {
-        return { exists: false, timestamp: null, size: null, rev: data?.rev ?? null };
-    }
-
     return {
         exists: true,
         timestamp: data.timestamp ?? null,
