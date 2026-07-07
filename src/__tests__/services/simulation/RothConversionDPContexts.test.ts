@@ -517,3 +517,53 @@ describe('buildDPYearContexts — head IRMAA seeding (#76)', () => {
         expect(ctx70.irmaaSurchargeForMAGI!(300_000)).toBeGreaterThan(0);
     });
 });
+
+/**
+ * #199 — the baseline year 0 is REALIZED when the projection starts: the engine's
+ * loop begins at (startYear + 1) and NEVER re-simulates year 0, so a DP plan entry
+ * there could never execute. buildDPYearContexts must therefore emit NO context for
+ * baseline[0].year — including the synthetic END-OF-YEAR-PROJECTION duplicate row a
+ * partial-year run pushes with that SAME year — and exactly one context per
+ * plannable (re-simulated) year after it.
+ *
+ * The pre-#199 code only excluded year 0 inside the #159 pre-retirement gap-year
+ * branch, so an ALREADY-RETIRED baseline (retirementYear <= baseline[0].year, where
+ * every year is a retirement year and isGapYear is false) slipped a context — two,
+ * with the EOY duplicate — into the unexecutable year 0, running the DP's internal
+ * balance walk a year ahead of the realized walk.
+ */
+describe('buildDPYearContexts — excludes the unexecutable baseline year 0 (#199)', () => {
+    // Already-retired baseline: retirementYear == the first baseline year, and the
+    // first year is DUPLICATED (yearZero + its EOY-projection row share one year),
+    // mirroring what runSimulation pushes for a partial-year current year.
+    const buildRetiredBaselineWithEoyDup = (): SimulationYear[] => {
+        const rows = buildBaseline(); // 10 rows, years RETIREMENT_YEAR .. +9
+        const eoyDuplicate: SimulationYear = { ...rows[0], isEndOfYearProjection: true };
+        return [rows[0], eoyDuplicate, ...rows.slice(1)];
+    };
+
+    it('emits no context for baseline year 0 and exactly one per plannable year', () => {
+        const baseline = buildRetiredBaselineWithEoyDup();
+        const taxState = baseTaxState();
+        // retirementYear == baseline[0].year → every year is a retirement year
+        // (isGapYear false), the pre-#199 code path that lets year 0 through.
+        const contexts = buildDPYearContexts(
+            baseline, assumptions, taxState, RETIREMENT_YEAR, 0,
+        );
+
+        const year0 = baseline[0].year;
+        // No context for the realized/unexecutable year 0 (nor its EOY duplicate).
+        expect(contexts.some(c => c.year === year0)).toBe(false);
+        expect(contexts.every(c => c.year > year0)).toBe(true);
+
+        // Exactly one context per plannable year (every distinct baseline year
+        // strictly after year 0), no duplicates.
+        const plannableYears = [...new Set(
+            baseline.map(y => y.year).filter(y => y > year0),
+        )].sort((a, b) => a - b);
+        const contextYears = contexts.map(c => c.year).sort((a, b) => a - b);
+        expect(contextYears).toEqual(plannableYears);
+        // And every year appears exactly once (guards the EOY-duplicate re-entering).
+        expect(new Set(contextYears).size).toBe(contextYears.length);
+    });
+});

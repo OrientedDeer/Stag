@@ -683,14 +683,33 @@ export function buildDPYearContexts(
             throw new Error(`No federal tax parameters for year ${simYear.year}`);
         }
 
+        // #199: the baseline year 0 is already REALIZED when the projection
+        // starts — runSimulationLoop begins at (startYear + 1) and NEVER
+        // re-simulates year 0 — so a DP plan entry for it could never execute.
+        // Exclude it UNCONDITIONALLY, before the retirement/gap gate below.
+        // Previously this bound lived only inside the #159 gap-year branch, which
+        // fires only for pre-retirement years; an already-retired scenario
+        // (retirementYear <= startYear, so isGapYear is false for year 0) slipped
+        // through and emitted a context for the unexecutable year 0 — in fact TWO,
+        // because a partial-year run pushes a synthetic EOY-projection row with the
+        // SAME year as yearZero (both == baseline[0].year). The DP then planned a
+        // conversion the engine never ran and walked its internal Traditional
+        // balance ~$57.5k below the realized walk (the argmax only coincided within
+        // one $2.5k bucket before #191's senior-deduction shift). Skipping every
+        // row at/below baseline[0].year drops both year-0 duplicates and seeds the
+        // DP's forward sweep from the realized end-of-year-0 balances (the DP seed
+        // in buildDpSolveInputs anchors on contexts[0].year − 1 = startYear).
+        if (simYear.year <= baseline[0].year) {
+            prevSimYear = simYear;
+            continue;
+        }
+
         // #159: pre-retirement years get a context ONLY when they are income-GAP
-        // years with material standard-deduction headroom. Year 0 is excluded
-        // (the engine never re-simulates it, so a plan entry there could never
-        // execute — the bound also covers the synthetic EOY-projection row).
+        // years with material standard-deduction headroom.
         const isGapYear = simYear.year < retirementYear;
         if (isGapYear) {
             const stdDedHeadroom = fedParams.standardDeduction - nonSSOrdinaryIncomeExclRMD;
-            if (simYear.year <= baseline[0].year || stdDedHeadroom < GAP_YEAR_MIN_HEADROOM) {
+            if (stdDedHeadroom < GAP_YEAR_MIN_HEADROOM) {
                 prevSimYear = simYear;
                 continue;
             }

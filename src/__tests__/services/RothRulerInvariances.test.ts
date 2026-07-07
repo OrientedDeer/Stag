@@ -357,13 +357,27 @@ describe('SS-monotonicity — directional properties of the chosen conversions',
     // RE-EXAMINED 2026-07-06 (#191): once the DP prices the 65+ senior deductions
     // (regular add-on + OBBBA bonus) that the engine actually bills, both
     // households' retirement-year 0%-space grows and total conversions jump
-    // (low-SS ≈ $1,009k, high-SS ≈ $1,209k) — and the property now holds with
-    // ≈ +$200k of margin, as decisively as it used to fail. TOTAL monotonicity is
-    // still NOT a theorem of this model (the block comment's two-sided-torpedo
-    // economics stand); this pin is fixture-specific. If it flips again under a
-    // future optimizer change, re-adjudicate rather than blindly restoring
-    // `it.fails`.
-    it('high-SS total conversions ≥ low-SS total (holds since #191; see history above)', () => {
+    // (low-SS ≈ $1,009k, high-SS ≈ $1,209k) — and the property briefly held with
+    // ≈ +$200k of margin, as decisively as it used to fail. That pass was flagged
+    // fixture-specific: "if it flips again under a future optimizer change,
+    // re-adjudicate rather than blindly restoring `it.fails`."
+    //
+    // RE-FLIPPED 2026-07-06 (#199): this scenario retires in year 0 (BY = NOW−62,
+    // RA = 62 ⇒ retirementYear == startYear), and the DP used to plan a conversion
+    // for that UNEXECUTABLE year-0 retirement context — a fictional age-62
+    // conversion the engine never runs (its loop starts at startYear+1). Excluding
+    // year 0 (#199) corrects the DP's internal Trad walk, which had been running a
+    // year ahead / ~$57.5k low; the low-SS household — whose big pre-claim 0%-space
+    // was the one the fictional year-0 conversion was mis-consuming — now converts
+    // materially MORE in its real years (low-SS ≈ $1,446k), while the high-SS
+    // household is ≈ flat (≈ $1,211k). So the review's TOTAL-monotonicity property
+    // is VIOLATED again — exactly the two-sided-torpedo economics the block comment
+    // above adjudicated (total monotonicity is NOT a theorem of this model). Per
+    // that block comment's original stance and the #191 note's own instruction,
+    // the honest encoding is the `it.fails` sentinel: we EXPECT the property to be
+    // violated. If a FUTURE optimizer change makes it pass again, vitest will flag
+    // this and the finding must be re-examined (do not silently weaken it).
+    it.fails('high-SS total conversions ≥ low-SS total is VIOLATED (two-sided torpedo; re-flipped by #199)', () => {
         const { low, high } = monoFixtures();
         expect(high.total, `low-SS total=${Math.round(low.total)} high-SS total=${Math.round(high.total)}`)
             .toBeGreaterThanOrEqual(low.total - 25_000);

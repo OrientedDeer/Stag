@@ -118,13 +118,19 @@ function createPostRMDBaselineYear(): SimulationYear {
 
 describe('PR #56 #1 — buildDPYearContexts does not double-subtract RMD', () => {
     it('uses the real non-SS ordinary income (pension) as the base, not 0', () => {
-        const baseline = [createPostRMDBaselineYear()];
+        // Two rows so the inspected year (RETIREMENT_YEAR) is a PLANNABLE year, not
+        // the realized baseline year 0 — buildDPYearContexts excludes year 0 (#199).
+        // The leading row (RETIREMENT_YEAR − 1) stands in for that unexecutable
+        // year 0; retirementYear points at it so RETIREMENT_YEAR is a retirement
+        // (non-gap) year that gets a context.
+        const yearZero: SimulationYear = { ...createPostRMDBaselineYear(), year: RETIREMENT_YEAR - 1 };
+        const baseline = [yearZero, createPostRMDBaselineYear()];
 
         const contexts = buildDPYearContexts(
             baseline,
             createAssumptions(),
             createTaxState(),
-            RETIREMENT_YEAR,
+            RETIREMENT_YEAR - 1,
             0, // startingBrokerageBalance
         );
 
