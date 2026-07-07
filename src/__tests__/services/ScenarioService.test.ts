@@ -20,6 +20,15 @@ import {
 import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { defaultAssumptions, AssumptionsState, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { InvestedAccount, SavedAccount, PropertyAccount } from '../../components/Objects/Accounts/models';
+import { FoodExpense } from '../../components/Objects/Expense/models';
+
+// The canonical findFinancialIndependenceYear (single-sourced from
+// MilestoneCalculator) reads each year's real `expenses` array and grosses it up
+// 15% for taxes — not `cashflow.totalExpense`. $60k of living expenses grossed
+// up = $70,588 needed, matching the thresholds the FI tests below assert.
+const fiLivingExpenses = () => [
+    new FoodExpense('food', 'Living', 60000, 'Annually', new Date(2000, 0, 1)),
+];
 
 // --- Mock localStorage ---
 const localStorageMock = (() => {
@@ -404,8 +413,10 @@ describe('calculateMilestones', () => {
                 }
             ];
 
+            simulation.forEach(y => { y.expenses = fiLivingExpenses(); });
             const milestones = calculateMilestones(simulation, assumptions);
 
+            // 2024 invested $2M × 4% = $80k ≥ $60k/0.85 = $70,588 → FI in 2025.
             expect(milestones.fiYear).toBe(2025);
             // Age = 2025 - 1989 (birthYear from createTestAssumptions) = 36
             expect(milestones.fiAge).toBe(36);
@@ -464,8 +475,10 @@ describe('calculateMilestones', () => {
                 }
             ];
 
+            simulation.forEach(y => { y.expenses = fiLivingExpenses(); });
             const milestones = calculateMilestones(simulation, assumptions);
 
+            // 2024 invested $500k × 4% = $20k < $70,588 needed → never FI.
             expect(milestones.fiYear).toBeNull();
             expect(milestones.fiAge).toBeNull();
         });
@@ -592,9 +605,10 @@ describe('calculateMilestones', () => {
                 }
             ];
 
+            simulation.forEach(y => { y.expenses = fiLivingExpenses(); });
             const milestones = calculateMilestones(simulation, assumptions);
 
-            // FI achieved in 2028 when previous year (2027) investments of $1.8M × 4% = $72k > $60k
+            // FI achieved in 2028 when previous year (2027) investments of $1.8M × 4% = $72k ≥ $70,588 needed
             expect(milestones.fiYear).toBe(2028);
             // Age = 2028 - 1989 = 39
             expect(milestones.fiAge).toBe(39);
@@ -635,6 +649,73 @@ describe('compareScenarios', () => {
         expect(result.differences.peakNetWorthDelta).toBe(0);
         result.differences.netWorthByYear.forEach(y => {
             expect(y.delta).toBe(0);
+        });
+    });
+
+    // #197 — when the two plans have genuinely different horizons the shorter
+    // leg must simply STOP: its tail years read null (a gap the line ends at),
+    // never a fabricated $0. The union timeline spans the FURTHEST horizon, and
+    // deltas are only computed for years both plans reach.
+    describe('different horizons (#197)', () => {
+        it('does NOT zero-fill the shorter series tail — it reads null', () => {
+            const assumptions = createTestAssumptions();
+            // Baseline runs 10 years (2024-2033); comparison only 5 (2024-2028).
+            const baseline = createLoadedScenarioFromSimulation('Long', createMockSimulation(10), assumptions);
+            const comparison = createLoadedScenarioFromSimulation('Short', createMockSimulation(5), assumptions);
+
+            const result = compareScenarios(baseline, comparison);
+            const byYear = result.differences.netWorthByYear;
+
+            // Union timeline spans the FURTHEST horizon (10 years, not min=5).
+            expect(byYear).toHaveLength(10);
+            expect(byYear[byYear.length - 1].year).toBe(2033);
+
+            // Tail years (2029-2033): comparison absent → null, NOT 0. Baseline
+            // still has real net worth, so the OLD `?? 0` would have fabricated a
+            // $0 collapse here.
+            const tail = byYear.filter(y => y.year >= 2029);
+            expect(tail).toHaveLength(5);
+            tail.forEach(y => {
+                expect(y.comparison).toBeNull();
+                expect(y.baseline).not.toBeNull();
+                expect(y.baseline).toBeGreaterThan(0);
+                // No delta across a year only one plan reaches (different ages).
+                expect(y.delta).toBeNull();
+                expect(y.deltaPercent).toBeNull();
+            });
+
+            // No year fabricates comparison === 0 while baseline is non-zero.
+            const zeroFillArtifacts = byYear.filter(y => y.comparison === 0 && y.baseline !== null && y.baseline !== 0);
+            expect(zeroFillArtifacts).toEqual([]);
+        });
+
+        it('computes overlap-year deltas but leaves legacyValueDelta at each plan\'s own final year', () => {
+            const assumptions = createTestAssumptions();
+            const baseline = createLoadedScenarioFromSimulation('Long', createMockSimulation(10), assumptions);
+            const comparison = createLoadedScenarioFromSimulation('Short', createMockSimulation(5), assumptions);
+
+            const result = compareScenarios(baseline, comparison);
+            const byYear = result.differences.netWorthByYear;
+
+            // Overlap years (2024-2028): identical growth curve → delta 0.
+            const overlap = byYear.filter(y => y.year <= 2028);
+            expect(overlap).toHaveLength(5);
+            overlap.forEach(y => {
+                expect(y.baseline).not.toBeNull();
+                expect(y.comparison).not.toBeNull();
+                expect(y.delta).toBe(0);
+            });
+
+            // legacyValueDelta is each plan's OWN final-year net worth, NOT an
+            // age-matched 2033-vs-2033 read: baseline ends richer at 2033, the
+            // comparison ends at its own 2028 — the delta reflects that gap.
+            expect(result.differences.legacyValueDelta).toBe(
+                comparison.milestones.legacyValue - baseline.milestones.legacyValue
+            );
+            expect(comparison.milestones.finalYear).toBe(2028);
+            expect(baseline.milestones.finalYear).toBe(2033);
+            // Comparison (shorter, so lower final net worth) is behind baseline.
+            expect(result.differences.legacyValueDelta).toBeLessThan(0);
         });
     });
 

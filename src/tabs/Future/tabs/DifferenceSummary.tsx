@@ -78,6 +78,16 @@ export const DifferenceSummary: React.FC<DifferenceSummaryProps> = ({ comparison
 
     const legacyDelta = formatLegacyDelta();
 
+    // The two plans can have genuinely different life expectancies. When they do,
+    // legacy value is compared at each plan's OWN final year — an age-mismatched
+    // figure — so label it rather than imply an age-matched delta (#197).
+    const baselineFinal = baseline.milestones.finalYear;
+    const comparisonFinal = comp.milestones.finalYear;
+    const horizonsDiffer = baselineFinal !== comparisonFinal;
+    const legacySublabel = horizonsDiffer
+        ? `At each plan's own final year (${baselineFinal} vs ${comparisonFinal})`
+        : 'Net worth at end of simulation';
+
     // Format peak net worth delta
     const formatPeakDelta = () => {
         const delta = differences.peakNetWorthDelta;
@@ -94,21 +104,26 @@ export const DifferenceSummary: React.FC<DifferenceSummaryProps> = ({ comparison
 
     const peakDelta = formatPeakDelta();
 
-    // Calculate years of positive/negative difference
+    // Calculate years of positive/negative difference. Only years BOTH plans
+    // reach have a delta (null past the shorter plan's horizon) — count those,
+    // and use that overlap as the denominator so "X out of N years" is honest.
     const yearAnalysis = () => {
         const netWorth = differences.netWorthByYear;
         let yearsAhead = 0;
         let yearsBehind = 0;
+        let comparableYears = 0;
 
         netWorth.forEach(y => {
+            if (y.delta === null) return;
+            comparableYears++;
             if (y.delta > 0) yearsAhead++;
             else if (y.delta < 0) yearsBehind++;
         });
 
-        return { yearsAhead, yearsBehind };
+        return { yearsAhead, yearsBehind, comparableYears };
     };
 
-    const { yearsAhead, yearsBehind } = yearAnalysis();
+    const { yearsAhead, yearsBehind, comparableYears } = yearAnalysis();
 
     return (
         <div className="flex flex-col gap-4">
@@ -135,7 +150,7 @@ export const DifferenceSummary: React.FC<DifferenceSummaryProps> = ({ comparison
                     comparisonValue={formatCompactCurrency(comp.milestones.legacyValue, { forceExact })}
                     delta={legacyDelta.delta}
                     isPositive={legacyDelta.isPositive}
-                    sublabel="Net worth at end of simulation"
+                    sublabel={legacySublabel}
                 />
 
                 <DeltaCard
@@ -171,7 +186,7 @@ export const DifferenceSummary: React.FC<DifferenceSummaryProps> = ({ comparison
                             </span>
                             <span>
                                 The comparison scenario has higher net worth in {yearsAhead} out
-                                of {differences.netWorthByYear.length} years
+                                of {comparableYears} years
                             </span>
                         </li>
                     )}

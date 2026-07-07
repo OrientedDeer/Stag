@@ -1,11 +1,41 @@
 import React, { useContext } from 'react';
-import { ScenarioComparison, MilestonesSummary } from '../../../services/ScenarioTypes';
+import { ScenarioComparison, MilestonesSummary, YearComparison } from '../../../services/ScenarioTypes';
 import { formatCompactCurrency } from './FutureUtils';
 import { AssumptionsContext } from '../../../components/Objects/Assumptions/AssumptionsContext';
 
 interface SideBySideViewProps {
     comparison: ScenarioComparison;
 }
+
+/**
+ * One net-worth-by-year table row. Beyond a plan's horizon its value is null
+ * (#197): render an em-dash, not a fabricated $0, and don't color a missing
+ * delta (null <= 0 would falsely read as a positive/tie).
+ */
+const YearRow: React.FC<{ year: YearComparison; forceExact: boolean; keyPrefix?: string }> = ({ year, forceExact }) => {
+    const deltaKnown = year.delta !== null;
+    const dash = '—';
+    const baselineAhead = deltaKnown && year.delta! <= 0;
+    const comparisonAhead = deltaKnown && year.delta! >= 0;
+    const deltaClass = !deltaKnown
+        ? 'text-content-muted'
+        : year.delta! > 0 ? 'text-positive' : year.delta! < 0 ? 'text-negative' : 'text-content-muted';
+
+    return (
+        <tr>
+            <td className="px-4 py-2 text-content-default">{year.year}</td>
+            <td className={`px-4 py-2 text-right ${baselineAhead ? 'text-positive' : 'text-white'}`}>
+                {year.baseline === null ? dash : formatCompactCurrency(year.baseline, { forceExact })}
+            </td>
+            <td className={`px-4 py-2 text-right ${comparisonAhead ? 'text-positive' : 'text-white'}`}>
+                {year.comparison === null ? dash : formatCompactCurrency(year.comparison, { forceExact })}
+            </td>
+            <td className={`px-4 py-2 text-right ${deltaClass}`}>
+                {!deltaKnown ? dash : `${year.delta! > 0 ? '+' : ''}${formatCompactCurrency(year.delta!, { forceExact })}`}
+            </td>
+        </tr>
+    );
+};
 
 /**
  * Stat row for milestone comparison
@@ -186,20 +216,7 @@ export const SideBySideView: React.FC<SideBySideViewProps> = ({ comparison }) =>
                         </thead>
                         <tbody className="divide-y divide-border-subtle">
                             {differences.netWorthByYear.slice(0, 10).map(year => (
-                                <tr key={year.year}>
-                                    <td className="px-4 py-2 text-content-default">{year.year}</td>
-                                    <td className={`px-4 py-2 text-right ${year.delta <= 0 ? 'text-positive' : 'text-white'}`}>
-                                        {formatCompactCurrency(year.baseline, { forceExact })}
-                                    </td>
-                                    <td className={`px-4 py-2 text-right ${year.delta >= 0 ? 'text-positive' : 'text-white'}`}>
-                                        {formatCompactCurrency(year.comparison, { forceExact })}
-                                    </td>
-                                    <td className={`px-4 py-2 text-right ${
-                                        year.delta > 0 ? 'text-positive' : year.delta < 0 ? 'text-negative' : 'text-content-muted'
-                                    }`}>
-                                        {year.delta > 0 ? '+' : ''}{formatCompactCurrency(year.delta, { forceExact })}
-                                    </td>
-                                </tr>
+                                <YearRow key={year.year} year={year} forceExact={forceExact} />
                             ))}
                             {differences.netWorthByYear.length > 15 && (
                                 <tr>
@@ -209,20 +226,7 @@ export const SideBySideView: React.FC<SideBySideViewProps> = ({ comparison }) =>
                                 </tr>
                             )}
                             {differences.netWorthByYear.slice(-5).map(year => (
-                                <tr key={`end-${year.year}`}>
-                                    <td className="px-4 py-2 text-content-default">{year.year}</td>
-                                    <td className={`px-4 py-2 text-right ${year.delta <= 0 ? 'text-positive' : 'text-white'}`}>
-                                        {formatCompactCurrency(year.baseline, { forceExact })}
-                                    </td>
-                                    <td className={`px-4 py-2 text-right ${year.delta >= 0 ? 'text-positive' : 'text-white'}`}>
-                                        {formatCompactCurrency(year.comparison, { forceExact })}
-                                    </td>
-                                    <td className={`px-4 py-2 text-right ${
-                                        year.delta > 0 ? 'text-positive' : year.delta < 0 ? 'text-negative' : 'text-content-muted'
-                                    }`}>
-                                        {year.delta > 0 ? '+' : ''}{formatCompactCurrency(year.delta, { forceExact })}
-                                    </td>
-                                </tr>
+                                <YearRow key={`end-${year.year}`} year={year} forceExact={forceExact} />
                             ))}
                         </tbody>
                     </table>

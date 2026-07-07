@@ -13,7 +13,7 @@ interface OverlaidChartViewProps {
 /**
  * Custom tooltip for the chart
  */
-const ChartTooltip = ({ point }: { point: { seriesId: string | number; data: { xFormatted?: string; y: number | string } } }) => {
+const ChartTooltip = ({ point }: { point: { seriesId: string | number; data: { xFormatted?: string; y: number | string | null } } }) => {
     const { state: assumptions } = useContext(AssumptionsContext);
     const forceExact = assumptions.display?.useCompactCurrency === false;
     const isBaseline = point.seriesId as string === 'baseline';
@@ -69,9 +69,10 @@ export const OverlaidChartView: React.FC<OverlaidChartViewProps> = ({ comparison
         let min = Infinity;
         let max = -Infinity;
 
+        // Ignore null tail years (beyond a plan's horizon) — they are gaps, not $0.
         differences.netWorthByYear.forEach(y => {
-            min = Math.min(min, y.baseline, y.comparison);
-            max = Math.max(max, y.baseline, y.comparison);
+            if (y.baseline !== null) { min = Math.min(min, y.baseline); max = Math.max(max, y.baseline); }
+            if (y.comparison !== null) { min = Math.min(min, y.comparison); max = Math.max(max, y.comparison); }
         });
 
         // Add some padding
@@ -202,12 +203,14 @@ export const OverlaidChartView: React.FC<OverlaidChartViewProps> = ({ comparison
                 <div className="bg-surface-overlay/50 rounded-xl border border-border-default p-4">
                     <div className="text-xs text-content-muted uppercase mb-1">Ending Net Worth</div>
                     <div className="flex items-baseline gap-2">
+                        {/* Each plan's OWN final year (horizons can differ); the last
+                            union year's value may be null for the shorter plan. */}
                         <span className="text-info font-semibold">
-                            {formatCompactCurrency(differences.netWorthByYear[differences.netWorthByYear.length - 1]?.baseline ?? 0, { forceExact })}
+                            {formatCompactCurrency(baseline.milestones.legacyValue, { forceExact })}
                         </span>
                         <span className="text-content-muted">vs</span>
                         <span className="text-cat-orange font-semibold">
-                            {formatCompactCurrency(differences.netWorthByYear[differences.netWorthByYear.length - 1]?.comparison ?? 0, { forceExact })}
+                            {formatCompactCurrency(comp.milestones.legacyValue, { forceExact })}
                         </span>
                     </div>
                 </div>

@@ -67,10 +67,16 @@ export interface MilestonesSummary {
  */
 export interface YearComparison {
     year: number;
-    baseline: number;
-    comparison: number;
-    delta: number;           // comparison - baseline
-    deltaPercent: number;    // (delta / baseline) * 100
+    // null = this year is beyond the plan's own horizon. The two plans can have
+    // genuinely different life expectancies; a missing tail year reads null (a
+    // gap the line just ends at), NOT a fabricated $0 (#197). Charts/tables must
+    // treat null as "no data", not zero.
+    baseline: number | null;
+    comparison: number | null;
+    // null when either side is absent for this year — a delta across a year only
+    // one plan reaches is meaningless (different ages), so it is not computed.
+    delta: number | null;    // comparison - baseline, when both present
+    deltaPercent: number | null; // (delta / baseline) * 100, when both present
 }
 
 /**

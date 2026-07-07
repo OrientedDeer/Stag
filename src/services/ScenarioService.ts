@@ -15,7 +15,8 @@ import {
 } from './ScenarioTypes';
 import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
 import { AssumptionsState, getRetirementAge, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
-import { AnyAccount, DebtAccount, InvestedAccount, PropertyAccount } from '../components/Objects/Accounts/models';
+import { findFinancialIndependenceYear } from './MilestoneCalculator';
+import { AnyAccount, DebtAccount, PropertyAccount } from '../components/Objects/Accounts/models';
 import { TaxState } from '../components/Objects/Taxes/TaxContext';
 import { AmountHistoryEntry } from '../components/Objects/Accounts/AccountContext';
 
@@ -263,32 +264,6 @@ export const importScenarioFromFile = async (file: File): Promise<SavedScenario>
 // ============================================================================
 
 /**
- * Find the year of financial independence from simulation data
- * FI is when investment withdrawals at the configured rate can cover expenses
- */
-const findFinancialIndependenceYear = (
-    simulation: SimulationYear[],
-    assumptions: AssumptionsState
-): { year: number | null; age: number | null } => {
-    for (let i = 1; i < simulation.length; i++) {
-        const lastYear = simulation[i - 1];
-        const currentYear = simulation[i];
-
-        const lastYearInvestments = lastYear.accounts
-            .filter(acc => acc instanceof InvestedAccount)
-            .reduce((sum, acc) => sum + acc.amount, 0);
-
-        // FI is reached when withdrawal can cover expenses
-        const withdrawalRate = assumptions.investments?.withdrawalRate || 4;
-        if (lastYearInvestments * (withdrawalRate / 100) > currentYear.cashflow.totalExpense) {
-            const age = currentYear.year - getBirthYear(assumptions.milestones);
-            return { year: currentYear.year, age };
-        }
-    }
-    return { year: null, age: null };
-};
-
-/**
  * Calculate key milestones from simulation data
  */
 export const calculateMilestones = (
@@ -309,7 +284,8 @@ export const calculateMilestones = (
         };
     }
 
-    // Find FI year
+    // Find FI year — single-sourced on the canonical MilestoneCalculator
+    // implementation (no local 0%→4% withdrawal-rate coercion).
     const fi = findFinancialIndependenceYear(simulation, assumptions);
 
     // Calculate retirement year from assumptions
@@ -333,8 +309,8 @@ export const calculateMilestones = (
     const legacyValue = calculateNetWorth(finalYearData.accounts);
 
     return {
-        fiYear: fi.year,
-        fiAge: fi.age,
+        fiYear: fi?.year ?? null,
+        fiAge: fi?.age ?? null,
         retirementYear,
         retirementAge,
         legacyValue,
@@ -377,24 +353,33 @@ export const compareScenarios = (
         ? comparisonMilestones.fiYear - baselineMilestones.fiYear
         : null;
 
+    // legacyValueDelta / peakNetWorthDelta compare each plan at ITS OWN final year
+    // (milestones are read off each simulation's last row). When the two plans have
+    // different life expectancies these are NOT age-matched — comparing wealth at,
+    // say, age 90 vs age 85 would be misleading, so we deliberately report each
+    // plan's own end-of-plan figure and let the UI label the horizon mismatch.
     const legacyValueDelta = comparisonMilestones.legacyValue - baselineMilestones.legacyValue;
     const peakNetWorthDelta = comparisonMilestones.peakNetWorth - baselineMilestones.peakNetWorth;
 
     const baselineByYear = buildNetWorthByYearMap(baseline.simulation);
     const comparisonByYear = buildNetWorthByYearMap(comparison.simulation);
 
+    // Union of years across both horizons: the timeline spans the FURTHEST plan.
     const allYears = [...new Set([...baselineByYear.keys(), ...comparisonByYear.keys()])].sort((a, b) => a - b);
 
     const netWorthByYear: YearComparison[] = allYears.map(year => {
-        const baselineValue = baselineByYear.get(year) ?? 0;
-        const comparisonValue = comparisonByYear.get(year) ?? 0;
-        const delta = comparisonValue - baselineValue;
+        // Beyond a plan's own horizon its series is ABSENT (null), never 0 — the
+        // shorter line must visibly END, not drop to a fake $0 collapse (#197).
+        const baselineValue = baselineByYear.has(year) ? baselineByYear.get(year)! : null;
+        const comparisonValue = comparisonByYear.has(year) ? comparisonByYear.get(year)! : null;
+        const bothPresent = baselineValue !== null && comparisonValue !== null;
+        const delta = bothPresent ? comparisonValue! - baselineValue! : null;
         return {
             year,
             baseline: baselineValue,
             comparison: comparisonValue,
             delta,
-            deltaPercent: calculateDeltaPercent(delta, baselineValue)
+            deltaPercent: bothPresent ? calculateDeltaPercent(delta!, baselineValue!) : null
         };
     });
 
