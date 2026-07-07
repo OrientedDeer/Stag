@@ -403,17 +403,32 @@ function simulateOneYearWithNewEngine(
     let itemizedDeductionTotal = 0;
     if (taxState.deductionMethod !== 'Standard') {
         const itemizedExpenses = TaxService.getItemizedDeductions(milestoneFilteredExpenses, year);
-        // SALT = min(state income tax, cap). Stage 1: price state tax at the
-        // PRE-WITHDRAWAL baseline income (allIncomes: this year's income WITHOUT the
-        // not-yet-known withdrawals/conversions/RMD). Non-circular and matching
-        // year-0's single-valuation. The mortgage-interest term (the primary #198
-        // goal) is exact regardless of the SALT approximation. calculateStateTax
-        // already honors the stateOverride / no-params short-circuits.
+        // SALT = min(state income tax, cap). State tax depends on this year's
+        // withdrawals/conversions, which depend on the deduction ⇒ a fixed point the
+        // engine doesn't iterate (fedParams is fixed once, pre-deficit-loop). Resolve
+        // it the same way IRMAA resolves its surcharge: a prior-year lookback.
+        //
+        // Stage 2: price SALT off the PRIOR year's REALIZED state tax
+        // (previousSimulation is the full SimulationYear[]; its last entry is year
+        // N-1). That realized figure already folds in last year's
+        // withdrawals/conversions/RMD, so for a drawing-down retiree it tracks the
+        // true state-tax level far better than a pre-withdrawal baseline — tightening
+        // the stage-1 error to the year-over-year state-tax delta. For the first
+        // projected year the prior row is year 0, whose realized state tax IS the
+        // current-snapshot baseline. Fall back to a pre-withdrawal baseline state tax
+        // only if there is no prior year at all (defensive; year 0 always precedes a
+        // simulated year in runSimulation). The mortgage-interest term (the primary
+        // #198 goal) is exact regardless of the SALT approximation.
         const saltCap = TaxService.getSALTCap(year, taxState.filingStatus);
-        const baselineStateTax = TaxService.calculateStateTax(
-            taxState, allIncomes, milestoneFilteredExpenses, year, assumptions,
-        );
-        itemizedDeductionTotal = itemizedExpenses + Math.min(baselineStateTax, saltCap);
+        const priorYear = previousSimulation.length > 0
+            ? previousSimulation[previousSimulation.length - 1]
+            : undefined;
+        const stateTaxForSalt = priorYear !== undefined
+            ? priorYear.taxDetails.state
+            : TaxService.calculateStateTax(
+                taxState, allIncomes, milestoneFilteredExpenses, year, assumptions,
+            );
+        itemizedDeductionTotal = itemizedExpenses + Math.min(stateTaxForSalt, saltCap);
     }
 
     // ------------------------------------------------------------------

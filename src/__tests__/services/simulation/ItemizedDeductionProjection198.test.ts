@@ -287,6 +287,52 @@ describe('#198 engine — Auto flip back to standard as the loan amortizes', () 
     });
 });
 
+describe('#198 stage 2 — SALT reflects the PRIOR year\'s realized state tax (lookback)', () => {
+    it('folds min(prior-year realized state tax, SALT cap) into each projected year\'s itemized total, lagging this year\'s state tax as income rises', () => {
+        // DC (has income tax) + rising salary ⇒ realized state tax grows each year, so
+        // the PRIOR year's value is strictly below THIS year's — the signal that SALT
+        // uses a lookback (stage 2), not this year's pre-withdrawal baseline (stage 1).
+        const growthAssumptions: AssumptionsState = {
+            ...baseAssumptions,
+            income: { ...baseAssumptions.income, salaryGrowth: 4 },
+        };
+        const sim = runSimulation(
+            7,
+            freshAccounts(),
+            [new WorkIncome('inc-work', 'Job', 120_000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED')],
+            [freshMortgage(), freshLiving()],
+            growthAssumptions,
+            baseTaxState('Auto', 'DC'),
+        );
+        const projected = projectedRows(sim);
+        expect(projected.length).toBeGreaterThan(3);
+
+        let sawLag = false;
+        // Skip index 0: its loop-time prior was the pre-loop partial-year EOY row, not
+        // a projected row. From the second real projected year on, the immediately
+        // prior REAL year is projected[j-1].
+        for (let j = 1; j < projected.length; j++) {
+            const row = projected[j];
+            const idx = sim.indexOf(row);
+            const mortgageInterest = getItemizedDeductions(sim[idx - 1].expenses, row.year);
+            const saltComponent = row.itemizedDeductionTotal! - mortgageInterest;
+
+            const cap = TaxService.getSALTCap(row.year, 'Single');
+            const priorRealizedState = projected[j - 1].taxDetails.state;
+            expect(saltComponent).toBeCloseTo(Math.min(priorRealizedState, cap), 1);
+
+            // Stage-2-specific: with rising income the SALT is the LAGGED prior value,
+            // strictly below this year's realized state tax (a pre-withdrawal
+            // same-year baseline — stage 1 — would ≈ this year's, not the prior's).
+            if (priorRealizedState < cap && row.taxDetails.state > priorRealizedState + 50) {
+                expect(saltComponent).toBeLessThan(row.taxDetails.state - 40);
+                sawLag = true;
+            }
+        }
+        expect(sawLag).toBe(true);
+    });
+});
+
 describe('#198 engine — expense-level "Yes" above-the-line deduction', () => {
     it('reduces every projected year\'s federal tax by ~ deduction × marginal rate', () => {
         // Standard method + Texas isolates the "Yes" above-line effect from itemizing.
