@@ -112,6 +112,23 @@ export interface SimulationYear {
      * Traditional/RMD withdrawals, and realized capital gains.
      */
     magi?: number;
+    /**
+     * #198: total itemized deduction for the year — mortgage interest + flagged
+     * `Itemized` expenses (from the ENTERING-balance expense list) + capped SALT —
+     * precomputed by SimulationEngine and threaded into the DP so
+     * `buildDPYearContexts` prices the same effective deduction the engine bills,
+     * WITHOUT re-deriving off the post-increment `expenses` (which would return
+     * next year's mortgage interest). Undefined ⇒ 0 ⇒ standard path (non-itemizing
+     * plans are byte-for-byte unchanged).
+     */
+    itemizedDeductionTotal?: number;
+    /**
+     * #198: above-the-line "Yes"-flagged expense deductions for the year. These
+     * reduce taxable income (both federal and state) but remain real cash expenses
+     * counted in living expenses — so they are netted into the DP's ordinary tax
+     * base, never subtracted from spendable cash. Undefined ⇒ 0.
+     */
+    expenseAboveLineDeductions?: number;
     logs: string[];
     // Withdrawal strategy tracking (for multi-year calculations)
     strategyWithdrawal?: WithdrawalResult;

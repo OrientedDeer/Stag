@@ -1,6 +1,6 @@
 import { AnyExpense } from "../../Expense/models";
 import { AnyIncome } from "../../Income/models";
-import { TaxState } from "../TaxContext";
+import { TaxState, DeductionMethod } from "../TaxContext";
 import { AssumptionsState, getBirthYear } from "../../Assumptions/AssumptionsContext";
 import { getTaxParameters, getSALTCap } from "./parameters";
 import {
@@ -121,8 +121,73 @@ export function getEffectiveStandardDeduction(
     year: number,
     magiProxy: number,
 ): number {
-    const senior = getFederalSeniorDeduction(fedParams, filingStatus, age, year, magiProxy);
-    return fedParams.standardDeduction + senior.regular + senior.bonus;
+    // Thin wrapper over getEffectiveDeduction: itemizedTotal=0, method='Standard'
+    // resolves to exactly `standardDeduction + regular + bonus` — byte-identical to
+    // the pre-#198 body, so every not-yet-migrated caller stays unchanged.
+    return getEffectiveDeduction(
+        fedParams, filingStatus, age, year, magiProxy, 0, "Standard",
+    );
+}
+
+/**
+ * Effective per-year deduction the engine bills a filer, generalizing
+ * getEffectiveStandardDeduction to honor ITEMIZED and 'Auto' deduction methods in
+ * projected years (#198). Mirrors the year-0 orchestrator
+ * (`calculateFederalTaxFromIncomes`) component-for-component so an itemizing
+ * mortgage-holder sees the deduction (and the year it flips back to standard as the
+ * loan amortizes) in every projected year, not just year 0.
+ *
+ * The engine only ever takes the STANDARD path when pricing tax
+ * (`calculateTotalFederalTax` reads only `fedParams.standardDeduction`), so — as
+ * #191 established for the senior add-ons — this folds "the deduction the IRS bills
+ * this filer this year" into ONE number the three tax-deduction chokepoints drop
+ * into `fedParams.standardDeduction`. Itemization is simply a larger candidate for
+ * that same number.
+ *
+ * Component attachment mirrors `federalTax.ts`'s year-0 rules EXACTLY:
+ *  - the permanent 65+ regular additional STANDARD deduction attaches to the
+ *    standard path ONLY (an itemizer forgoes it);
+ *  - the OBBBA senior bonus attaches to BOTH paths.
+ *
+ * `deductionMethod === 'Auto'` returns `max(standardPath, itemizedPath)` — the
+ * deduction-space analog of year-0's `min(taxWithStandard, taxWithItemized)`. The
+ * two agree except for a second-order interaction (a larger deduction lowers
+ * ordinary income and can shift LTCG stacking / SS-taxability / NIIT thresholds),
+ * confined to a narrow band near the standard↔itemized crossover and dominated by
+ * the deduction-monotonic mortgage-interest term. This is the SAME simplification
+ * #191 shipped for seniors.
+ *
+ * @param itemizedTotal - Precomputed itemized deduction total for the year
+ *   (mortgage interest + flagged itemized expenses + capped SALT), from the
+ *   ENTERING-balance expense list (see SimulationEngine — computing it off the
+ *   post-increment list would return next year's mortgage interest). 0 ⇒ the
+ *   itemized path is never chosen (standard wins), preserving today's behavior.
+ * @param deductionMethod - 'Standard' | 'Itemized' | 'Auto'.
+ */
+export function getEffectiveDeduction(
+    fedParams: TaxParameters,
+    filingStatus: FilingStatus,
+    age: number | undefined,
+    year: number,
+    magiProxy: number,
+    itemizedTotal: number,
+    deductionMethod: DeductionMethod,
+): number {
+    const { regular, bonus } = getFederalSeniorDeduction(
+        fedParams, filingStatus, age, year, magiProxy,
+    );
+    const standardPath = fedParams.standardDeduction + regular + bonus;
+    // No regular 65+ add-on on the itemized path (it is part of the STANDARD
+    // deduction); the OBBBA bonus applies on both — identical to year-0.
+    const itemizedPath = itemizedTotal + bonus;
+    switch (deductionMethod) {
+        case "Standard":
+            return standardPath;
+        case "Itemized":
+            return itemizedPath;
+        case "Auto":
+            return Math.max(standardPath, itemizedPath);
+    }
 }
 
 /**

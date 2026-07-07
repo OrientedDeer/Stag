@@ -100,6 +100,23 @@ export interface YearSolverInput {
     incomes: AnyIncome[];
     expenses: AnyExpense[];
     totalLivingExpenses: number;
+    /**
+     * #198: total itemized deduction for the year (mortgage interest + flagged
+     * `Itemized` expenses + capped SALT), precomputed by SimulationEngine from the
+     * ENTERING-balance expense list. Fed into `getEffectiveDeduction` at the tax
+     * chokepoints so an itemizing mortgage-holder sees the deduction in every
+     * projected year (and the Auto flip back to standard as the loan amortizes).
+     * Undefined ⇒ 0 ⇒ standard path — non-itemizing plans unchanged.
+     */
+    itemizedDeductionTotal?: number;
+    /**
+     * #198: above-the-line "Yes"-flagged expense deductions for the year. Reduce
+     * the federal + state TAX base (added to the income-side pre-tax deductions in
+     * every tax call), but NOT spendable cash — the expense is already counted in
+     * `totalLivingExpenses`, so folding it into the cash-flow pre-tax figure would
+     * double-count it. Undefined ⇒ 0.
+     */
+    expenseAboveLineDeductions?: number;
     rmdAmount: number;
     /**
      * IRS excise penalty (25% of the RMD shortfall) computed by RMDService when a
@@ -988,7 +1005,11 @@ function planConversion(
         // Get the EXACT same values the solver uses
         const incomeClass = classifyIncome(input.incomes, input.rmdAmount, 0, input.year);
         const spendableIncome = incomeClass.classified.spendable;
-        const preTaxDeductions = TaxService.getPreTaxExemptions(input.incomes, input.year, input.currentAge, true);
+        // #198: include the above-the-line "Yes" expense deductions in the tax base
+        // (they lower AGI/MAGI, mirroring year-0's totalPreTaxDeductions). This local
+        // is used only for MAGI/tax estimation here, so folding them in is cash-safe.
+        const preTaxDeductions = TaxService.getPreTaxExemptions(input.incomes, input.year, input.currentAge, true)
+            + (input.expenseAboveLineDeductions ?? 0);
         const ficaTax = TaxService.calculateFicaTax(input.taxState, input.incomes, input.year, input.assumptions);
 
         // Function to estimate MAGI for a given conversion - uses EXACT same logic as solver
@@ -1607,14 +1628,24 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // (the dominant dollar effect) is unaffected by the proxy's approximation.
     // Non-senior years (age < seniorAge) resolve to the raw standard deduction, so
     // working-age projections are byte-for-byte unchanged.
+    //
+    // #198: generalize from the standard-only path to the full effective deduction —
+    // the larger of the standard path (base + senior add-ons) and the itemized path
+    // (precomputed `itemizedDeductionTotal` = mortgage interest + flagged expenses +
+    // capped SALT, + OBBBA bonus). Under 'Auto' the per-year max() flips an itemizing
+    // mortgage-holder back to standard automatically as the loan amortizes. A plan
+    // with no itemized total (⇒ 0) or method 'Standard' resolves to exactly the #191
+    // standard path — byte-for-byte unchanged.
     const fedParams = {
         ...rawFedParams,
-        standardDeduction: TaxService.getEffectiveStandardDeduction(
+        standardDeduction: TaxService.getEffectiveDeduction(
             rawFedParams,
             input.taxState.filingStatus,
             input.currentAge,
             input.year,
             baseOrdinaryIncome,
+            input.itemizedDeductionTotal ?? 0,
+            input.taxState.deductionMethod,
         ),
     };
 
@@ -1626,7 +1657,13 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     );
 
     // Rough tax estimate for preliminary deficit (before conversion is known)
-    const roughPreTaxDeductions = TaxService.getPreTaxExemptions(input.incomes, input.year, input.currentAge, true);
+    // #198: fold the above-the-line "Yes" expense deductions into the tax-side pre-tax
+    // figure (mirrors year-0's totalPreTaxDeductions). In this retirement path every
+    // preTaxDeductions consumer is a federal/state TAX call — the deficit/cash math
+    // uses effectiveLivingExpenses, not this value — so adding it here never
+    // double-counts the (still-cash) expense.
+    const roughPreTaxDeductions = TaxService.getPreTaxExemptions(input.incomes, input.year, input.currentAge, true)
+        + (input.expenseAboveLineDeductions ?? 0);
     const roughFedTax = TaxService.calculateTotalFederalTax(
         taxableBase - socialSecurityBenefits, // non-SS ordinary income (baseOrdinaryIncome holds taxable SS)
         socialSecurityBenefits,
@@ -1718,7 +1755,11 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
 
     // Step D: Calculate base deficit
     // Start with conservative estimate (no LTCG tax yet)
-    const preTaxDeductions = TaxService.getPreTaxExemptions(input.incomes, input.year, input.currentAge, true);
+    // #198: include the above-the-line "Yes" expense deductions in the tax base. Every
+    // consumer below is a federal/state tax call (the retirement deficit runs off
+    // effectiveLivingExpenses, not this figure), so this stays cash-safe.
+    const preTaxDeductions = TaxService.getPreTaxExemptions(input.incomes, input.year, input.currentAge, true)
+        + (input.expenseAboveLineDeductions ?? 0);
 
     // Step D+E: Iterative LTCG-aware deficit and withdrawal planning
     //
@@ -2405,6 +2446,13 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
     // Calculate deductions
     const preTaxDeductions = TaxService.getPreTaxExemptions(input.incomes, input.year, input.currentAge, true);
     const postTaxDeductions = TaxService.getPostTaxExemptions(input.incomes, input.year, input.currentAge, true);
+    // #198: the TAX-side pre-tax figure adds the above-the-line "Yes" expense
+    // deductions (mirrors year-0's totalPreTaxDeductions). Kept SEPARATE from
+    // `preTaxDeductions` because the working-year cash math (surplus / incomeCashIn
+    // below) subtracts `preTaxDeductions` from spendable income — and the "Yes"
+    // expense is ALREADY counted in totalLivingExpenses, so folding it into the cash
+    // figure would double-count it. Only federal/state tax calls use this variable.
+    const preTaxDeductionsForTax = preTaxDeductions + (input.expenseAboveLineDeductions ?? 0);
     const socialSecurityBenefits = getTotalSSBenefits(input.incomes, input.year);
 
     // Include reinvested income in tax base - it's taxable even though it's not spendable
@@ -2415,20 +2463,25 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
     // this is a no-op for most scenarios; a 65+ still-working filer now gets parity
     // with the year-0 orchestrator. MAGI proxy for the OBBBA bonus phaseout = non-SS
     // ordinary (net of pre-tax deferrals) + taxable SS.
+    // #198: generalized to the full effective deduction (standard vs itemized) — see
+    // the matching note in solveRetirementYear. Non-itemizing / method 'Standard' ⇒
+    // the #191 standard path, byte-for-byte unchanged.
     const fedParams = {
         ...rawFedParams,
-        standardDeduction: TaxService.getEffectiveStandardDeduction(
+        standardDeduction: TaxService.getEffectiveDeduction(
             rawFedParams,
             input.taxState.filingStatus,
             input.currentAge,
             input.year,
-            Math.max(0, taxableOrdinaryBase - socialSecurityBenefits - preTaxDeductions) +
+            Math.max(0, taxableOrdinaryBase - socialSecurityBenefits - preTaxDeductionsForTax) +
                 TaxService.getTaxableSocialSecurityBenefits(
                     socialSecurityBenefits,
                     taxableOrdinaryBase - socialSecurityBenefits,
                     0,
                     input.taxState.filingStatus,
                 ),
+            input.itemizedDeductionTotal ?? 0,
+            input.taxState.deductionMethod,
         ),
     };
 
@@ -2484,7 +2537,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
             const capHeadroom = input.mcConversionPolicy.capHeadroom;
             if (capHeadroom !== undefined) {
                 const nonSSOrdinary = Math.max(
-                    0, taxableOrdinaryBase - socialSecurityBenefits - preTaxDeductions);
+                    0, taxableOrdinaryBase - socialSecurityBenefits - preTaxDeductionsForTax);
                 targetConversion = Math.min(targetConversion,
                     Math.max(0, fedParams.standardDeduction + capHeadroom - nonSSOrdinary));
             }
@@ -2539,7 +2592,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         socialSecurityBenefits,
         0,
         0,
-        preTaxDeductions,
+        preTaxDeductionsForTax,
         input.taxState.filingStatus,
         fedParams
     );
@@ -2558,7 +2611,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
             // into taxableOrdinaryBase and stays in the state base. A #159
             // working-year conversion is state-taxable ordinary income too.
             taxableOrdinaryBase - socialSecurityBenefits + conversionAmount,
-            preTaxDeductions,
+            preTaxDeductionsForTax,
             stateParams
         )
         : 0;
@@ -2581,10 +2634,10 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
             const fedNoConv = TaxService.calculateTotalFederalTax(
                 taxableOrdinaryBase - socialSecurityBenefits,
                 socialSecurityBenefits,
-                0, 0, preTaxDeductions, input.taxState.filingStatus, fedParams,
+                0, 0, preTaxDeductionsForTax, input.taxState.filingStatus, fedParams,
             ).totalTax;
             const stateNoConv = stateParams
-                ? TaxService.calculateTax(taxableOrdinaryBase - socialSecurityBenefits, preTaxDeductions, stateParams)
+                ? TaxService.calculateTax(taxableOrdinaryBase - socialSecurityBenefits, preTaxDeductionsForTax, stateParams)
                 : 0;
             conversionFedTax = Math.max(0, taxResult.totalTax - fedNoConv);
             conversionStateTax = Math.max(0, stateTax - stateNoConv);
@@ -2697,10 +2750,10 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         const baseExSS = taxableOrdinaryBase - socialSecurityBenefits + conversionAmount;
         const fedOrdinaryTaxAt = (ordinary: number): number =>
             TaxService.calculateTotalFederalTax(
-                Math.max(0, ordinary), 0, 0, 0, preTaxDeductions, input.taxState.filingStatus, fedParams,
+                Math.max(0, ordinary), 0, 0, 0, preTaxDeductionsForTax, input.taxState.filingStatus, fedParams,
             ).ordinaryTax;
         const stateTaxAt = (base: number): number =>
-            stateParams ? TaxService.calculateTax(Math.max(0, base), preTaxDeductions, stateParams) : 0;
+            stateParams ? TaxService.calculateTax(Math.max(0, base), preTaxDeductionsForTax, stateParams) : 0;
 
         // Iterate: the deficit and the taxes it triggers (NIIT, state LTCG, SS torpedo)
         // are mutually dependent, exactly as in the retirement path — sizing the
@@ -2779,7 +2832,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
                     socialSecurityBenefits,
                     realizedSTCG,
                     realizedLTCG,
-                    preTaxDeductions,
+                    preTaxDeductionsForTax,
                     input.taxState.filingStatus,
                     fedParams,
                 ).niitTax

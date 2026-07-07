@@ -658,9 +658,17 @@ export function buildDPYearContexts(
         const preTaxExemptions = TaxService.getPreTaxExemptions(
             simYear.incomes, simYear.year, age, true,
         );
+        // #198: net the above-the-line "Yes" expense deductions out of the ordinary
+        // tax base too. computeYearTax passes preTaxDeductions=0 (they're assumed
+        // already netted here, #186), so subtracting them here is how they lower the
+        // DP's priced tax — matching the engine (YearSolver), which adds them to the
+        // preTaxDeductions arg of its federal/state tax calls. Precomputed in
+        // SimulationEngine from the ENTERING-balance expense list; undefined ⇒ 0, so
+        // non-"Yes" plans are byte-for-byte unchanged.
+        const expenseAboveLineDeductions = simYear.expenseAboveLineDeductions ?? 0;
         const nonSSOrdinaryIncomeExclRMD = Math.max(
             0,
-            grossIncome - ssBenefits - preTaxExemptions,
+            grossIncome - ssBenefits - preTaxExemptions - expenseAboveLineDeductions,
         );
 
         // Apply scheduled tax life events (state move / filing-status change)
@@ -740,9 +748,18 @@ export function buildDPYearContexts(
         // = non-SS ordinary (already net of pre-tax deferrals, #186) + LTCG + taxable
         // SS. Non-senior years (incl. every pre-65 gap year) resolve to the raw
         // standard deduction — byte-for-byte unchanged.
+        // #198: generalize from standard-only to the full effective deduction so the
+        // DP prices the same itemized ≷ standard choice the engine bills. The
+        // itemized total (mortgage interest + flagged expenses + capped SALT) is
+        // precomputed by SimulationEngine and stored on the SimulationYear — read it
+        // back rather than re-deriving from simYear.expenses, which holds the
+        // POST-increment (advanced-balance) mortgage and would return next year's
+        // interest (§2c off-by-one). effTax carries the year's resolved
+        // deductionMethod. Non-itemizing years (⇒ 0 / 'Standard') resolve to the #191
+        // standard path — byte-for-byte unchanged.
         const effectiveFedParams = {
             ...fedParams,
-            standardDeduction: TaxService.getEffectiveStandardDeduction(
+            standardDeduction: TaxService.getEffectiveDeduction(
                 fedParams,
                 effTax.filingStatus,
                 age,
@@ -754,6 +771,8 @@ export function buildDPYearContexts(
                         0,
                         effTax.filingStatus,
                     ),
+                simYear.itemizedDeductionTotal ?? 0,
+                effTax.deductionMethod,
             ),
         };
 

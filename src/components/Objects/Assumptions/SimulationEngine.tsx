@@ -383,6 +383,40 @@ function simulateOneYearWithNewEngine(
     allIncomes.push(...rsuVestingResult.vestIncomes);
 
     // ------------------------------------------------------------------
+    // #198: PER-YEAR ITEMIZED / ABOVE-THE-LINE DEDUCTIONS
+    // ------------------------------------------------------------------
+    // Compute the year's itemized-deduction total and above-the-line "Yes" expense
+    // deductions ONCE, here, from the ENTERING-balance expense list
+    // (milestoneFilteredExpenses — BEFORE the increment below advances mortgage
+    // balances). Re-deriving these inside the solver/DP off the post-increment
+    // `nextExpenses` would run the amortization on the ADVANCED balance and return
+    // NEXT year's mortgage interest — a silent one-year shift that grows with the
+    // amortization slope. So thread the NUMBERS forward: into the solver
+    // (YearSolverInput) and onto the stored SimulationYear (which the DP reads back).
+    // Mirrors year-0 (calculateFederalTaxFromIncomes): "Yes" deductions are
+    // above-the-line (apply on both the standard and itemized paths); the itemized
+    // total (mortgage interest + flagged `Itemized` expenses + capped SALT) is only a
+    // CANDIDATE — getEffectiveDeduction weighs it against the standard path per the
+    // plan's deductionMethod, so a plan whose standard deduction wins (or whose
+    // mortgage has amortized away) flips back to standard automatically.
+    const expenseAboveLineDeductions = TaxService.getYesDeductions(milestoneFilteredExpenses, year);
+    let itemizedDeductionTotal = 0;
+    if (taxState.deductionMethod !== 'Standard') {
+        const itemizedExpenses = TaxService.getItemizedDeductions(milestoneFilteredExpenses, year);
+        // SALT = min(state income tax, cap). Stage 1: price state tax at the
+        // PRE-WITHDRAWAL baseline income (allIncomes: this year's income WITHOUT the
+        // not-yet-known withdrawals/conversions/RMD). Non-circular and matching
+        // year-0's single-valuation. The mortgage-interest term (the primary #198
+        // goal) is exact regardless of the SALT approximation. calculateStateTax
+        // already honors the stateOverride / no-params short-circuits.
+        const saltCap = TaxService.getSALTCap(year, taxState.filingStatus);
+        const baselineStateTax = TaxService.calculateStateTax(
+            taxState, allIncomes, milestoneFilteredExpenses, year, assumptions,
+        );
+        itemizedDeductionTotal = itemizedExpenses + Math.min(baselineStateTax, saltCap);
+    }
+
+    // ------------------------------------------------------------------
     // LIFESTYLE CREEP (same as old engine)
     // ------------------------------------------------------------------
     let nextExpenses = milestoneFilteredExpenses.map(exp => {
@@ -617,6 +651,10 @@ function simulateOneYearWithNewEngine(
         incomes: allIncomes,
         expenses: nextExpenses,
         totalLivingExpenses,
+        // #198: per-year deductions precomputed above from the entering-balance
+        // expense list (mortgage interest is exact for THIS year, not next year's).
+        itemizedDeductionTotal,
+        expenseAboveLineDeductions,
         rmdAmount,
         // RMD shortfall excise (25% of unmet required distribution) — solver folds
         // it into the year's tax/penalties so it reduces cash (Bug #4).
@@ -1087,6 +1125,11 @@ function simulateOneYearWithNewEngine(
             longTermCapitalGains: withdrawalState.longTermCapitalGains,
         },
         magi: yearPlan.magi,
+        // #198: store the per-year deduction totals so buildDPYearContexts reads
+        // them back (matching the engine's priced deduction) instead of re-deriving
+        // off the post-increment `expenses` list (advanced mortgage balance).
+        itemizedDeductionTotal,
+        expenseAboveLineDeductions,
         logs,
         strategyWithdrawal: strategyWithdrawalResult,
         strategyAdjustment: strategyAdjustmentResult,
