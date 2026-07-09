@@ -90,14 +90,29 @@ export interface ActiveDateWindow {
 }
 
 /**
- * Returns the fraction of `year` (in twelfths) that the window is active.
+ * Returns the fraction of `year` (in twelfths) that the window is active,
+ * optionally restricted to the sub-window of months [fromMonthInclusive..December].
  * A missing startDate is treated as "now"; a missing endDate as open-ended.
+ *
+ * `fromMonthInclusive` (0-indexed month; default 0 = January) intersects the
+ * active window with the tail [fromMonthInclusive..11]. The default of 0 is a
+ * no-op — it reproduces the plain full-year multiplier exactly — because active
+ * month indices are always within [0..11]. Callers needing the TRUE month-interval
+ * overlap of a partial-year tail (e.g. #179's 401k end-of-year deposit proration)
+ * pass a non-zero start month; this correctly yields 0 for a job that ENDED before
+ * the tail begins, rather than the phantom overlap that `min(remainingFraction,
+ * fullYearMultiplier)` would report.
+ *
+ * Date-only values come from parseDate, which returns LOCAL-midnight dates (the
+ * repo-wide convention). Read with local getFullYear()/getMonth() so a date
+ * entered as Y-M-D round-trips to the same Y-M-D in any timezone.
  */
-export function getActiveWindowMultiplier(window: ActiveDateWindow, year: number): number {
+export function getActiveWindowMultiplier(
+  window: ActiveDateWindow,
+  year: number,
+  fromMonthInclusive: number = 0,
+): number {
   const startDate = window.startDate ? new Date(window.startDate) : new Date();
-  // Date-only values come from parseDate, which returns LOCAL-midnight dates (the
-  // repo-wide convention). Read with local getFullYear()/getMonth() so a date
-  // entered as Y-M-D round-trips to the same Y-M-D in any timezone.
   const startYear = startDate.getFullYear();
 
   const safeEndDate = window.endDate ? new Date(window.endDate) : null;
@@ -106,13 +121,20 @@ export function getActiveWindowMultiplier(window: ActiveDateWindow, year: number
   if (startYear > year) return 0;
   if (endYear !== null && endYear < year) return 0;
 
-  const startMonthIndex = (startYear < year) ? 0 : startDate.getMonth();
+  const windowStartMonth = (startYear < year) ? 0 : startDate.getMonth();
 
-  const endMonthIndex = (safeEndDate && endYear === year)
+  const windowEndMonth = (safeEndDate && endYear === year)
     ? safeEndDate.getMonth()
     : 11;
 
-  const monthsActive = endMonthIndex - startMonthIndex + 1;
+  // Intersect the active window [windowStartMonth..windowEndMonth] with the
+  // requested tail [fromMonthInclusive..11]. With the default fromMonthInclusive=0
+  // this is the identity on the active window (windowStartMonth >= 0, windowEndMonth <= 11).
+  const from = Math.max(0, fromMonthInclusive);
+  const overlapStart = Math.max(windowStartMonth, from);
+  const overlapEnd = Math.min(windowEndMonth, 11);
+
+  const monthsActive = overlapEnd - overlapStart + 1;
 
   return Math.max(0, monthsActive) / 12;
 }

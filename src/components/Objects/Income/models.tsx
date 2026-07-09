@@ -994,23 +994,14 @@ export function getIncomeActiveMonthOverlap(
     year: number,
     fromMonthInclusive: number,
 ): number {
-    const startDate = income.startDate ? new Date(income.startDate) : new Date();
-    const startYear = startDate.getFullYear();
-    const endDate = income.end_date ? new Date(income.end_date) : null;
-    const endYear = endDate ? endDate.getFullYear() : null;
-
-    if (startYear > year) return 0;
-    if (endYear !== null && endYear < year) return 0;
-
-    const windowStartMonth = (startYear < year) ? 0 : startDate.getMonth();
-    const windowEndMonth = (endDate && endYear === year) ? endDate.getMonth() : 11;
-
-    // Intersect the active window [windowStartMonth..windowEndMonth] with the
-    // requested tail [fromMonthInclusive..11] (December = 11).
-    const from = Math.max(0, fromMonthInclusive);
-    const overlapStart = Math.max(windowStartMonth, from);
-    const overlapEnd = Math.min(windowEndMonth, 11);
-    return Math.max(0, overlapEnd - overlapStart + 1) / 12;
+    // Delegate to the shared active-window helper (the same pattern
+    // getIncomeActiveMultiplier uses) so the local-midnight, inclusive
+    // month-boundary convention lives in exactly one place.
+    return getActiveWindowMultiplier(
+        { startDate: income.startDate, endDate: income.end_date },
+        year,
+        fromMonthInclusive,
+    );
 }
 
 export function isIncomeActiveInCurrentMonth(income: AnyIncome): boolean {
