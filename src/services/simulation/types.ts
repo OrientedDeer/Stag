@@ -126,7 +126,12 @@ export interface SimulationYear {
      * #198: above-the-line "Yes"-flagged expense deductions for the year. These
      * reduce taxable income (both federal and state) but remain real cash expenses
      * counted in living expenses — so they are netted into the DP's ordinary tax
-     * base, never subtracted from spendable cash. Undefined ⇒ 0.
+     * base ONLY, never subtracted from spendable cash. Concretely, in
+     * buildDPYearContexts this is netted into `nonSSOrdinaryIncomeExclRMD` (the tax
+     * base) but NOT into `nonSSOrdinaryCashExclRMD` (the spending waterfall's cash
+     * source): the deduction is already billed once inside `spendingNeed`, so
+     * subtracting it from cash too would double-count it and manufacture a phantom
+     * funding gap in every DP cell. Undefined ⇒ 0.
      */
     expenseAboveLineDeductions?: number;
     logs: string[];

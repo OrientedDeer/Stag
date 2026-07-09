@@ -206,6 +206,24 @@ export interface DPYearContext {
      * portion.
      */
     nonSSOrdinaryIncomeExclRMD: number;
+    /**
+     * #198: the SAME wages/pension/passive income as `nonSSOrdinaryIncomeExclRMD`
+     * but WITHOUT the above-the-line "Yes"-expense deduction netted out — i.e. the
+     * real spendable CASH the ordinary income delivers this year. A deductible
+     * expense lowers the TAX base (`nonSSOrdinaryIncomeExclRMD`) but is still real
+     * cash the retiree receives and spends (already billed inside `spendingNeed`),
+     * so the spending-waterfall's `cashFromOrdinary` must source from THIS field,
+     * never the deduction-netted one — otherwise the deduction is double-counted
+     * (once here, once in `spendingNeed`), manufacturing a phantom funding gap in
+     * every cell.
+     *
+     * Optional purely so synthetic-fixture callers (makeDPContext and the DP unit
+     * suites) don't have to restate it: when omitted, `evaluateCell` falls back to
+     * `nonSSOrdinaryIncomeExclRMD`, i.e. cash === tax base — exactly the pre-#198
+     * behavior and correct whenever there is no "Yes" deduction. `buildDPYearContexts`
+     * (the production producer) ALWAYS sets it.
+     */
+    nonSSOrdinaryCashExclRMD?: number;
     /** Gross SS benefits (taxable portion is computed inside calculateTotalFederalTax). */
     ssBenefits: number;
     /** Realized LTCG + qualified dividends. */
@@ -670,6 +688,16 @@ export function buildDPYearContexts(
             0,
             grossIncome - ssBenefits - preTaxExemptions - expenseAboveLineDeductions,
         );
+        // #198: the CASH the ordinary income delivers is the SAME figure WITHOUT the
+        // above-the-line deduction netted — a "Yes"-deductible expense lowers the tax
+        // base above but is still real cash the retiree receives (and already spends,
+        // via spendingNeed). The spending waterfall's cashFromOrdinary sources from
+        // THIS, not the deduction-netted base, so the deduction isn't double-counted.
+        // Identical to nonSSOrdinaryIncomeExclRMD when there's no "Yes" deduction.
+        const nonSSOrdinaryCashExclRMD = Math.max(
+            0,
+            grossIncome - ssBenefits - preTaxExemptions,
+        );
 
         // Apply scheduled tax life events (state move / filing-status change)
         // that have fired by this year, so the DP sees the same per-year filing
@@ -910,6 +938,7 @@ export function buildDPYearContexts(
             year: simYear.year,
             age,
             nonSSOrdinaryIncomeExclRMD,
+            nonSSOrdinaryCashExclRMD,
             ssBenefits,
             ltcgIncome,
             filingStatus: effTax.filingStatus,
@@ -1182,8 +1211,13 @@ export function evaluateCell(
     // in late retirement years (SS+RMD) can be tens of thousands of dollars.
     // Conversion is intentionally NOT in here: a conversion creates ordinary
     // income for tax purposes but is a Trad→Roth transfer, not cash.
+    // #198: source from the CASH figure (`nonSSOrdinaryCashExclRMD`), which does
+    // NOT net the above-the-line "Yes" deduction — that deduction is real cash the
+    // retiree still receives and already spends (billed in spendingNeed). Using the
+    // tax-netted `nonSSOrdinaryIncomeExclRMD` here would double-count it. Fall back
+    // to the tax base when unset (synthetic fixtures with no deduction ⇒ unchanged).
     const cashFromOrdinary =
-        ctx.nonSSOrdinaryIncomeExclRMD + ctx.ssBenefits + rmd;
+        (ctx.nonSSOrdinaryCashExclRMD ?? ctx.nonSSOrdinaryIncomeExclRMD) + ctx.ssBenefits + rmd;
 
     // Initial guess: tax assuming no trad-spending. This is exact when the
     // waterfall can cover totalNeed from brokerage + roth alone (the common
@@ -2486,8 +2520,10 @@ export function planConversionsViaDP(
         // gap = max(0, spendingNeed + yearTax − cashFromOrdinary); sourced
         // through the fixed brokerage → roth → trad waterfall (approximation of
         // the engine's chosen order — see module header / evaluateCell docs).
+        // #198: mirror evaluateCell — source from the deduction-UN-netted cash
+        // figure so the displayed waterfall gap matches the one actually solved.
         const cashFromOrd =
-            ctx.nonSSOrdinaryIncomeExclRMD + ctx.ssBenefits + rmdAtB;
+            (ctx.nonSSOrdinaryCashExclRMD ?? ctx.nonSSOrdinaryIncomeExclRMD) + ctx.ssBenefits + rmdAtB;
         const gap = Math.max(0, ctx.spendingNeed + cell.yearTax - cashFromOrd);
         debugLines.push(
             `[DEBUG DP waterfall] year=${ctx.year}: ` +
