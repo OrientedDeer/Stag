@@ -465,6 +465,26 @@ export function getOrdinaryAGI(
     filingStatus: TaxState['filingStatus'],
     includeConversion = false,
 ): number {
+    const { agiExcludingSS, taxableSS } = getOrdinaryAGIComponents(
+        simYear, age, filingStatus, includeConversion,
+    );
+    return agiExcludingSS + taxableSS;
+}
+
+/**
+ * Component split behind {@link getOrdinaryAGI}: the non-SS ordinary income base and
+ * the taxable portion of Social Security, kept separate so the state-tax diagnostics
+ * can EXCLUDE taxable SS — the engine's state path (YearSolver) and the DP aligned to
+ * it (commit 6c19b83, "the engine never bills state tax on SS") always drop SS from
+ * the state base, while federal keeps it. `getOrdinaryAGI` returns the sum; the state
+ * marginal in {@link getOrdinaryMarginalRate} reads only `agiExcludingSS` (#184 Bug 2).
+ */
+export function getOrdinaryAGIComponents(
+    simYear: SimulationYear,
+    age: number,
+    filingStatus: TaxState['filingStatus'],
+    includeConversion = false,
+): { agiExcludingSS: number; taxableSS: number } {
     const incomeFromObjects = TaxService.getGrossIncome(simYear.incomes, simYear.year);
     const ssBenefits = TaxService.getSocialSecurityBenefits(simYear.incomes, simYear.year);
     const preTaxDeductions = TaxService.getPreTaxExemptions(simYear.incomes, simYear.year, age);
@@ -500,7 +520,7 @@ export function getOrdinaryAGI(
     const taxableSS = TaxService.getTaxableSocialSecurityBenefits(
         ssBenefits, agiExcludingSS + ltcgForProvisional, 0, filingStatus
     );
-    return agiExcludingSS + taxableSS;
+    return { agiExcludingSS, taxableSS };
 }
 
 /**
@@ -526,14 +546,42 @@ export function getOrdinaryMarginalRate(
     assumptions: AssumptionsState,
     includeConversion = false,
 ): { federal: number; state: number; combined: number; federalHeadroom: number } {
-    const agi = getOrdinaryAGI(simYear, age, taxState.filingStatus, includeConversion);
+    const { agiExcludingSS, taxableSS } = getOrdinaryAGIComponents(
+        simYear, age, taxState.filingStatus, includeConversion,
+    );
+    const agi = agiExcludingSS + taxableSS;
     const fedParams = TaxService.getTaxParameters(simYear.year, taxState.filingStatus, 'federal', undefined, assumptions);
     const stateParams = TaxService.getTaxParameters(simYear.year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
+    // #184 Bug 1: rate the federal bracket against the SAME effective deduction the
+    // engine bills — the senior 65+ add-ons (#191) and itemized/Auto total (#198) that
+    // every ENGINE tax chokepoint now routes through getEffectiveDeduction, NOT the raw
+    // standardDeduction. These diagnostics price RMD-years (age >= 73, always senior-
+    // eligible), so measuring the bracket against the raw deduction reported 22% where
+    // the engine bills 12% — the exact wrong-bracket failure #184 exists to fix,
+    // reintroduced at the deduction layer. `agi` is the MAGI proxy for the OBBBA-bonus
+    // phaseout, mirroring YearSolver's baseOrdinaryIncome / the DP's magiProxy (both
+    // fold in RMD + taxable SS); the phaseout-free regular add-on is proxy-independent.
+    const fedEffectiveDeduction = fedParams
+        ? TaxService.getEffectiveDeduction(
+            fedParams,
+            taxState.filingStatus,
+            age,
+            simYear.year,
+            agi,
+            simYear.itemizedDeductionTotal ?? 0,
+            taxState.deductionMethod,
+        )
+        : 0;
     const fed = fedParams
-        ? TaxService.getMarginalTaxRate(Math.max(0, agi - (fedParams.standardDeduction || 0)), fedParams)
+        ? TaxService.getMarginalTaxRate(Math.max(0, agi - fedEffectiveDeduction), fedParams)
         : { rate: 0, headroom: Infinity };
+    // #184 Bug 2: the engine's state path (YearSolver) and the DP aligned to it always
+    // EXCLUDE taxable SS from the state base ("the engine never bills state tax on SS",
+    // 6c19b83). Rate the state bracket on agiExcludingSS, not the SS-inclusive agi —
+    // otherwise a retiree just below a state bracket edge is charged a marginal one
+    // bracket higher than the simulation ever bills.
     const state = stateParams
-        ? TaxService.getMarginalTaxRate(Math.max(0, agi - (stateParams.standardDeduction || 0)), stateParams)
+        ? TaxService.getMarginalTaxRate(Math.max(0, agiExcludingSS - (stateParams.standardDeduction || 0)), stateParams)
         : { rate: 0, headroom: Infinity };
     return {
         federal: fed.rate,
@@ -927,10 +975,22 @@ function findSwitchoverYear(
     // below the first RMD, overstating targetRMD/targetBalance (~26.5x) so the
     // switchover landed too late or spuriously reported "already below target" (#184).
     const rmdAge = rmdSimYear.year - birthYear;
-    const rmdTaxableIncome = Math.max(
-        0,
-        getOrdinaryAGI(rmdSimYear, rmdAge, taxState.filingStatus) - fedParams.standardDeduction
+    // #184 Bug 1: subtract the effective deduction the engine actually bills (senior
+    // 65+ add-ons + itemized/Auto), not the raw standardDeduction — the RMD age is
+    // always senior-eligible, so the raw subtraction overstated taxable income by the
+    // add-on and pushed the switchover into the wrong bracket. `rmdAGI` doubles as the
+    // MAGI proxy for the OBBBA-bonus phaseout (mirrors YearSolver / the DP).
+    const rmdAGI = getOrdinaryAGI(rmdSimYear, rmdAge, taxState.filingStatus);
+    const rmdEffectiveDeduction = TaxService.getEffectiveDeduction(
+        fedParams,
+        taxState.filingStatus,
+        rmdAge,
+        rmdSimYear.year,
+        rmdAGI,
+        rmdSimYear.itemizedDeductionTotal ?? 0,
+        taxState.deductionMethod,
     );
+    const rmdTaxableIncome = Math.max(0, rmdAGI - rmdEffectiveDeduction);
 
     // The current first-RMD is part of rmdTaxableIncome. Estimate non-RMD income.
     const currentFirstRMD = rmdSimYear.rmdDetails?.totalRMD
