@@ -628,6 +628,9 @@ function simulateOneYearWithNewEngine(
     const rmdDetails = rmdResult.rmdDetails;
     const rmdIncomes = rmdResult.rmdIncomes;
     const rmdAmount = rmdDetails?.totalWithdrawn || 0;
+    // Per-account RMD drain — the single source for the solver's per-account
+    // reservation (both the retirement and working-year deficit planners).
+    const rmdPerAccount = rmdResult.perAccountWithdrawn;
 
     // Add RMD incomes to allIncomes
     allIncomes.push(...rmdIncomes);
@@ -671,6 +674,7 @@ function simulateOneYearWithNewEngine(
         itemizedDeductionTotal,
         expenseAboveLineDeductions,
         rmdAmount,
+        rmdPerAccount,
         // RMD shortfall excise (25% of unmet required distribution) — solver folds
         // it into the year's tax/penalties so it reduces cash (Bug #4).
         rmdPenalty: rmdDetails?.penalty ?? 0,

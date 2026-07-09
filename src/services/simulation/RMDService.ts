@@ -7,6 +7,16 @@ import { SimulationYear, WithdrawalState } from "./types";
 export interface RMDResult {
     rmdDetails: SimulationYear['rmdDetails'];
     rmdIncomes: PassiveIncome[];
+    /**
+     * Amount actually drained from each RMD-subject account this year, keyed by
+     * account id (prior-year vested balance ÷ life-expectancy factor, capped at the
+     * account's vested balance). This is the SINGLE SOURCE for the year-solver's
+     * per-account RMD reservation: the discretionary/deficit withdrawal planner reads
+     * the raw (undrained) snapshot balances, so it must reserve exactly what the RMD
+     * already took per account or it double-spends those dollars. Empty when no RMD
+     * is required.
+     */
+    perAccountWithdrawn: Map<string, number>;
     logs: string[];
 }
 
@@ -32,6 +42,7 @@ export function processRMDs(
         return {
             rmdDetails: undefined,
             rmdIncomes: [],
+            perAccountWithdrawn: new Map(),
             logs
         };
     }
@@ -40,6 +51,7 @@ export function processRMDs(
     let totalRMDRequired = 0;
     let totalRMDWithdrawn = 0;
     const rmdIncomes: PassiveIncome[] = [];
+    const perAccountWithdrawn = new Map<string, number>();
 
     for (const account of accounts) {
         if (!(account instanceof InvestedAccount)) continue;
@@ -103,6 +115,9 @@ export function processRMDs(
             // drops by exactly the RMD regardless of how it's later reported.
             withdrawalState.userInflows[account.id] = (withdrawalState.userInflows[account.id] || 0) - actualWithdrawal;
             totalRMDWithdrawn += actualWithdrawal;
+            // Record the per-account drain so the year solver can reserve exactly this
+            // amount from the account's raw snapshot (see RMDResult.perAccountWithdrawn).
+            perAccountWithdrawn.set(account.id, (perAccountWithdrawn.get(account.id) ?? 0) + actualWithdrawal);
 
             // NOTE: the RMD is intentionally NOT added to withdrawalState.totalWithdrawals
             // or withdrawalDetail. It is surfaced as spendable INCOME (a PassiveIncome with
@@ -133,6 +148,7 @@ export function processRMDs(
     return {
         rmdDetails,
         rmdIncomes,
+        perAccountWithdrawn,
         logs
     };
 }

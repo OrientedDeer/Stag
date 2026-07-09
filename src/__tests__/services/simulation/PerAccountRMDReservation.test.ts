@@ -71,6 +71,10 @@ describe('Per-account RMD reservation (#174)', () => {
             // Total required distribution across BOTH accounts (matches what
             // RMDService drains); its presence triggers the per-account reservation.
             rmdAmount: perAccountRMD * 2,
+            // Per-account RMD drain, the single source SimulationEngine threads in from
+            // RMDResult.perAccountWithdrawn. Both accounts share the same balance, so
+            // each carries the same required distribution.
+            rmdPerAccount: new Map([['trad-a', perAccountRMD], ['trad-b', perAccountRMD]]),
             accounts: [tradA, tradB],
             withdrawalOrder: [{ accountId: 'trad-a' }, { accountId: 'trad-b' }],
             taxState,

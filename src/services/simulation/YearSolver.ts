@@ -42,7 +42,7 @@ import { planWithdrawals, createOrderedSnapshots, grossUpBrokerage } from "./Wit
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
 import { getLTCGRate } from "../../components/Objects/Taxes/taxService/capitalGainsTax";
 import { calculateEffectiveConversionTax, ACAOptions, IRMAAConversionOptions } from "./helpers";
-import { getRMDStartAge, calculateRMD, isAccountSubjectToRMD } from "../../data/RMDData";
+import { getRMDStartAge } from "../../data/RMDData";
 import { getIRMAAAnnualSurcharge, getIRMAASchedule, resolveIrmaaLookbackMAGI, MEDICARE_ELIGIBILITY_AGE } from "../../data/IRMAAData";
 import {
     calculateDynamicConversionCeiling,
@@ -118,6 +118,17 @@ export interface YearSolverInput {
      */
     expenseAboveLineDeductions?: number;
     rmdAmount: number;
+    /**
+     * Per-account RMD amount RMDService already drained this year (keyed by account
+     * id), the SINGLE SOURCE for the discretionary/deficit planner's reservation.
+     * RMDService drains each RMD-subject Traditional account by its OWN required
+     * distribution (recorded as a negative userInflow applied later by growAccounts),
+     * but the solver reads the raw (undrained) balances — so both the retirement and
+     * working-year withdrawal planners must reserve each account's RMD from its
+     * snapshot or they double-spend those dollars. Supplied by SimulationEngine from
+     * RMDResult.perAccountWithdrawn; undefined/empty when no RMD was taken.
+     */
+    rmdPerAccount?: Map<string, number>;
     /**
      * IRS excise penalty (25% of the RMD shortfall) computed by RMDService when a
      * required distribution can't be fully satisfied. It's a cash tax with no
@@ -304,51 +315,31 @@ function getFirstTraditionalAccount(accounts: AnyAccount[]): InvestedAccount | n
 }
 
 /**
- * Per-account RMD reservation amounts. RMDService drains each RMD-subject
- * Traditional account by its OWN required distribution (prior-year vested
- * balance ÷ life-expectancy factor, capped at the account's vested balance),
- * recording it as a negative userInflow applied later by growAccounts. The
- * solver reads the raw (undrained) balances, so the discretionary planner must
- * reserve each account's RMD from its snapshot — otherwise it could plan to
- * withdraw dollars the RMD already took.
+ * Reserve the RMD already drained from each account against the withdrawal
+ * snapshots. RMDService drains each RMD-subject Traditional account by its OWN
+ * required distribution (recorded as a negative userInflow applied later by
+ * growAccounts), but `createOrderedSnapshots` reads the raw (undrained) balance —
+ * so without this the discretionary/deficit planner could plan to withdraw dollars
+ * the RMD already took, over-draining the account and surfacing phantom spendable
+ * cash. Reserving PER ACCOUNT (not the whole RMD against the first Traditional
+ * account): with two Traditional accounts, reserving the total against account A
+ * alone under-reserved account B (the actual draw source) and stranded balance in A.
  *
- * This mirrors RMDService.processRMDs exactly (same prior-year source, same
- * `calculateRMD`, same vested cap), so the reserved amount equals what was
- * actually drained per account. Reserving the WHOLE RMD against only the first
- * Traditional account (the prior behavior) over-reserved that account and left
- * the withdrawal-source account under-reserved, fabricating phantom spendable
- * cash and stranding balance in the over-reserved account.
+ * `perAccountRMD` is the single source RMDService already computed this engine year
+ * (RMDResult.perAccountWithdrawn), so the reserved amount equals what was actually
+ * drained per account. A no-op when undefined/empty (no RMD taken).
  */
-function computePerAccountRMD(
-    accounts: AnyAccount[],
-    previousSimulation: YearSolverInput['previousSimulation'],
-    currentAge: number,
-): Map<string, number> {
-    const perAccount = new Map<string, number>();
-    const priorSim = previousSimulation && previousSimulation.length > 0
-        ? previousSimulation[previousSimulation.length - 1]
-        : undefined;
-
-    for (const account of accounts) {
-        if (!(account instanceof InvestedAccount)) continue;
-        if (!isAccountSubjectToRMD(account.taxType)) continue;
-
-        let priorYearBalance = account.vestedAmount;
-        if (priorSim) {
-            const priorAccount = priorSim.accounts.find(a => a.id === account.id);
-            if (priorAccount instanceof InvestedAccount) {
-                priorYearBalance = priorAccount.vestedAmount;
-            }
-        }
-
-        const rmd = calculateRMD(priorYearBalance, currentAge);
-        if (rmd <= 0) continue;
-        const withdrawn = Math.min(rmd, account.vestedAmount);
-        if (withdrawn > 0) {
-            perAccount.set(account.id, (perAccount.get(account.id) ?? 0) + withdrawn);
-        }
-    }
-    return perAccount;
+function reserveRMDFromSnapshots<T extends { accountId: string; vestedBalance: number }>(
+    snapshots: T[],
+    perAccountRMD: Map<string, number> | undefined,
+): T[] {
+    if (!perAccountRMD || perAccountRMD.size === 0) return snapshots;
+    return snapshots.map(s => {
+        const reserved = perAccountRMD.get(s.accountId);
+        return reserved
+            ? { ...s, vestedBalance: Math.max(0, s.vestedBalance - reserved) }
+            : s;
+    });
 }
 
 function getFirstRothAccount(accounts: AnyAccount[]): InvestedAccount | null {
@@ -1851,25 +1842,10 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         accountSnapshots = [...nonReserved, ...reservedSnapshots];
     }
 
-    // Reserve the RMD against the account(s) it draws from. RMDService drains each
-    // RMD-subject Traditional account by its OWN required distribution (recorded as a
-    // negative userInflow, applied later by growAccounts), but createOrderedSnapshots
-    // reads the raw balance, so without this the discretionary planner could plan to
-    // withdraw dollars the RMD already took — over-draining the account and surfacing
-    // phantom spendable cash. Reserve PER ACCOUNT (not the whole RMD against the first
-    // Traditional account): with two Traditional accounts, reserving the total against
-    // account A alone under-reserved account B (the actual draw source) and stranded
-    // balance in A.
+    // Reserve the RMD already drained per account so the discretionary planner can't
+    // re-withdraw those dollars (see reserveRMDFromSnapshots).
     if (input.rmdAmount > 0) {
-        const perAccountRMD = computePerAccountRMD(input.accounts, input.previousSimulation, input.currentAge);
-        if (perAccountRMD.size > 0) {
-            accountSnapshots = accountSnapshots.map(s => {
-                const reserved = perAccountRMD.get(s.accountId);
-                return reserved
-                    ? { ...s, vestedBalance: Math.max(0, s.vestedBalance - reserved) }
-                    : s;
-            });
-        }
+        accountSnapshots = reserveRMDFromSnapshots(accountSnapshots, input.rmdPerAccount);
     }
 
     if (conversionPlan.bracketSpaceForSpending > 0) {
@@ -2741,9 +2717,18 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         // stays false here — the #111 safety-net tier is deliberately retirement-only
         // because the working-year initialDeficit conflates tax with spending and would
         // mishandle RSU withholding (#114).
-        const accountSnapshots = createOrderedSnapshots(
+        let accountSnapshots = createOrderedSnapshots(
             input.accounts, input.withdrawalOrder, input.currentAge, input.year, false, !input.taxOptimizationEnabled,
         );
+
+        // Reserve the RMD already drained per account (#173 made RMDs age-only, so a
+        // still-working owner past RMD age carries a real RMD). Without this the
+        // working-year deficit planner reads the raw balances and double-spends the
+        // RMD dollars — over-draining the account while counting spendable cash the
+        // RMD already claimed. Same single-source reservation as the retirement path.
+        if (input.rmdAmount > 0) {
+            accountSnapshots = reserveRMDFromSnapshots(accountSnapshots, input.rmdPerAccount);
+        }
 
         // Base ordinary income EXCLUDING SS (SS enters via its taxable portion below),
         // plus any #159 working-year conversion.
