@@ -101,14 +101,16 @@ describe('Reserved goal-fund accounts are not drained for living expenses (#174)
                 .reduce((s, w) => s + w.gross, 0);
             expect(tradWithdrawn).toBeGreaterThan(0);
 
-            // The reserved goal fund must NOT be drawn down for living expenses: the
-            // Traditional balance covers the deficit, so the last-resort goal fund is
-            // reached only for sub-cent gross-up dust (< $1), never the ~$48k deficit
-            // the old code drained from it.
+            // The reserved goal fund must NOT be drawn down for living expenses AT
+            // ALL: the Traditional balance covers the deficit, and the reservation is
+            // a hard cap (the fund is excluded from the drawdown snapshots entirely),
+            // so not even sub-dollar gross-up dust reaches it. The old move-to-end
+            // reorder let dust leak out of it every deficit year (toBeLessThan(1)); the
+            // airtight cap restores the exact toBe(0) guarantee.
             const goalFundWithdrawn = yearPlan.withdrawals
                 .filter(w => w.accountId === 'goal-fund-1')
                 .reduce((s, w) => s + w.gross, 0);
-            expect(goalFundWithdrawn).toBeLessThan(1);
+            expect(goalFundWithdrawn).toBe(0);
         });
     }
 });

@@ -342,6 +342,32 @@ function reserveRMDFromSnapshots<T extends { accountId: string; vestedBalance: n
     });
 }
 
+/**
+ * Hard-cap reserved goal sinking-fund accounts out of the drawdown snapshots.
+ * A goal fund is a DEDICATED account (`goalAccountId` → its own SavedAccount) that
+ * accumulates committed set-asides via goalFundCredits and is spent at the goal's
+ * due year — the WHOLE account is reserved, so its plannable balance for general
+ * living expenses is zero. Removing it from the snapshots entirely makes the
+ * reservation airtight on EVERY drawdown path (including a scenario-supplied
+ * withdrawal order that omits it, which `createOrderedSnapshots`'
+ * includeUnorderedSellable tier would otherwise reach as a #111 last resort): a
+ * genuine shortfall then surfaces as an unfunded deficit — the honest signal that
+ * the plan doesn't work while preserving the goal — instead of silently draining
+ * the fund so the goal can't be met at its due year.
+ *
+ * This replaces the earlier move-to-END reorder (633ee9b), which only deferred the
+ * fund to last-resort: a total shortfall still drained it, and sub-dollar gross-up
+ * dust leaked out of it every deficit year. A no-op when nothing is reserved.
+ */
+function excludeReservedFromSnapshots<T extends { accountId: string }>(
+    snapshots: T[],
+    reservedAccountIds: string[] | undefined,
+): T[] {
+    if (!reservedAccountIds || reservedAccountIds.length === 0) return snapshots;
+    const reserved = new Set(reservedAccountIds);
+    return snapshots.filter(s => !reserved.has(s.accountId));
+}
+
 function getFirstRothAccount(accounts: AnyAccount[]): InvestedAccount | null {
     return accounts.find(a =>
         a instanceof InvestedAccount &&
@@ -1821,26 +1847,16 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         input.accounts, input.withdrawalOrder, input.currentAge, input.year, true, !input.taxOptimizationEnabled,
     );
 
-    // Keep reserved goal sinking-fund accounts out of the general drawdown until
-    // everything else is exhausted. A goal fund accumulates committed deposits the
-    // engine credits directly; draining it for general living expenses means the
-    // goal can't be funded at its due year.
-    //
-    // The prior guard only dropped a reserved account when it was NOT an explicit
-    // member of the user's order — but the app-wide reconciler syncs EVERY eligible
-    // account into withdrawalStrategy (the withdrawal-order UI is reorder-only; an
-    // account can't be removed), so a reserved goal fund is ALWAYS in the order and
-    // the guard never fired. Result: tax-opt drained the goal fund first while other
-    // accounts sat untouched. Fix: move reserved accounts to the END of the drawdown
-    // (last-resort) regardless of order membership, so a genuine total shortfall can
-    // still reach them (avoiding fabricated deficit debt) but they're never tapped
-    // for living expenses while any non-reserved balance remains.
-    if (input.reservedAccountIds && input.reservedAccountIds.length > 0) {
-        const reserved = new Set(input.reservedAccountIds);
-        const nonReserved = accountSnapshots.filter(s => !reserved.has(s.accountId));
-        const reservedSnapshots = accountSnapshots.filter(s => reserved.has(s.accountId));
-        accountSnapshots = [...nonReserved, ...reservedSnapshots];
-    }
+    // Hard-cap reserved goal sinking-fund accounts out of the general drawdown so a
+    // goal fund's committed set-asides are never spent on living expenses (see
+    // excludeReservedFromSnapshots). Airtight regardless of the withdrawal order:
+    // an earlier guard only dropped a reserved account when it was NOT a member of
+    // the order, but the app-wide reconciler syncs every eligible account into the
+    // order (reorder-only UI) so it never fired; a later move-to-END reorder made
+    // the fund last-resort but still let a total shortfall drain it and leaked
+    // sub-dollar gross-up dust every deficit year. Excluding it entirely surfaces a
+    // genuine shortfall as an unfunded deficit instead of raiding the fund.
+    accountSnapshots = excludeReservedFromSnapshots(accountSnapshots, input.reservedAccountIds);
 
     // Reserve the RMD already drained per account so the discretionary planner can't
     // re-withdraw those dollars (see reserveRMDFromSnapshots).
@@ -2720,6 +2736,11 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         let accountSnapshots = createOrderedSnapshots(
             input.accounts, input.withdrawalOrder, input.currentAge, input.year, false, !input.taxOptimizationEnabled,
         );
+
+        // Hard-cap reserved goal sinking funds out of the working-year deficit
+        // drawdown too — a pre-retirement shortfall (expenses > income) must not raid
+        // a goal fund any more than a retirement one (see excludeReservedFromSnapshots).
+        accountSnapshots = excludeReservedFromSnapshots(accountSnapshots, input.reservedAccountIds);
 
         // Reserve the RMD already drained per account (#173 made RMDs age-only, so a
         // still-working owner past RMD age carries a real RMD). Without this the
