@@ -408,21 +408,31 @@ function simulateOneYearWithNewEngine(
         // engine doesn't iterate (fedParams is fixed once, pre-deficit-loop). Resolve
         // it the same way IRMAA resolves its surcharge: a prior-year lookback.
         //
-        // Stage 2: price SALT off the PRIOR year's REALIZED state tax
-        // (previousSimulation is the full SimulationYear[]; its last entry is year
-        // N-1). That realized figure already folds in last year's
-        // withdrawals/conversions/RMD, so for a drawing-down retiree it tracks the
-        // true state-tax level far better than a pre-withdrawal baseline — tightening
-        // the stage-1 error to the year-over-year state-tax delta. For the first
-        // projected year the prior row is year 0, whose realized state tax IS the
-        // current-snapshot baseline. Fall back to a pre-withdrawal baseline state tax
-        // only if there is no prior year at all (defensive; year 0 always precedes a
-        // simulated year in runSimulation). The mortgage-interest term (the primary
-        // #198 goal) is exact regardless of the SALT approximation.
+        // Stage 2: price SALT off the PRIOR year's REALIZED state tax. That realized
+        // figure already folds in last year's withdrawals/conversions/RMD, so for a
+        // drawing-down retiree it tracks the true state-tax level far better than a
+        // pre-withdrawal baseline — tightening the stage-1 error to the year-over-year
+        // state-tax delta.
+        //
+        // Pick the last REAL prior row, skipping any synthetic end-of-year-projection
+        // row. useSimulation pushes an EOY row after year 0 for a mid-year run
+        // (remainingFraction > 0 && !priorYearMode), and that row's taxDetails.state is
+        // PRORATED by remainingFraction (e.g. a September open ⇒ ~3/12 of the year's
+        // state tax). Reading it for year 1 would price SALT off a fraction of the real
+        // annual state tax. The last non-EOY row is year 0 (full-year realized state
+        // tax, the current-snapshot baseline) for the first projected year, and the
+        // immediately prior projected year for every subsequent year. Fall back to a
+        // pre-withdrawal baseline only if there is no real prior row at all (defensive).
+        // The mortgage-interest term (the primary #198 goal) is exact regardless of the
+        // SALT approximation.
         const saltCap = TaxService.getSALTCap(year, taxState.filingStatus);
-        const priorYear = previousSimulation.length > 0
-            ? previousSimulation[previousSimulation.length - 1]
-            : undefined;
+        let priorYear: SimulationYear | undefined;
+        for (let i = previousSimulation.length - 1; i >= 0; i--) {
+            if (!previousSimulation[i].isEndOfYearProjection) {
+                priorYear = previousSimulation[i];
+                break;
+            }
+        }
         const stateTaxForSalt = priorYear !== undefined
             ? priorYear.taxDetails.state
             : TaxService.calculateStateTax(
