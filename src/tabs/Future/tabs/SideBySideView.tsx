@@ -215,19 +215,30 @@ export const SideBySideView: React.FC<SideBySideViewProps> = ({ comparison }) =>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border-subtle">
-                            {differences.netWorthByYear.slice(0, 10).map(year => (
-                                <YearRow key={year.year} year={year} forceExact={forceExact} />
-                            ))}
-                            {differences.netWorthByYear.length > 15 && (
-                                <tr>
-                                    <td colSpan={4} className="px-4 py-2 text-center text-content-muted">
-                                        ... {differences.netWorthByYear.length - 15} more years ...
-                                    </td>
-                                </tr>
+                            {differences.netWorthByYear.length > 15 ? (
+                                // Long horizons: truncate to first 10 + separator + last 5.
+                                // With >15 rows the two slices can't overlap.
+                                <>
+                                    {differences.netWorthByYear.slice(0, 10).map(year => (
+                                        <YearRow key={year.year} year={year} forceExact={forceExact} />
+                                    ))}
+                                    <tr>
+                                        <td colSpan={4} className="px-4 py-2 text-center text-content-muted">
+                                            ... {differences.netWorthByYear.length - 15} more years ...
+                                        </td>
+                                    </tr>
+                                    {differences.netWorthByYear.slice(-5).map(year => (
+                                        <YearRow key={`end-${year.year}`} year={year} forceExact={forceExact} />
+                                    ))}
+                                </>
+                            ) : (
+                                // 15 or fewer years: render every row once. Slicing here
+                                // would make slice(0,10) and slice(-5) overlap and render
+                                // the same year twice with no separator (#197).
+                                differences.netWorthByYear.map(year => (
+                                    <YearRow key={year.year} year={year} forceExact={forceExact} />
+                                ))
                             )}
-                            {differences.netWorthByYear.slice(-5).map(year => (
-                                <YearRow key={`end-${year.year}`} year={year} forceExact={forceExact} />
-                            ))}
                         </tbody>
                     </table>
                 </div>
