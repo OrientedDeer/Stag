@@ -1,4 +1,4 @@
-import { AnyAccount, DebtAccount, ESPPAccount, InvestedAccount, PropertyAccount, RSUAccount } from '../../../components/Objects/Accounts/models';
+import { AnyAccount, ESPPAccount, InvestedAccount, RSUAccount } from '../../../components/Objects/Accounts/models';
 import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { AssumptionsState, getBirthYear } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState, resolveTaxEventsForYear } from '../../../components/Objects/Taxes/TaxContext';
@@ -7,24 +7,12 @@ import { buildMilestoneReachYears } from '../../../services/simulation/Milestone
 import { bracketAwareTradExitValue, HEIR_EXIT_RATE } from '../../../services/simulation/RothConversionDP';
 import * as TaxService from '../../../components/Objects/Taxes/TaxService';
 
-export function getAccountTotals(accounts: AnyAccount[]): { assets: number; liabilities: number; netWorth: number } {
-    let assets = 0;
-    let liabilities = 0;
-
-    for (const acc of accounts) {
-        if (acc instanceof DebtAccount) {
-            liabilities += acc.amount;
-        } else {
-            assets += acc.amount;
-            // PropertyAccount has a loan that counts as liability
-            if (acc instanceof PropertyAccount && acc.loanAmount) {
-                liabilities += acc.loanAmount;
-            }
-        }
-    }
-
-    return { assets, liabilities, netWorth: assets - liabilities };
-}
+// getAccountTotals is the app's canonical net-worth definition. It now lives in
+// a provider-neutral module next to the account models so services (Excel export,
+// projection history) can single-source it without importing from src/tabs.
+// Re-exported here so every existing importer keeps its FutureUtils import path.
+export { getAccountTotals } from '../../../components/Objects/Accounts/accountTotals';
+import { getAccountTotals } from '../../../components/Objects/Accounts/accountTotals';
 
 export function calculateNetWorth(accounts: AnyAccount[]): number {
     return getAccountTotals(accounts).netWorth;

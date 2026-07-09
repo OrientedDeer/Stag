@@ -5,6 +5,7 @@ import ExcelJS from 'exceljs';
 import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
 import { MonteCarloSummary, MonteCarloConfig } from './MonteCarloTypes';
 import { AnyAccount, InvestedAccount, SavedAccount, PropertyAccount, DebtAccount, DeficitDebtAccount } from '../components/Objects/Accounts/models';
+import { getAccountTotals } from '../components/Objects/Accounts/accountTotals';
 import { AnyIncome } from '../components/Objects/Income/models';
 import { AnyExpense } from '../components/Objects/Expense/models';
 import { TaxState } from '../components/Objects/Taxes/TaxContext';
@@ -60,26 +61,6 @@ function formatCurrency(value: number): number {
 
 function getAge(year: number, assumptions: AssumptionsState): number {
     return year - getBirthYear(assumptions.milestones);
-}
-
-// Net-worth totals mirroring the app's canonical getAccountTotals (FutureUtils):
-// a financed PropertyAccount carries its outstanding mortgage in `loanAmount`,
-// which is a liability. Counting only the home's value as an asset (and ignoring
-// the mortgage) overstates net worth by the entire outstanding principal.
-function accountNetWorthTotals(accounts: AnyAccount[]): { assets: number; liabilities: number; netWorth: number } {
-    let assets = 0;
-    let liabilities = 0;
-    for (const acc of accounts) {
-        if (acc instanceof DebtAccount || acc instanceof DeficitDebtAccount) {
-            liabilities += acc.amount;
-        } else {
-            assets += acc.amount;
-            if (acc instanceof PropertyAccount && acc.loanAmount) {
-                liabilities += acc.loanAmount;
-            }
-        }
-    }
-    return { assets, liabilities, netWorth: assets - liabilities };
 }
 
 function generateFilename(): string {
@@ -166,7 +147,7 @@ export function buildSummarySheet(data: ExportData): SheetContent {
         const netSavings = year.cashflow.totalInvested;
 
         // Net worth via the canonical math (mortgage principal counts as a liability).
-        const netWorth = accountNetWorthTotals(year.accounts).netWorth;
+        const netWorth = getAccountTotals(year.accounts).netWorth;
 
         rows.push([
             year.year,
@@ -224,7 +205,7 @@ export function buildAccountsSheet(data: ExportData): SheetContent {
         // mortgage (PropertyAccount.loanAmount) lands in Total Debt and doesn't
         // overstate Net Worth. Iterates the real accounts (not the deduped name
         // list), so same-named accounts are all counted.
-        const { assets: totalAssets, liabilities: totalDebt, netWorth } = accountNetWorthTotals(year.accounts);
+        const { assets: totalAssets, liabilities: totalDebt, netWorth } = getAccountTotals(year.accounts);
 
         rows.push([
             year.year,
