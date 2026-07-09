@@ -78,6 +78,18 @@ export const getLifeExpectancy = (milestones: CustomMilestone[]): number => {
 };
 
 /**
+ * Number of years a lifetime projection runs: life-expectancy age minus the
+ * current age, floored at 1 so a plan whose horizon has already passed still
+ * simulates at least one year. SINGLE SOURCE for the plan horizon — the Future
+ * and Withdrawal tabs (buildProjection) and the scenario-comparison run
+ * (ScenarioContext) all derive their `yearsToRun` from here, so a horizon change
+ * can't drift between the current plan and a scenario and reintroduce the fake
+ * tail divergence #183 fixed.
+ */
+export const planHorizonYears = (assumptions: AssumptionsState, currentAge: number): number =>
+    Math.max(1, getLifeExpectancy(assumptions.milestones) - currentAge);
+
+/**
  * Default estimated annual ACA premium subsidy lost when a pre-65 year's MAGI
  * reaches the 400%-FPL cliff. Single source for the engine's real cash charge
  * (YearSolver), the DP seed's shadow penalty (RothConversionDP), and the

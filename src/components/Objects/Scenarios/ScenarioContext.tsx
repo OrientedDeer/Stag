@@ -30,7 +30,7 @@ import {
     defaultAssumptions,
     migrateAssumptions,
     getBirthYear,
-    getLifeExpectancy,
+    planHorizonYears,
 } from '../Assumptions/AssumptionsContext';
 import { TaxState } from '../Taxes/TaxContext';
 import { AmountHistoryEntry } from '../Accounts/AccountContext';
@@ -431,11 +431,11 @@ export const ScenarioProvider = ({ children }: { children: ReactNode }) => {
         // Current Plan simulates lifeExpectancy − currentAge years (54 on the
         // default demo data), so a fixed 50 left the scenario's tail short and
         // compareScenarios back-filled the missing years with `?? 0` — a fake
-        // $0-net-worth collapse in the final plan years. Derive it exactly as
-        // buildProjection does.
+        // $0-net-worth collapse in the final plan years. `planHorizonYears` is
+        // the single source buildProjection uses too.
         const currentYear = new Date().getFullYear();
         const currentAge = currentYear - getBirthYear(assumptions.milestones);
-        const yearsToRun = Math.max(1, getLifeExpectancy(assumptions.milestones) - currentAge);
+        const yearsToRun = planHorizonYears(assumptions, currentAge);
         const effectiveTaxState = inputs.taxSettings || taxState;
         let simulation: SimulationYear[];
         if (!assumptions.investments.taxOptimizationEnabled) {

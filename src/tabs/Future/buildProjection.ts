@@ -1,4 +1,4 @@
-import { AssumptionsState, getBirthYear, getLifeExpectancy } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, getBirthYear, planHorizonYears } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { AnyAccount } from '../../components/Objects/Accounts/models';
 import { AnyIncome } from '../../components/Objects/Income/models';
 import { AnyExpense } from '../../components/Objects/Expense/models';
@@ -30,7 +30,7 @@ export function buildProjection(
     const currentYear = today.getFullYear();
     const startYear = assumptions.demographics.priorYearMode ? currentYear - 1 : currentYear;
     const currentAge = currentYear - getBirthYear(assumptions.milestones);
-    const yearsToRun = Math.max(1, getLifeExpectancy(assumptions.milestones) - currentAge);
+    const yearsToRun = planHorizonYears(assumptions, currentAge);
     const remainderGoals = (cachedSimulation.find(s => s.year === startYear + 1)?.cashflow.bucketDetail
         ?? cachedSimulation.find(s => s.year === startYear)?.cashflow.bucketDetail
         ?? {});
@@ -80,7 +80,7 @@ export async function buildProjectionAsync(
     const currentYear = today.getFullYear();
     const startYear = assumptions.demographics.priorYearMode ? currentYear - 1 : currentYear;
     const currentAge = currentYear - getBirthYear(assumptions.milestones);
-    const yearsToRun = Math.max(1, getLifeExpectancy(assumptions.milestones) - currentAge);
+    const yearsToRun = planHorizonYears(assumptions, currentAge);
     const remainderGoals = (cachedSimulation.find(s => s.year === startYear + 1)?.cashflow.bucketDetail
         ?? cachedSimulation.find(s => s.year === startYear)?.cashflow.bucketDetail
         ?? {});
