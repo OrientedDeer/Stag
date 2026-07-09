@@ -25,6 +25,7 @@ import {
 } from "./types";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
 import { getLTCGRate as getLTCGRateForIncome } from "../../components/Objects/Taxes/taxService/capitalGainsTax";
+import { midYearSaleDate } from "./dates";
 import { TaxBracket } from "../../data/TaxData";
 
 // =============================================================================
@@ -469,8 +470,10 @@ export function createOrderedSnapshots(
      */
     honorLiteralOrder: boolean = false,
 ): AccountBalanceSnapshot[] {
-    // Use mid-year date for ESPP disposition calculations
-    const snapshotDate = year ? new Date(year, 5, 15) : undefined;
+    // Use mid-year date for ESPP disposition calculations. Shared with the two
+    // AccountGrowth sale sites via midYearSaleDate so the lots removed there match
+    // the lots taxed here (#179 coordination constraint).
+    const snapshotDate = year ? midYearSaleDate(year) : undefined;
     // #155: year for aging Roth conversion layers (5-year rule) in the penalty
     // split. Falls back to today, matching createAccountSnapshot's
     // `snapshotDate ?? new Date()` convention; YearSolver always passes `year`.

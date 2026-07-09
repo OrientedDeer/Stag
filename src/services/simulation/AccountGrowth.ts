@@ -5,6 +5,7 @@ import { AnyIncome, WorkIncome, getIncomeActiveMultiplier } from "../../componen
 import { AssumptionsState } from "../../components/Objects/Assumptions/AssumptionsContext";
 import { getESPPLimit, get415cLimit } from "../../data/ContributionLimits";
 import { WithdrawalState } from "./types";
+import { midYearSaleDate } from "./dates";
 
 export interface InflowResult {
     totalEmployerMatch: number;
@@ -423,14 +424,14 @@ export function growAccounts(
                             ? pref
                             : 'fifo';
                     // Classify lots at the SAME mid-year sale date the planner used to
-                    // tax them (WithdrawalPlanner: new Date(year, 5, 15)). With a
-                    // wall-clock `new Date()` here, qualifying_first/disqualifying_first
-                    // would sort lots by a DIFFERENT disposition boundary than the tax
-                    // was computed at, so the lots removed would diverge from the lots
-                    // taxed and corrupt future-year lot state (#179). Both sides use
-                    // all lots (getEligibleLots is skipped consistently on both), so
-                    // only the date needed to be aligned.
-                    const saleDate = new Date(year, 5, 15);
+                    // tax them (shared midYearSaleDate helper). With a wall-clock
+                    // `new Date()` here, qualifying_first/disqualifying_first would sort
+                    // lots by a DIFFERENT disposition boundary than the tax was computed
+                    // at, so the lots removed would diverge from the lots taxed and
+                    // corrupt future-year lot state (#179). Both sides use all lots
+                    // (getEligibleLots is skipped consistently on both), so only the
+                    // date needed to be aligned.
+                    const saleDate = midYearSaleDate(year);
                     workingAccount = workingAccount.removeSoldShares(sharesToSell, fmvPerShare, saleDate, lotOrder);
                 }
             }
@@ -464,7 +465,7 @@ export function growAccounts(
                 const fmvPerShare = workingAccount.currentSharePrice
                     ?? (totalShares > 0 ? workingAccount.amount / totalShares : 0);
                 if (fmvPerShare > 0) {
-                    const saleDate = new Date(year, 5, 15);
+                    const saleDate = midYearSaleDate(year);
                     const eligibleShares = workingAccount.getEligibleShares(saleDate);
                     const sharesToSell = Math.min(eligibleShares, grossWithdrawn / fmvPerShare);
                     if (sharesToSell > 0) {
