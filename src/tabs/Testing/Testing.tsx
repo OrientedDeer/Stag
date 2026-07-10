@@ -10,11 +10,13 @@ import { NumberInput } from '../../components/Layout/InputFields/NumberInput';
 import { DropdownInput } from '../../components/Layout/InputFields/DropdownInput';
 import { ToggleInput } from '../../components/Layout/InputFields/ToggleInput';
 import { AssumptionsContext, getRetirementAge, getLifeExpectancy, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
+import type { AssumptionsState } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
 import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
+import type { TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
 import { computeEOYBudgetContributions } from '../../services/eoyContributionProjection';
 import { toLocalDateString } from '../Budget/transactions/utils';
@@ -25,7 +27,6 @@ import { getSimulationInputHash } from '../../services/simulationHash';
 import {
     getTaxParameters,
     getMarginalTaxRate,
-    getCombinedMarginalRate,
     getGrossIncome,
     getPreTaxExemptions,
     getEarnedIncome,
@@ -34,6 +35,7 @@ import {
     getItemizedDeductions,
     getYesDeductions,
     getSALTCap,
+    getEffectiveDeduction,
 } from '../../components/Objects/Taxes/TaxService';
 import {
     extractEarningsFromSimulation,
@@ -87,6 +89,66 @@ const toCurrency = (num: number) =>
 
 const toCurrencyShort = (num: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(num);
+
+/**
+ * Working-year federal + state marginal rate (no FICA) for the Testing tab's
+ * pre-tax-vs-Roth 401k comparison.
+ *
+ * #184: rates the FEDERAL bracket against the SAME effective deduction the engine
+ * bills — the itemized/Auto total (#198) and senior 65+ add-ons (#191) that every
+ * engine tax chokepoint routes through `getEffectiveDeduction`, NOT the raw
+ * `standardDeduction` that `getCombinedMarginalRate` subtracts. A working-year
+ * ITEMIZER whose itemized total exceeds the standard deduction otherwise reads one
+ * bracket too high here. The state bracket keeps the raw state standard deduction,
+ * exactly as `getCombinedMarginalRate` computed it (unchanged for that consumer).
+ *
+ * Exported for unit testing.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function getWorkingYearComparisonMarginal(
+    firstYear: SimulationYear,
+    age: number,
+    taxState: TaxState,
+    assumptions: AssumptionsState,
+): { federal: number; state: number; combined: number; federalHeadroom: number } {
+    const grossIncome = getGrossIncome(firstYear.incomes, firstYear.year);
+    const preTaxDed = getPreTaxExemptions(firstYear.incomes, firstYear.year, age);
+    const adjustedGross = Math.max(0, grossIncome - preTaxDed);
+
+    const fedParams = getTaxParameters(firstYear.year, taxState.filingStatus, 'federal', undefined, assumptions);
+    const stateParams = getTaxParameters(firstYear.year, taxState.filingStatus, 'state', taxState.stateResidency, assumptions);
+
+    // Federal bracket against the effective deduction the engine actually bills.
+    // magiProxy ≈ AGI drives only the OBBBA-senior-bonus phaseout; a working-age
+    // filer takes no senior add-on so the proxy is immaterial, but pass adjustedGross
+    // to stay consistent with getOrdinaryMarginalRate. itemizedDeductionTotal is the
+    // engine-precomputed itemized figure carried on the SimulationYear.
+    const fedEffectiveDeduction = fedParams
+        ? getEffectiveDeduction(
+            fedParams,
+            taxState.filingStatus,
+            age,
+            firstYear.year,
+            adjustedGross,
+            firstYear.itemizedDeductionTotal ?? 0,
+            taxState.deductionMethod,
+        )
+        : 0;
+
+    const fed = fedParams
+        ? getMarginalTaxRate(Math.max(0, adjustedGross - fedEffectiveDeduction), fedParams)
+        : { rate: 0, headroom: Infinity };
+    const state = stateParams
+        ? getMarginalTaxRate(Math.max(0, adjustedGross - (stateParams.standardDeduction || 0)), stateParams)
+        : { rate: 0, headroom: Infinity };
+
+    return {
+        federal: fed.rate,
+        state: state.rate,
+        combined: fed.rate + state.rate,
+        federalHeadroom: fed.headroom,
+    };
+}
 
 // ============================================================================
 // COPY-FRIENDLY TEXT SUMMARY
@@ -4364,12 +4426,12 @@ function RothAnalysisDebugTab() {
             const effective = income.getEffective401k(currentYear, age);
             const limit = get401kLimit(currentYear, age);
 
-            // Current marginal rate (fed + state, no FICA)
+            // Current marginal rate (fed + state, no FICA). #184: rates the federal
+            // bracket off the effective (itemized/senior) deduction the engine bills,
+            // not the raw standardDeduction getCombinedMarginalRate would subtract.
             const firstYear = simulation[0];
-            const grossIncome = getGrossIncome(firstYear.incomes, firstYear.year);
-            const preTaxDed = getPreTaxExemptions(firstYear.incomes, firstYear.year, age);
-            const marginal = getCombinedMarginalRate(grossIncome, preTaxDed, taxState, firstYear.year, assumptions, false);
-            const currentMarginalRate = marginal.federal + marginal.state;
+            const marginal = getWorkingYearComparisonMarginal(firstYear, age, taxState, assumptions);
+            const currentMarginalRate = marginal.combined;
 
             // All Pre-Tax path
             const preTaxFutureValue = limit * Math.pow(1 + ror, yearsToRetirement);
@@ -4399,9 +4461,9 @@ function RothAnalysisDebugTab() {
             let optimalSplit: ContributionComparison['optimalSplit'] = null;
             const fedParams = getTaxParameters(currentYear, taxState.filingStatus, 'federal', undefined, assumptions);
             if (fedParams) {
-                const adjustedGross = Math.max(0, grossIncome - preTaxDed);
-                const taxableIncome = Math.max(0, adjustedGross - fedParams.standardDeduction);
-                const bracketInfo = getMarginalTaxRate(taxableIncome, fedParams);
+                // #184: size the bracket fill off the SAME effective-deduction federal
+                // marginal the comparison above uses, not the raw standardDeduction.
+                const bracketInfo = { rate: marginal.federal, headroom: marginal.federalHeadroom };
 
                 if (bracketInfo.rate > retirementRate && bracketInfo.headroom < limit && bracketInfo.headroom > 0) {
                     // Pre-tax to fill current bracket (income above retirement rate), Roth for rest
