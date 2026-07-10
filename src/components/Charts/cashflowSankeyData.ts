@@ -9,7 +9,7 @@ import { WorkIncome, AnyIncome, PassiveIncome } from '../Objects/Income/models';
 import { MortgageExpense, AnyExpense, CLASS_TO_CATEGORY } from '../Objects/Expense/models';
 import { AnyAccount, InvestedAccount, DebtAccount, DeficitDebtAccount } from '../Objects/Accounts/models';
 import { CashflowDetail } from '../../services/simulation/types';
-import { totalTaxesOf } from './taxTotals';
+import { totalTaxesOf, TaxComponents } from './taxTotals';
 
 // Minimum threshold for including a value in the chart (avoids $0 nodes)
 const MIN_DISPLAY_THRESHOLD = 0.005;
@@ -64,16 +64,13 @@ export interface SankeyImbalance {
     difference: number;
 }
 
-export interface SankeyTaxBreakdown {
-    fed: number;
-    state: number;
-    fica: number;
-    capitalGains?: number;
-    withdrawalOrdinaryTax?: number;
-    niit?: number;
-    irmaa?: number;
-    aca?: number;
-}
+/**
+ * The Sankey's per-year tax breakdown. Structurally identical to (and now an alias
+ * of) `TaxComponents` in taxTotals.ts — the 8-component shape `totalTaxesOf` sums —
+ * so the two can't drift. taxTotals owns the canonical definition (it must not import
+ * from this module, to avoid a cycle).
+ */
+export type SankeyTaxBreakdown = TaxComponents;
 
 export interface SankeyRothConversion {
     amount: number;

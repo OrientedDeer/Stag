@@ -80,6 +80,7 @@ import { isSSCoveredForFica } from '../../components/Objects/Taxes/taxService/in
 import { SavedAccount, InvestedAccount, DebtAccount, DeficitDebtAccount, PropertyAccount, ESPPAccount, RSUAccount, AnyAccount } from '../../components/Objects/Accounts/models';
 import { formatCompactCurrency } from '../Future/tabs/FutureUtils';
 import { SimulationYear } from '../../services/simulation/types';
+import { totalTaxesOf } from '../../components/Charts/taxTotals';
 import RothConversionDebugTab from './RothConversionDebug';
 import { Panel, Button } from "../../components/Layout/Primitives";
 
@@ -257,8 +258,7 @@ export function generateYearSummaryText(simYear: SimulationYear, age: number, ac
     const irmaa = simYear.taxDetails.irmaa ?? 0;
     const aca = simYear.taxDetails.aca ?? 0;
     lines.push(`  Cap Gains Tax: ${fmt(simYear.taxDetails.capitalGains)} | Withdrawal Tax: ${fmt(simYear.taxDetails.withdrawalOrdinaryTax)} | NIIT: ${fmt(simYear.taxDetails.niit)} | IRMAA: ${fmt(irmaa)} | ACA Subsidy Loss: ${fmt(aca)} | Early-Withdraw Penalty: ${fmt(penalty)}`);
-    const totalTax = simYear.taxDetails.fed + simYear.taxDetails.state + simYear.taxDetails.fica +
-        simYear.taxDetails.capitalGains + simYear.taxDetails.withdrawalOrdinaryTax + simYear.taxDetails.niit + irmaa + aca;
+    const totalTax = totalTaxesOf(simYear.taxDetails);
     lines.push(`  Total: ${fmt(totalTax)}`);
     lines.push('');
 
@@ -1875,7 +1875,7 @@ function TaxDebugTab() {
             const aca = s.taxDetails.aca ?? 0;
             const penalty = s.taxDetails.earlyWithdrawalPenalty ?? 0;
             return {
-                total: acc.total + fed + state + fica + cg + wot + niit + irmaa + aca,
+                total: acc.total + totalTaxesOf(s.taxDetails),
                 federal: acc.federal + fed,
                 state: acc.state + state,
                 fica: acc.fica + fica,
