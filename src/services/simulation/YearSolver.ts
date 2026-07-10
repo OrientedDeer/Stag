@@ -1675,14 +1675,16 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // figure (mirrors year-0's totalPreTaxDeductions). In this retirement path every
     // preTaxDeductions consumer is a federal/state TAX call — the deficit/cash math
     // uses effectiveLivingExpenses, not this value — so adding it here never
-    // double-counts the (still-cash) expense.
-    const roughPreTaxDeductions = TaxService.getPreTaxExemptions(input.incomes, input.year, input.currentAge, true)
+    // double-counts the (still-cash) expense. Computed once here and reused for both
+    // the rough (pre-conversion) and the authoritative (post-conversion) tax calls —
+    // input.incomes/year/currentAge/expenseAboveLineDeductions don't change in between.
+    const preTaxDeductions = TaxService.getPreTaxExemptions(input.incomes, input.year, input.currentAge, true)
         + (input.expenseAboveLineDeductions ?? 0);
     const roughFedTax = TaxService.calculateTotalFederalTax(
         taxableBase - socialSecurityBenefits, // non-SS ordinary income (baseOrdinaryIncome holds taxable SS)
         socialSecurityBenefits,
         0, 0, // no STCG/LTCG
-        roughPreTaxDeductions,
+        preTaxDeductions,
         input.taxState.filingStatus,
         fedParams
     ).totalTax;
@@ -1691,7 +1693,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         // it), mirroring the authoritative state calc below. baseOrdinaryIncome
         // folds in taxable SS, so use the non-SS ordinary income — the same base
         // the rough federal calc above uses.
-        ? TaxService.calculateTax(taxableBase - socialSecurityBenefits, roughPreTaxDeductions, stateParams)
+        ? TaxService.calculateTax(taxableBase - socialSecurityBenefits, preTaxDeductions, stateParams)
         : 0;
     const roughFica = TaxService.calculateFicaTax(input.taxState, input.incomes, input.year, input.assumptions);
     const roughTax = roughFedTax + roughStateTax + roughFica;
@@ -1768,12 +1770,11 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // We'll calculate final tax after knowing withdrawals (for LTCG)
 
     // Step D: Calculate base deficit
-    // Start with conservative estimate (no LTCG tax yet)
-    // #198: include the above-the-line "Yes" expense deductions in the tax base. Every
-    // consumer below is a federal/state tax call (the retirement deficit runs off
-    // effectiveLivingExpenses, not this figure), so this stays cash-safe.
-    const preTaxDeductions = TaxService.getPreTaxExemptions(input.incomes, input.year, input.currentAge, true)
-        + (input.expenseAboveLineDeductions ?? 0);
+    // Start with conservative estimate (no LTCG tax yet). Uses the `preTaxDeductions`
+    // computed above (Step A) — #198: it already includes the above-the-line "Yes"
+    // expense deductions in the tax base; every consumer below is a federal/state tax
+    // call (the retirement deficit runs off effectiveLivingExpenses, not this figure),
+    // so this stays cash-safe.
 
     // Step D+E: Iterative LTCG-aware deficit and withdrawal planning
     //
@@ -2781,15 +2782,18 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         // so the loop converges after one pass, byte-identical to the prior single pass.
         const MAX_WORKING_ITERATIONS = 6;
         let currentDeficit = initialDeficit;
+        // Taxable SS folded into the planner's income position each iteration (the
+        // working-year SS torpedo). Iteration N+1's top-of-loop value is by construction
+        // identical to iteration N's post-planning value — same combined-income formula
+        // and the realized-income vars it depends on don't change between them — so it's
+        // computed once per iteration and carried forward. The pre-loop seed reproduces
+        // iteration 0's original top-of-loop value: all realized estimates are still 0,
+        // so combinedExSS == baseExSS.
+        let iterTaxableSS = socialSecurityBenefits > 0
+            ? TaxService.getTaxableSocialSecurityBenefits(
+                socialSecurityBenefits, baseExSS, 0, input.taxState.filingStatus)
+            : 0;
         for (let iter = 0; iter < MAX_WORKING_ITERATIONS; iter++) {
-            // Recompute taxable SS with this iteration's deficit-funding ordinary income
-            // + gains folded into combined income (the working-year SS torpedo). The
-            // first pass uses the base position (all estimates 0).
-            const combinedExSS = baseExSS + withdrawalOrdinaryIncome + realizedLTCG + Math.max(0, realizedSTCG);
-            const iterTaxableSS = socialSecurityBenefits > 0
-                ? TaxService.getTaxableSocialSecurityBenefits(
-                    socialSecurityBenefits, combinedExSS, 0, input.taxState.filingStatus)
-                : 0;
             // #175/4: position the planner's LTCG bracket + gross-up at base ordinary +
             // the TAXABLE portion of SS (mirrors the retirement path), not 100% of SS —
             // over-counting SS could push realized LTCG from the 0% into the 15% bracket.
@@ -2828,16 +2832,18 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
             withdrawalDecisions = withdrawalResult.decisions;
 
             // Recompute taxable SS with THIS iteration's realized withdrawal + gains
-            // (the top-of-loop iterTaxableSS lagged one iteration — it used the prior
-            // pass's withdrawal, 0 on the first — so the torpedo and the grown deficit
-            // must use the post-planning value or the loop converges before the torpedo
-            // propagates).
+            // (the carried-in iterTaxableSS lagged one iteration — it used the prior
+            // pass's withdrawal, seeded at 0 on the first — so the torpedo and the grown
+            // deficit must use the post-planning value or the loop converges before the
+            // torpedo propagates). This post-planning value is also carried forward as the
+            // next iteration's iterTaxableSS (they are the same value by construction).
             const postCombinedExSS = baseExSS + withdrawalOrdinaryIncome + realizedLTCG + Math.max(0, realizedSTCG);
             const postTaxableSS = socialSecurityBenefits > 0
                 ? TaxService.getTaxableSocialSecurityBenefits(
                     socialSecurityBenefits, postCombinedExSS, 0, input.taxState.filingStatus)
                 : 0;
             effectiveTaxableSS = postTaxableSS;
+            iterTaxableSS = postTaxableSS;
 
             // NIIT (3.8%) on realized gains. Fold the deficit-funding Traditional
             // withdrawal into the ordinary base so the internal MAGI/SS-taxability see it;
