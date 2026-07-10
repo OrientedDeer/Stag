@@ -217,17 +217,33 @@ export function analyzeTaxSituation(
     // Calculate effective rate
     const effectiveRate = grossIncome > 0 ? totalTax / grossIncome : 0;
 
-    // Get marginal rate breakdown
-    const marginal = TaxService.getCombinedMarginalRate(
-        grossIncome,
-        preTaxDeductions,
-        taxState,
-        year,
-        assumptions,
-        includesFICA,
-        earnedBase,
-        ssCoveredEarnedBase
-    );
+    // Federal + state ORDINARY marginal on the same corrected base generateTaxProjections
+    // uses (#184): getOrdinaryMarginalRate prices the bracket on getOrdinaryAGI — RMDs /
+    // non-RMD Traditional withdrawals / taxable-portion SS folded in — against the SAME
+    // effective deduction the engine bills (senior 65+ add-ons #191, itemized/Auto #198)
+    // and rates the state bracket on the SS-excluded base (the engine never bills state
+    // tax on SS). The old getCombinedMarginalRate path rated the federal bracket against
+    // the RAW standardDeduction on a getGrossIncome base, so an age-70 retiree reported
+    // 24% here while generateTaxProjections correctly reported the engine's 22% — the two
+    // Tax-Optimization surfaces disagreed. Routing both through this one helper makes them
+    // agree by construction. FICA is not an ordinary-income tax, so it is added separately.
+    const ordinaryMarginal = getOrdinaryMarginalRate(simulationYear, age, taxState, assumptions);
+
+    // FICA marginal keys off earned WAGES (not age); reuse getCombinedMarginalRate's FICA
+    // logic only — mirroring generateTaxProjections. The earned-base args keep the 6.2% SS
+    // / 0.9% surtax thresholds tied to wages, not total gross.
+    const ficaRate = includesFICA
+        ? TaxService.getCombinedMarginalRate(
+            grossIncome,
+            preTaxDeductions,
+            taxState,
+            year,
+            assumptions,
+            true,
+            earnedBase,
+            ssCoveredEarnedBase
+        ).fica
+        : 0;
 
     // Get contribution info
     const current401k = get401kContributions(incomes, year, age);
@@ -244,13 +260,13 @@ export function analyzeTaxSituation(
         totalTax,
         effectiveRate,
         marginalRate: {
-            federal: marginal.federal,
-            state: marginal.state,
-            fica: marginal.fica,
-            combined: marginal.combined
+            federal: ordinaryMarginal.federal,
+            state: ordinaryMarginal.state,
+            fica: ficaRate,
+            combined: ordinaryMarginal.combined + ficaRate
         },
-        federalBracket: marginal.federal * 100, // Convert to percentage
-        federalHeadroom: marginal.federalHeadroom,
+        federalBracket: ordinaryMarginal.federal * 100, // Convert to percentage
+        federalHeadroom: ordinaryMarginal.federalHeadroom,
         preTaxContributions: {
             current401k,
             limit401k: get401kLimit(year, age),
@@ -393,13 +409,30 @@ export function getProjectedRMDMarginalRate(
     const reachYears = buildMilestoneReachYears(simulation);
     const effTaxAt = (year: number): TaxState => resolveTaxEventsForYear(taxState, year, reachYears);
 
-    // Combined fed+state marginal rate on the top dollar of `ordinaryIncome`.
-    const combinedMarginalAt = (year: number, ordinaryIncome: number): number => {
+    // Combined fed+state marginal rate on the top ordinary dollar. Federal taxes the
+    // taxable-SS portion, state does not, so the base is split (#184): federal rates
+    // (agiExcludingSS + taxableSS) against the effective deduction the engine bills
+    // (senior 65+ add-ons #191, itemized/Auto #198 — RMD-era years are always senior-
+    // eligible, so the raw standardDeduction reported one bracket too high), while state
+    // rates agiExcludingSS alone (the engine never bills state tax on SS, 6c19b83).
+    const combinedMarginalAt = (
+        year: number,
+        agiExcludingSS: number,
+        taxableSS: number,
+        age: number,
+        itemizedTotal: number,
+    ): number => {
         const eff = effTaxAt(year);
         const fedParams = TaxService.getTaxParameters(year, eff.filingStatus, 'federal', undefined, assumptions);
         const stateParams = TaxService.getTaxParameters(year, eff.filingStatus, 'state', eff.stateResidency, assumptions);
-        const fedRate = fedParams ? TaxService.getMarginalTaxRate(Math.max(0, ordinaryIncome - (fedParams.standardDeduction || 0)), fedParams).rate : 0;
-        const stateRate = stateParams ? TaxService.getMarginalTaxRate(Math.max(0, ordinaryIncome - (stateParams.standardDeduction || 0)), stateParams).rate : 0;
+        const fedAGI = agiExcludingSS + taxableSS;
+        const fedEffectiveDeduction = fedParams
+            ? TaxService.getEffectiveDeduction(
+                fedParams, eff.filingStatus, age, year, fedAGI, itemizedTotal, eff.deductionMethod,
+            )
+            : 0;
+        const fedRate = fedParams ? TaxService.getMarginalTaxRate(Math.max(0, fedAGI - fedEffectiveDeduction), fedParams).rate : 0;
+        const stateRate = stateParams ? TaxService.getMarginalTaxRate(Math.max(0, agiExcludingSS - (stateParams.standardDeduction || 0)), stateParams).rate : 0;
         return fedRate + stateRate;
     };
 
@@ -418,7 +451,12 @@ export function getProjectedRMDMarginalRate(
         // Traditional dollars hit. Weight by the balance being taxed.
         if (simYear.year >= rmdStartYear) {
             const age = simYear.year - birthYear;
-            const rate = combinedMarginalAt(simYear.year, getOrdinaryAGI(simYear, age, effTaxAt(simYear.year).filingStatus));
+            const { agiExcludingSS, taxableSS } = getOrdinaryAGIComponents(
+                simYear, age, effTaxAt(simYear.year).filingStatus,
+            );
+            const rate = combinedMarginalAt(
+                simYear.year, agiExcludingSS, taxableSS, age, simYear.itemizedDeductionTotal ?? 0,
+            );
             weightedRateSum += rate * tradBalance;
             weightSum += tradBalance;
         }
@@ -437,8 +475,20 @@ export function getProjectedRMDMarginalRate(
     // runs only here (not per-year) since the peak's income is only needed now.
     if (!peakSimYear) return null;
     const peakAge = peakSimYear.year - birthYear;
-    const otherAGI = Math.max(0, getOrdinaryAGI(peakSimYear, peakAge, effTaxAt(peakSimYear.year).filingStatus) - (peakSimYear.rmdDetails?.totalWithdrawn ?? 0));
-    return combinedMarginalAt(peakSimYear.year, otherAGI + peakBalance / PEAK_RMD_DIVISOR);
+    const { agiExcludingSS: peakNonSS, taxableSS: peakTaxableSS } = getOrdinaryAGIComponents(
+        peakSimYear, peakAge, effTaxAt(peakSimYear.year).filingStatus,
+    );
+    // Value the peak balance at the rate a hypothetical RMD off it would face. RMD is
+    // non-SS ordinary income, so swap the actual withdrawn RMD out of the non-SS base
+    // for the hypothetical peak-RMD; taxable SS stays separate so state still excludes it.
+    const otherNonSS = Math.max(0, peakNonSS - (peakSimYear.rmdDetails?.totalWithdrawn ?? 0));
+    return combinedMarginalAt(
+        peakSimYear.year,
+        otherNonSS + peakBalance / PEAK_RMD_DIVISOR,
+        peakTaxableSS,
+        peakAge,
+        peakSimYear.itemizedDeductionTotal ?? 0,
+    );
 }
 
 /**
@@ -640,7 +690,22 @@ export function findRothConversionWindows(
         // simYear.incomes; the conversion is excluded since we're sizing the room
         // available before converting.
         const ordinaryAGI = getOrdinaryAGI(simYear, age, filingStatus);
-        const taxableIncome = Math.max(0, ordinaryAGI - fedParams.standardDeduction);
+        // #184: subtract the effective deduction the engine bills (senior 65+ add-ons
+        // #191, itemized/Auto #198), not the raw standardDeduction — these are post-
+        // retirement years (age >= retirementAge, often senior-eligible), so the raw
+        // deduction overstated taxable income and understated the conversion room,
+        // reading one bracket too high. `ordinaryAGI` doubles as the MAGI proxy for the
+        // OBBBA-bonus phaseout, mirroring getOrdinaryMarginalRate / YearSolver / the DP.
+        const fedEffectiveDeduction = TaxService.getEffectiveDeduction(
+            fedParams,
+            filingStatus,
+            age,
+            simYear.year,
+            ordinaryAGI,
+            simYear.itemizedDeductionTotal ?? 0,
+            taxState?.deductionMethod ?? 'Standard',
+        );
+        const taxableIncome = Math.max(0, ordinaryAGI - fedEffectiveDeduction);
 
         // Get current bracket info
         const marginalInfo = TaxService.getMarginalTaxRate(taxableIncome, fedParams);

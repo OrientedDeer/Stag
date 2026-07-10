@@ -39,7 +39,7 @@ import { SimulationYear } from '../../services/simulation/types';
 import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { WorkIncome, PassiveIncome, CurrentSocialSecurityIncome } from '../../components/Objects/Income/models';
-import { getTaxParameters } from '../../components/Objects/Taxes/TaxService';
+import { getTaxParameters, getEffectiveDeduction } from '../../components/Objects/Taxes/TaxService';
 
 // ============================================================================
 // Helper Functions for Creating Test Data
@@ -997,8 +997,9 @@ describe('findRothConversionWindows', () => {
             expect(result[0].marginalRate).toBeLessThan(0.22); // Less than MIN_CONVERSION_TARGET_RATE
         });
 
-        it('applies the standard deduction when sizing headroom (regression: not gross/AGI)', () => {
+        it('applies the effective deduction when sizing headroom (regression: not gross/AGI)', () => {
             const retirementYear = birthYear + retirementAge;
+            const age = retirementYear - birthYear; // 65 → senior-eligible
             const grossOrdinary = 30000;
             const rental = new PassiveIncome(
                 'rental', 'Rental Income', grossOrdinary, 'Annually', 'No', 'Rental',
@@ -1015,14 +1016,21 @@ describe('findRothConversionWindows', () => {
             expect(result.length).toBe(1);
 
             const fedParams = getTaxParameters(retirementYear, 'Single', 'federal', undefined, assumptions)!;
-            const taxableIncome = Math.max(0, grossOrdinary - fedParams.standardDeduction);
+            // #184: the room must be sized off the SAME effective deduction the engine
+            // bills — this retiree is 65 (senior-eligible), so the deduction is the raw
+            // standard deduction PLUS the 65+ add-on, not the raw standardDeduction alone.
+            const effectiveDeduction = getEffectiveDeduction(
+                fedParams, 'Single', age, retirementYear, grossOrdinary, 0, 'Standard',
+            );
+            expect(effectiveDeduction).toBeGreaterThan(fedParams.standardDeduction);
+            const taxableIncome = Math.max(0, grossOrdinary - effectiveDeduction);
             const expectedOptimal = getIncomeThresholdForRate(0.22, fedParams) - taxableIncome;
             expect(result[0].optimalConversionAmount).toBeCloseTo(expectedOptimal, 0);
 
-            // The pre-fix value (no standard deduction) would be smaller by exactly
-            // one standard deduction — guard against regressing to that.
+            // The pre-fix value (no deduction at all) would be smaller by exactly one
+            // effective deduction — guard against regressing to a gross/AGI base.
             const buggyOptimal = getIncomeThresholdForRate(0.22, fedParams) - grossOrdinary;
-            expect(result[0].optimalConversionAmount - buggyOptimal).toBeCloseTo(fedParams.standardDeduction, 0);
+            expect(result[0].optimalConversionAmount - buggyOptimal).toBeCloseTo(effectiveDeduction, 0);
         });
     });
 
