@@ -12,7 +12,7 @@ interface SideBySideViewProps {
  * (#197): render an em-dash, not a fabricated $0, and don't color a missing
  * delta (null <= 0 would falsely read as a positive/tie).
  */
-const YearRow: React.FC<{ year: YearComparison; forceExact: boolean; keyPrefix?: string }> = ({ year, forceExact }) => {
+const YearRow: React.FC<{ year: YearComparison; forceExact: boolean }> = ({ year, forceExact }) => {
     const deltaKnown = year.delta !== null;
     const dash = '—';
     const baselineAhead = deltaKnown && year.delta! <= 0;

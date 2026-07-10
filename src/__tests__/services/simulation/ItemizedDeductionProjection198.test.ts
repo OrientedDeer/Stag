@@ -4,10 +4,10 @@
  * (`calculateFederalTaxFromIncomes`) already does.
  *
  * Before this fix the three engine tax-deduction chokepoints (YearSolver
- * retirement + working paths, buildDPYearContexts) called
- * getEffectiveStandardDeduction, which returns the STANDARD path only — so an
- * itemizing mortgage-holder saw the deduction on the Taxes tab (year 0) but in NO
- * projected year: a year0→year1 tax cliff and biased Roth headroom.
+ * retirement + working paths, buildDPYearContexts) applied the STANDARD path
+ * only — so an itemizing mortgage-holder saw the deduction on the Taxes tab
+ * (year 0) but in NO projected year: a year0→year1 tax cliff and biased Roth
+ * headroom.
  *
  * The fix generalizes the helper to getEffectiveDeduction(..., itemizedTotal,
  * deductionMethod) = max(standardPath, itemizedPath) for 'Auto', and precomputes
@@ -21,10 +21,7 @@
 import { describe, it, expect } from 'vitest';
 
 import * as TaxService from '../../../components/Objects/Taxes/TaxService';
-import {
-    getEffectiveDeduction,
-    getEffectiveStandardDeduction,
-} from '../../../components/Objects/Taxes/taxService/federalTax';
+import { getEffectiveDeduction } from '../../../components/Objects/Taxes/taxService/federalTax';
 import { getItemizedDeductions } from '../../../components/Objects/Taxes/taxService/deductions';
 import { runSimulation } from '../../../components/Objects/Assumptions/useSimulation';
 import {
@@ -51,14 +48,6 @@ function fedParamsFor(filing: TaxState['filingStatus'], assumptions?: Assumption
 }
 
 describe('getEffectiveDeduction (#198 unit)', () => {
-    it('is byte-identical to getEffectiveStandardDeduction on the Standard path (itemized=0)', () => {
-        const p = fedParamsFor('Single');
-        for (const [age, magi] of [[40, 50_000], [66, 40_000], [66, 175_000]] as const) {
-            expect(getEffectiveDeduction(p, 'Single', age, UNIT_YEAR, magi, 0, 'Standard'))
-                .toBe(getEffectiveStandardDeduction(p, 'Single', age, UNIT_YEAR, magi));
-        }
-    });
-
     it("'Standard' ignores the itemized total entirely", () => {
         const p = fedParamsFor('Single');
         expect(getEffectiveDeduction(p, 'Single', 40, UNIT_YEAR, 50_000, 999_999, 'Standard'))

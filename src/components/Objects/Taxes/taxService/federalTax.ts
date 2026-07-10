@@ -89,50 +89,9 @@ function getFederalSeniorDeduction(
 }
 
 /**
- * Effective STANDARD-path deduction for a given year: the base standard deduction
- * plus BOTH federal 65+ add-ons (the permanent regular additional standard
- * deduction AND the OBBBA senior bonus, phased on `magiProxy`).
- *
- * Exists so the year-by-year simulation engine (YearSolver / RothConversionDP),
- * which computes tax by calling `calculateTotalFederalTax` directly with
- * `fedParams.standardDeduction`, gets the SAME senior deduction the year-0
- * Taxes-tab orchestrator (`calculateFederalTaxFromIncomes`) already applies —
- * closing the year-0-vs-projection asymmetry (#191) where a 65+ retiree saw the
- * senior deduction on the Taxes tab but not in any projected year. The engine
- * only ever takes the STANDARD path, so this folds both add-ons into one figure
- * it can drop into `fedParams.standardDeduction`.
- *
- * `magiProxy` (≈ AGI) drives only the OBBBA-bonus phaseout; the regular add-on is
- * unconditional for a senior filer. Callers that can't cheaply build a full MAGI
- * may pass a pre-withdrawal proxy — the regular add-on (the dominant dollar
- * effect) is unaffected and the bonus phaseout degrades gracefully.
- *
- * @param fedParams - Federal tax parameters (carry the senior fields)
- * @param filingStatus - Filing status (drives the MFJ per-person doubling)
- * @param age - Taxpayer age in the tax year (undefined ⇒ base deduction only)
- * @param year - Tax year (gates the OBBBA bonus to 2025–2028)
- * @param magiProxy - MAGI proxy (≈ AGI) for the OBBBA bonus phaseout
- * @returns base standard deduction + regular 65+ add-on + (phased) OBBBA bonus
- */
-export function getEffectiveStandardDeduction(
-    fedParams: TaxParameters,
-    filingStatus: FilingStatus,
-    age: number | undefined,
-    year: number,
-    magiProxy: number,
-): number {
-    // Thin wrapper over getEffectiveDeduction: itemizedTotal=0, method='Standard'
-    // resolves to exactly `standardDeduction + regular + bonus` — byte-identical to
-    // the pre-#198 body, so every not-yet-migrated caller stays unchanged.
-    return getEffectiveDeduction(
-        fedParams, filingStatus, age, year, magiProxy, 0, "Standard",
-    );
-}
-
-/**
- * Effective per-year deduction the engine bills a filer, generalizing
- * getEffectiveStandardDeduction to honor ITEMIZED and 'Auto' deduction methods in
- * projected years (#198). Mirrors the year-0 orchestrator
+ * Effective per-year deduction the engine bills a filer, honoring the STANDARD,
+ * ITEMIZED and 'Auto' deduction methods in projected years (#191/#198). Mirrors
+ * the year-0 orchestrator
  * (`calculateFederalTaxFromIncomes`) component-for-component so an itemizing
  * mortgage-holder sees the deduction (and the year it flips back to standard as the
  * loan amortizes) in every projected year, not just year 0.

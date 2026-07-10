@@ -10,13 +10,14 @@
  * asymmetry that overstated projected taxes and biased Roth conversion
  * headroom.
  *
- * The fix exposes getEffectiveStandardDeduction (federalTax.ts) and folds it
- * into the fedParams both YearSolver and buildDPYearContexts use.
+ * The fix exposes getEffectiveDeduction (federalTax.ts) and folds it
+ * into the fedParams both YearSolver and buildDPYearContexts use. The senior
+ * add-ons are the STANDARD path of that helper (itemizedTotal=0, 'Standard').
  */
 import { describe, it, expect } from 'vitest';
 
 import * as TaxService from '../../../components/Objects/Taxes/TaxService';
-import { getEffectiveStandardDeduction } from '../../../components/Objects/Taxes/taxService/federalTax';
+import { getEffectiveDeduction } from '../../../components/Objects/Taxes/taxService/federalTax';
 import { solveRetirementYear, YearSolverInput } from '../../../services/simulation/YearSolver';
 import { buildDPYearContexts } from '../../../services/simulation/RothConversionDP';
 import { InvestedAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
@@ -28,11 +29,16 @@ import {
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { TaxParameters } from '../../../data/TaxData';
 import { SimulationYear } from '../../../services/simulation/types';
 
 // =============================================================================
-// getEffectiveStandardDeduction — unit
+// getEffectiveDeduction Standard path (senior add-ons) — unit
 // =============================================================================
+// The senior add-ons are getEffectiveDeduction's STANDARD path (itemizedTotal=0,
+// method='Standard'). These pin the absolute senior-deduction values — undefined
+// age, MFJ doubling, OBBBA phaseout, and post-2028 sunset — that no other
+// getEffectiveDeduction unit test exercises.
 
 const YEAR = 2025;
 
@@ -42,37 +48,48 @@ function fedParamsFor(filing: TaxState['filingStatus'], assumptions?: Assumption
     return p;
 }
 
-describe('getEffectiveStandardDeduction (#191 unit)', () => {
+// getEffectiveDeduction on its STANDARD path: itemizedTotal=0, method='Standard'.
+function effectiveStandard(
+    p: TaxParameters,
+    filing: TaxState['filingStatus'],
+    age: number | undefined,
+    year: number,
+    magiProxy: number,
+): number {
+    return getEffectiveDeduction(p, filing, age, year, magiProxy, 0, 'Standard');
+}
+
+describe('getEffectiveDeduction Standard path — senior add-ons (#191 unit)', () => {
     it('returns the raw standard deduction for a working-age filer', () => {
         const p = fedParamsFor('Single');
-        expect(getEffectiveStandardDeduction(p, 'Single', 40, YEAR, 50_000))
+        expect(effectiveStandard(p, 'Single', 40, YEAR, 50_000))
             .toBe(p.standardDeduction);
     });
 
     it('returns the raw standard deduction when age is undefined', () => {
         const p = fedParamsFor('Single');
-        expect(getEffectiveStandardDeduction(p, 'Single', undefined, YEAR, 50_000))
+        expect(effectiveStandard(p, 'Single', undefined, YEAR, 50_000))
             .toBe(p.standardDeduction);
     });
 
     it('adds regular 65+ deduction + full OBBBA bonus for a low-MAGI single senior (2025)', () => {
         const p = fedParamsFor('Single');
         // 2025 Single: $15,750 std + $2,000 regular + $6,000 bonus (MAGI < $75k)
-        expect(getEffectiveStandardDeduction(p, 'Single', 66, YEAR, 40_000))
+        expect(effectiveStandard(p, 'Single', 66, YEAR, 40_000))
             .toBe(p.standardDeduction + 2000 + 6000);
     });
 
     it('doubles per-person amounts for MFJ (2025)', () => {
         const p = fedParamsFor('Married Filing Jointly');
         // 2025 MFJ: $31,500 std + 2×$1,600 regular + 2×$6,000 bonus (MAGI < $150k)
-        expect(getEffectiveStandardDeduction(p, 'Married Filing Jointly', 66, YEAR, 100_000))
+        expect(effectiveStandard(p, 'Married Filing Jointly', 66, YEAR, 100_000))
             .toBe(p.standardDeduction + 3200 + 12000);
     });
 
     it('phases out the OBBBA bonus on MAGI but keeps the regular add-on', () => {
         const p = fedParamsFor('Single');
         // MAGI $175k: bonus 6000 − (175000−75000)×0.06 = 0 → regular only.
-        expect(getEffectiveStandardDeduction(p, 'Single', 66, YEAR, 175_000))
+        expect(effectiveStandard(p, 'Single', 66, YEAR, 175_000))
             .toBe(p.standardDeduction + 2000);
     });
 
@@ -80,7 +97,7 @@ describe('getEffectiveStandardDeduction (#191 unit)', () => {
         const p = TaxService.getTaxParameters(2030, 'Single', 'federal');
         if (!p) throw new Error('no federal params');
         // 2030 resolves from the 2026 row (nominal): $2,050 regular, no bonus.
-        expect(getEffectiveStandardDeduction(p, 'Single', 70, 2030, 40_000))
+        expect(effectiveStandard(p, 'Single', 70, 2030, 40_000))
             .toBe(p.standardDeduction + 2050);
     });
 });
@@ -250,11 +267,8 @@ describe('buildDPYearContexts senior deduction (#191)', () => {
                 ctx.year, 'Single', 'federal', undefined, dpAssumptions,
             );
             if (!raw) throw new Error(`no federal params for ${ctx.year}`);
-            const expected = getEffectiveStandardDeduction(
-                raw, 'Single', ctx.age, ctx.year,
-                // Baseline has no income → MAGI proxy 0 → full bonus while it lasts.
-                0,
-            );
+            // Baseline has no income → MAGI proxy 0 → full bonus while it lasts.
+            const expected = effectiveStandard(raw, 'Single', ctx.age, ctx.year, 0);
             // Every context year here is 65+, so the senior add-on must be > 0
             // (pre-fix: contexts carried the raw standard deduction).
             expect(expected).toBeGreaterThan(raw.standardDeduction);
