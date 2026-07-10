@@ -29,7 +29,7 @@ export {
     getEarnedIncome,
     getSocialSecurityBenefits,
 } from "./taxService/incomeAggregation";
-export { getTaxableSocialSecurityBenefits } from "./taxService/socialSecurity";
+export { getTaxableSocialSecurityBenefits, getTaxableSocialSecurityFromComponents } from "./taxService/socialSecurity";
 export { getItemizedDeductions, getYesDeductions } from "./taxService/deductions";
 export {
     calculateTotalFederalTax,

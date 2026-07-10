@@ -2458,6 +2458,29 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
     // #198: generalized to the full effective deduction (standard vs itemized) — see
     // the matching note in solveRetirementYear. Non-itemizing / method 'Standard' ⇒
     // the #191 standard path, byte-for-byte unchanged.
+    // MAGI proxy for the OBBBA senior-bonus phaseout. Mirror the year-0 Taxes-tab
+    // orchestrator (getEffectiveDeduction / federalTax.ts) EXACTLY: BOTH the ordinary
+    // term and the taxable-SS term are net of pre-tax deferrals. The taxable-SS term
+    // routes through getTaxableSocialSecurityFromComponents (the shared helper the
+    // year-0 path uses) so the two surfaces can't drift at the $75k/$150k phaseout
+    // thresholds. Previously the SS term was computed on an UN-netted base
+    // (taxableOrdinaryBase − SS) while the sibling ordinary term netted the deferrals,
+    // so a deferral-heavy 65+ still-working filer just under the phaseout had MAGI
+    // overstated by up to 85¢ per deferred dollar, wrongly trimming the senior bonus
+    // and reopening the year-0-vs-projection asymmetry #191 closed.
+    const magiOrdinaryExSS = taxableOrdinaryBase - socialSecurityBenefits;
+    const magiProxy = Math.max(
+        0,
+        magiOrdinaryExSS - preTaxDeductionsForTax +
+            TaxService.getTaxableSocialSecurityFromComponents(
+                magiOrdinaryExSS,
+                0,
+                0,
+                preTaxDeductionsForTax,
+                socialSecurityBenefits,
+                input.taxState.filingStatus,
+            ),
+    );
     const fedParams = {
         ...rawFedParams,
         standardDeduction: TaxService.getEffectiveDeduction(
@@ -2465,13 +2488,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
             input.taxState.filingStatus,
             input.currentAge,
             input.year,
-            Math.max(0, taxableOrdinaryBase - socialSecurityBenefits - preTaxDeductionsForTax) +
-                TaxService.getTaxableSocialSecurityBenefits(
-                    socialSecurityBenefits,
-                    taxableOrdinaryBase - socialSecurityBenefits,
-                    0,
-                    input.taxState.filingStatus,
-                ),
+            magiProxy,
             input.itemizedDeductionTotal ?? 0,
             input.taxState.deductionMethod,
         ),
