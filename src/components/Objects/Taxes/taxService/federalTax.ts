@@ -191,6 +191,43 @@ export function getEffectiveDeduction(
 }
 
 /**
+ * The #191/#198 "effective-deduction chokepoint": returns a COPY of `fedParams`
+ * with its `standardDeduction` replaced by `getEffectiveDeduction(...)`, so the
+ * only path the engine ever prices (`calculateTotalFederalTax` reads solely
+ * `fedParams.standardDeduction`) bills the same senior add-ons + itemized ≷
+ * standard choice the year-0 Taxes-tab orchestrator applies.
+ *
+ * The engine (YearSolver retirement + working paths) and the DP objective
+ * (RothConversionDP) must maintain this identical wrapper mechanic, or the DP
+ * optimizes against a different tax than the engine bills — the exact
+ * engine-vs-DP pricing asymmetry #191/#198 exist to close. This shared wrapper
+ * keeps the three sites in lockstep by construction.
+ *
+ * Only the wrapper mechanics are unified here: each call site computes its own
+ * `magiProxy` (the retirement path uses baseOrdinaryIncome; the working path a
+ * pre-tax-deferral-netted proxy through getTaxableSocialSecurityFromComponents;
+ * the DP its own non-SS-ordinary + LTCG + taxable-SS figure) and passes the
+ * result in, matching the situation that site enters the year in. The remaining
+ * six positional args mirror `getEffectiveDeduction` exactly.
+ */
+export function withEffectiveDeduction(
+    fedParams: TaxParameters,
+    filingStatus: FilingStatus,
+    age: number | undefined,
+    year: number,
+    magiProxy: number,
+    itemizedTotal: number,
+    deductionMethod: DeductionMethod,
+): TaxParameters {
+    return {
+        ...fedParams,
+        standardDeduction: getEffectiveDeduction(
+            fedParams, filingStatus, age, year, magiProxy, itemizedTotal, deductionMethod,
+        ),
+    };
+}
+
+/**
  * Calculate federal tax from income/expense objects using calculateTotalFederalTax.
  *
  * Orchestrates the full federal tax computation: extracts values from incomes

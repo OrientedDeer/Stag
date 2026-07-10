@@ -785,24 +785,21 @@ export function buildDPYearContexts(
         // interest (§2c off-by-one). effTax carries the year's resolved
         // deductionMethod. Non-itemizing years (⇒ 0 / 'Standard') resolve to the #191
         // standard path — byte-for-byte unchanged.
-        const effectiveFedParams = {
-            ...fedParams,
-            standardDeduction: TaxService.getEffectiveDeduction(
-                fedParams,
-                effTax.filingStatus,
-                age,
-                simYear.year,
-                nonSSOrdinaryIncomeExclRMD + ltcgIncome +
-                    TaxService.getTaxableSocialSecurityBenefits(
-                        ssBenefits,
-                        nonSSOrdinaryIncomeExclRMD + ltcgIncome,
-                        0,
-                        effTax.filingStatus,
-                    ),
-                simYear.itemizedDeductionTotal ?? 0,
-                effTax.deductionMethod,
-            ),
-        };
+        const effectiveFedParams = TaxService.withEffectiveDeduction(
+            fedParams,
+            effTax.filingStatus,
+            age,
+            simYear.year,
+            nonSSOrdinaryIncomeExclRMD + ltcgIncome +
+                TaxService.getTaxableSocialSecurityBenefits(
+                    ssBenefits,
+                    nonSSOrdinaryIncomeExclRMD + ltcgIncome,
+                    0,
+                    effTax.filingStatus,
+                ),
+            simYear.itemizedDeductionTotal ?? 0,
+            effTax.deductionMethod,
+        );
 
         // ACA cliff applies pre-65 only (Medicare eligibility starts at 65).
         // #159: never on gap-year contexts — the engine's working-year path

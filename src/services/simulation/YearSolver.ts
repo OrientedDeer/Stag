@@ -1653,18 +1653,15 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // mortgage-holder back to standard automatically as the loan amortizes. A plan
     // with no itemized total (⇒ 0) or method 'Standard' resolves to exactly the #191
     // standard path — byte-for-byte unchanged.
-    const fedParams = {
-        ...rawFedParams,
-        standardDeduction: TaxService.getEffectiveDeduction(
-            rawFedParams,
-            input.taxState.filingStatus,
-            input.currentAge,
-            input.year,
-            baseOrdinaryIncome,
-            input.itemizedDeductionTotal ?? 0,
-            input.taxState.deductionMethod,
-        ),
-    };
+    const fedParams = TaxService.withEffectiveDeduction(
+        rawFedParams,
+        input.taxState.filingStatus,
+        input.currentAge,
+        input.year,
+        baseOrdinaryIncome,
+        input.itemizedDeductionTotal ?? 0,
+        input.taxState.deductionMethod,
+    );
 
     // Initial surplus estimate (for determining if conversion tax can be paid from surplus).
     // Note: classifyIncome adds rmdAmount to spendable, so we don't add it again here.
@@ -2481,18 +2478,15 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
                 input.taxState.filingStatus,
             ),
     );
-    const fedParams = {
-        ...rawFedParams,
-        standardDeduction: TaxService.getEffectiveDeduction(
-            rawFedParams,
-            input.taxState.filingStatus,
-            input.currentAge,
-            input.year,
-            magiProxy,
-            input.itemizedDeductionTotal ?? 0,
-            input.taxState.deductionMethod,
-        ),
-    };
+    const fedParams = TaxService.withEffectiveDeduction(
+        rawFedParams,
+        input.taxState.filingStatus,
+        input.currentAge,
+        input.year,
+        magiProxy,
+        input.itemizedDeductionTotal ?? 0,
+        input.taxState.deductionMethod,
+    );
 
     // -------------------------------------------------------------------------
     // #159: DP-planned Roth conversion in a WORKING year.
