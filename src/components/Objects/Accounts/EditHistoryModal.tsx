@@ -28,8 +28,13 @@ interface DraftRow {
 
 // Reconcile the store's (sorted) history into the draft while preserving the
 // draft's row order and keys. Rows are matched to store entries by value, so a
-// pure re-sort (same set of entries) leaves the draft untouched; genuine adds
-// append with a fresh key, and deletes drop the matching row.
+// pure re-sort (same set of entries) leaves the draft untouched; deletes drop
+// the matching row. A genuine add (a store entry that matches no draft row) is
+// INSERTED at its date-sorted position among the current rows — before the first
+// existing row whose date is greater, else appended — so a new entry lands in
+// date order right away instead of only after the modal is reopened. Existing
+// rows keep their keys/relative order, so React (which reorders the DOM by key)
+// never rebinds a mid-edit input.
 function reconcileDraft(
     prev: DraftRow[],
     history: AmountHistoryEntry[],
@@ -51,7 +56,13 @@ function reconcileDraft(
         .filter(r => !r.used)
         .map(r => ({ key: makeKey(), date: r.date, num: r.num }));
     if (dropped === 0 && added.length === 0) return prev;
-    return [...kept, ...added];
+    const result = [...kept];
+    for (const row of added) {
+        const at = result.findIndex(r => r.date > row.date);
+        if (at === -1) result.push(row);
+        else result.splice(at, 0, row);
+    }
+    return result;
 }
 
 export const EditHistoryModal: React.FC<EditHistoryModalProps> = ({ accountId, isOpen, onClose }) => {
