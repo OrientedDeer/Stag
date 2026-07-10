@@ -15,6 +15,7 @@ import {
     ExportData,
 } from '../../services/ExcelExportService';
 import { PropertyAccount } from '../../components/Objects/Accounts/models';
+import { getAccountTotals } from '../../components/Objects/Accounts/accountTotals';
 import { SimulationYear } from '../../services/simulation/types';
 
 // =============================================================================
@@ -225,6 +226,20 @@ describe('ExcelExportService retirement taxes + mortgage net worth (#195)', () =
         // headers: [..., Capital Gains, Withdrawal Tax, NIIT, IRMAA, ACA, Total Taxes, ...]
         expect(rows[2][6]).toBe(22_000); // Withdrawal Tax column (newly broken out)
         expect(rows[2][10]).toBe(30_000); // Total Taxes (old partial was 8,000)
+    });
+
+    it('sheets agree with the canonical getAccountTotals (no private copy may re-diverge)', () => {
+        // #195 drift-guard: the exporter must derive Total Assets / Total Debt /
+        // Net Worth from the app's canonical getAccountTotals, so any future
+        // accounting change lands in the export automatically.
+        const data = makeRetireeExportData();
+        const canonical = getAccountTotals(data.simulation[0].accounts);
+        const accounts = buildAccountsSheet(data);
+        expect(accounts.rows[2][3]).toBe(canonical.assets);
+        expect(accounts.rows[2][4]).toBe(canonical.liabilities);
+        expect(accounts.rows[2][5]).toBe(canonical.netWorth);
+        const summary = buildSummarySheet(data);
+        expect(summary.rows[2][7]).toBe(canonical.netWorth);
     });
 });
 
