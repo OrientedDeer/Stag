@@ -47,6 +47,15 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: Sim
         setSankeyImbalances(imbalances);
     }, []);
 
+    // Clicking a year in the Sankey popover's trajectory sparkline drives the whole
+    // tab: commit the year (re-renders the chart) AND update the preview readouts.
+    // Stable identity (setState setters are stable) so the memo'd chart keeps its
+    // drag-time bailout.
+    const handleSelectYear = useCallback((year: number) => {
+        setSelectedYear(year);
+        setPreviewYear(year);
+    }, []);
+
     const sankeyYearIndex = simulationData.findIndex(s => s.year === selectedYear);
     const sankeyYearData = simulationData[sankeyYearIndex];
     const previewYearIndex = simulationData.findIndex(s => s.year === previewYear);
@@ -227,6 +236,8 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: Sim
                             rothConversion={sankeyYearData.rothConversion}
                             livingExpenses={sankeyYearData.cashflow.livingExpenses}
                             cashflowDetail={sankeyYearData.cashflowDetail}
+                            simulationData={simulationData}
+                            onSelectYear={handleSelectYear}
                             height={400}
                             onBalanceCheck={handleBalanceCheck}
                         />

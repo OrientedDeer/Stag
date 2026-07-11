@@ -7,7 +7,7 @@ import { type AnyExpense } from '../Objects/Expense/models';
 import { type AnyAccount } from '../Objects/Accounts/models';
 import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
-import { type CashflowDetail } from '../../services/simulation/types';
+import { type CashflowDetail, type CashflowWithdrawalDetail, type SimulationYear } from '../../services/simulation/types';
 import { SankeyErrorBoundary } from './SankeyErrorBoundary';
 import { useChartTheme } from './useChartTheme';
 import { ChartFrame } from "./ChartFrame";
@@ -24,6 +24,7 @@ import {
     type SankeyNode,
     type SankeyLink,
 } from './cashflowSankeyData';
+import { getFlowSeries, getNodeSeries, getSeriesYears, summarizeSeries } from './cashflowSankeySeries';
 
 export type { SankeyImbalance } from './cashflowSankeyData';
 
@@ -55,6 +56,25 @@ type SankeySelection =
 const selectionKey = (s: SankeySelection): string =>
     s.kind === 'node' ? `node:${s.id}` : `flow:${s.sourceId}->${s.targetId}`;
 
+/**
+ * The "Why is it this size" section's payload. Only some clicks earn one — a
+ * withdrawal exposes its gross/tax/penalty/net; a conversion its incremental tax;
+ * the Deficit and Remaining nodes their arithmetic. Everything else omits it.
+ */
+type WhySection =
+    | { kind: 'withdrawal'; rows: CashflowWithdrawalDetail[] }
+    | { kind: 'conversion'; federalTaxCost: number; stateTaxCost: number }
+    | { kind: 'deficit'; amount: number; coveredFrom: SankeyProvenanceItem[] }
+    | { kind: 'surplus'; destinations: SankeyProvenanceItem[] };
+
+/**
+ * Identity of the clicked flow or node, carried through so the trajectory section
+ * can pull the right series across years (node id, or the flow's source/target ids).
+ */
+type SeriesTarget =
+    | { kind: 'node'; nodeId: string }
+    | { kind: 'flow'; sourceId: string; targetId: string };
+
 /** Fully-resolved panel content, derived from the live graph for rendering. */
 type ResolvedPanel =
     | {
@@ -63,6 +83,8 @@ type ResolvedPanel =
           value: number;
           direction: SankeyProvenanceDirection;
           items: SankeyProvenanceItem[];
+          why?: WhySection;
+          series: SeriesTarget;
           anchorX: number;
           anchorY: number;
       }
@@ -75,6 +97,8 @@ type ResolvedPanel =
           shareOfSource: number;
           /** This flow as a fraction (0–1) of the target node's total inflow. */
           shareOfTarget: number;
+          why?: WhySection;
+          series: SeriesTarget;
           anchorX: number;
           anchorY: number;
       };
@@ -118,10 +142,93 @@ interface CashflowSankeyProps {
      * incomes/expenses, which can drift from sim values.
      */
     cashflowDetail?: CashflowDetail;
+    /**
+     * Full projection timeline. When provided (Future tab), the click panel adds a
+     * "How it evolves" trajectory sparkline of the clicked flow/node across every
+     * year. The Dashboard's pre-simulation chart passes nothing, so that section —
+     * like the sim-only "why" rows — simply doesn't render. Must be referentially
+     * stable across parent re-renders to preserve the `memo` bailout during slider
+     * drags (the CashflowTab passes the cached sim array).
+     */
+    simulationData?: SimulationYear[];
+    /**
+     * Called when the user clicks a year in the trajectory sparkline. The host wires
+     * this to its year selector so the whole tab follows the click. Must be a stable
+     * reference (see `simulationData`).
+     */
+    onSelectYear?: (year: number) => void;
     height?: number;
     extraLeftPadding?: number;
     extraRightPadding?: number;
     onBalanceCheck?: (imbalances: SankeyImbalance[]) => void;
+}
+
+/** Below this a "why" contributor is rounding dust, not worth a row. */
+const MIN_WHY_THRESHOLD = 0.005;
+
+const WITHDRAW_PREFIX = 'Withdraw: ';
+const CONVERT_PREFIX = 'Convert: ';
+const TO_ROTH_PREFIX = 'To Roth: ';
+
+/**
+ * Derive the "Why is it this size" payload for a clicked flow/node, or undefined
+ * when the click isn't one of the four kinds that carries an explanation. Reads
+ * the same engine-provided detail the diagram was built from — no re-derivation.
+ */
+function computeWhySection(
+    target: SeriesTarget,
+    ctx: {
+        cashflowDetail?: CashflowDetail;
+        rothConversion?: SankeyRothConversion;
+        bucketAllocations: Record<string, number>;
+        accounts: AnyAccount[];
+        links: SankeyLink[];
+        nodeValue: (id: string) => number;
+        nodeLabel: (id: string) => string;
+    },
+): WhySection | undefined {
+    const ids = target.kind === 'node' ? [target.nodeId] : [target.sourceId, target.targetId];
+
+    // Withdrawal node/flow → the per-withdrawal gross/tax/penalty/net + reason for
+    // the clicked account (matched by display name, since the node merges same-named
+    // accounts). RMDs are included in the detail, so every reason is representable.
+    const withdrawId = ids.find(id => id.startsWith(WITHDRAW_PREFIX));
+    if (withdrawId) {
+        const name = withdrawId.slice(WITHDRAW_PREFIX.length);
+        const rows = (ctx.cashflowDetail?.withdrawals ?? []).filter(
+            w => w.accountName === name && w.gross >= MIN_WHY_THRESHOLD,
+        );
+        return rows.length > 0 ? { kind: 'withdrawal', rows } : undefined;
+    }
+
+    // Conversion source/destination → the conversion's true incremental tax cost.
+    if (ids.some(id => id.startsWith(CONVERT_PREFIX) || id.startsWith(TO_ROTH_PREFIX))) {
+        const fed = ctx.rothConversion?.federalTaxCost;
+        const state = ctx.rothConversion?.stateTaxCost;
+        if (fed === undefined && state === undefined) return undefined;
+        return { kind: 'conversion', federalTaxCost: fed ?? 0, stateTaxCost: state ?? 0 };
+    }
+
+    // Deficit node/flow → the shortfall amount and the accounts that covered it.
+    if (ids.includes('Deficit')) {
+        const coveredFrom = ctx.links
+            .filter(l => l.source.startsWith(WITHDRAW_PREFIX))
+            .map(l => ({ label: ctx.nodeLabel(l.source), value: l.value }));
+        return { kind: 'deficit', amount: ctx.nodeValue('Deficit'), coveredFrom };
+    }
+
+    // Remaining/surplus node/flow → where leftover cash is directed (priority buckets).
+    if (ids.includes('Remaining')) {
+        const destinations = Object.entries(ctx.bucketAllocations)
+            .filter(([, amt]) => amt >= MIN_WHY_THRESHOLD)
+            .map(([accId, amt]) => {
+                const acc = ctx.accounts.find(a => a.id === accId);
+                return { label: acc ? acc.name : 'Savings', value: amt };
+            });
+        return destinations.length > 0 ? { kind: 'surplus', destinations } : undefined;
+    }
+
+    return undefined;
 }
 
 const CashflowSankeyInner = ({
@@ -135,6 +242,8 @@ const CashflowSankeyInner = ({
     rothConversion,
     livingExpenses,
     cashflowDetail,
+    simulationData,
+    onSelectYear,
     height = 300,
     extraLeftPadding = 0,
     extraRightPadding = 0,
@@ -261,11 +370,21 @@ const CashflowSankeyInner = ({
     const resolved = useMemo<ResolvedPanel | null>(() => {
         if (!selected) return null;
         const { nodeLabel, nodeValue, inflowsByNode, outflowsByNode, inflowTotal, outflowTotal } = graphMaps;
+        const whyCtx = {
+            cashflowDetail,
+            rothConversion,
+            bucketAllocations,
+            accounts,
+            links: data.links,
+            nodeValue: (id: string) => nodeValue.get(id) ?? 0,
+            nodeLabel: (id: string) => nodeLabel.get(id) ?? id,
+        };
         if (selected.kind === 'flow') {
             const link = data.links.find(l => l.source === selected.sourceId && l.target === selected.targetId);
             if (!link) return null;
             const outT = outflowTotal.get(selected.sourceId) ?? 0;
             const inT = inflowTotal.get(selected.targetId) ?? 0;
+            const series: SeriesTarget = { kind: 'flow', sourceId: selected.sourceId, targetId: selected.targetId };
             return {
                 kind: 'flow',
                 sourceLabel: nodeLabel.get(selected.sourceId) ?? selected.sourceId,
@@ -273,6 +392,8 @@ const CashflowSankeyInner = ({
                 value: link.value,
                 shareOfSource: outT > 0 ? link.value / outT : 0,
                 shareOfTarget: inT > 0 ? link.value / inT : 0,
+                why: computeWhySection(series, whyCtx),
+                series,
                 anchorX: selected.anchorX,
                 anchorY: selected.anchorY,
             };
@@ -280,21 +401,23 @@ const CashflowSankeyInner = ({
         const id = selected.id;
         const label = nodeLabel.get(id) ?? id;
         const value = nodeValue.get(id) ?? 0;
+        const series: SeriesTarget = { kind: 'node', nodeId: id };
+        const why = computeWhySection(series, whyCtx);
         const prov = provenance[id];
         if (prov) {
-            return { kind: 'node', label, value, direction: prov.direction, items: prov.items, anchorX: selected.anchorX, anchorY: selected.anchorY };
+            return { kind: 'node', label, value, direction: prov.direction, items: prov.items, why, series, anchorX: selected.anchorX, anchorY: selected.anchorY };
         }
         // Non-curated node with multiple connections: derive a list from its links.
         const ins = inflowsByNode.get(id) ?? [];
         const outs = outflowsByNode.get(id) ?? [];
         if (outs.length > 0 && ins.length === 0) {
-            return { kind: 'node', label, value, direction: 'destinations', items: outs.map(l => ({ label: nodeLabel.get(l.target) ?? l.target, value: l.value })), anchorX: selected.anchorX, anchorY: selected.anchorY };
+            return { kind: 'node', label, value, direction: 'destinations', items: outs.map(l => ({ label: nodeLabel.get(l.target) ?? l.target, value: l.value })), why, series, anchorX: selected.anchorX, anchorY: selected.anchorY };
         }
         if (ins.length > 0) {
-            return { kind: 'node', label, value, direction: 'sources', items: ins.map(l => ({ label: nodeLabel.get(l.source) ?? l.source, value: l.value })), anchorX: selected.anchorX, anchorY: selected.anchorY };
+            return { kind: 'node', label, value, direction: 'sources', items: ins.map(l => ({ label: nodeLabel.get(l.source) ?? l.source, value: l.value })), why, series, anchorX: selected.anchorX, anchorY: selected.anchorY };
         }
         return null;
-    }, [selected, data, provenance, graphMaps]);
+    }, [selected, data, provenance, graphMaps, cashflowDetail, rothConversion, bucketAllocations, accounts]);
 
     // Stable close handler so the popover's dismiss listeners aren't re-armed on
     // every parent re-render (e.g. resize ticks bumping containerWidth).
@@ -444,6 +567,9 @@ const CashflowSankeyInner = ({
                 chartContainerRef={containerRef}
                 formatValue={currencyFormatter}
                 onClose={closePanel}
+                simulationData={simulationData}
+                currentYear={year}
+                onSelectYear={onSelectYear}
             />
         </SankeyErrorBoundary>
     );
@@ -493,7 +619,241 @@ interface SankeyDetailPanelProps {
     chartContainerRef: React.RefObject<HTMLDivElement | null>;
     formatValue: (value: number) => string;
     onClose: () => void;
+    /** Full projection timeline for the trajectory sparkline; absent → section hidden. */
+    simulationData?: SimulationYear[];
+    /** The year the diagram is currently showing (highlighted in the sparkline). */
+    currentYear: number;
+    /** Drives the host's year selector when a sparkline year is clicked. */
+    onSelectYear?: (year: number) => void;
 }
+
+/** Human-readable label for each withdrawal reason (mirrors PlannedWithdrawal.reason). */
+const REASON_LABEL: Record<CashflowWithdrawalDetail['reason'], string> = {
+    'Required Minimum Distribution': 'Required minimum distribution',
+    'Spending deficit': 'Spending deficit',
+    'Conversion tax': 'Roth conversion tax',
+    'Healthcare expense': 'Healthcare expense',
+    'ACA cliff Roth substitution': 'ACA cliff — Roth substitution',
+};
+
+/** A labelled popover section, rendered only when it has content to show. */
+const PanelSection = ({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) => (
+    <div className="mt-3 first:mt-0">
+        <div className="flex items-baseline gap-2 mb-1">
+            <span className="text-xs uppercase tracking-wider font-semibold text-content-muted">{title}</span>
+            {hint && <span className="text-[10px] text-content-faint">{hint}</span>}
+        </div>
+        {children}
+    </div>
+);
+
+/** One-line hint shown beside the "Why it's this size" header, per kind. */
+const WHY_HINT: Record<WhySection['kind'], string> = {
+    withdrawal: 'Gross to net, and why it happened',
+    conversion: 'Incremental tax the conversion added',
+    deficit: 'The shortfall and how it was covered',
+    surplus: 'Where leftover cash is directed',
+};
+
+/**
+ * The "Why is it this size" section body. Withdrawal → gross→tax(→penalty)→net +
+ * reason per row; conversion → incremental federal/state tax; deficit → the
+ * shortfall + covering accounts; surplus → priority-bucket destinations.
+ */
+const WhyContent = ({ why, formatValue }: { why: WhySection; formatValue: (v: number) => string }) => {
+    if (why.kind === 'withdrawal') {
+        return (
+            <ul className="space-y-2">
+                {why.rows.map((w, idx) => (
+                    <li key={`${w.accountId}-${w.reason}-${idx}`} className="text-sm">
+                        <div className="flex items-center justify-between gap-3">
+                            <span className="truncate text-content-default">Gross</span>
+                            <span className="font-mono text-content-emphasis shrink-0">{formatValue(w.gross)}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                            <span className="truncate text-content-muted">Tax</span>
+                            <span className="font-mono text-warning shrink-0">-{formatValue(w.tax)}</span>
+                        </div>
+                        {w.penalty >= MIN_WHY_THRESHOLD && (
+                            <div className="flex items-center justify-between gap-3">
+                                <span className="truncate text-content-muted">Early-withdrawal penalty</span>
+                                <span className="font-mono text-negative shrink-0">-{formatValue(w.penalty)}</span>
+                            </div>
+                        )}
+                        <div className="flex items-center justify-between gap-3 border-t border-border-faint mt-1 pt-1">
+                            <span className="truncate text-content-default font-semibold">Net received</span>
+                            <span className="font-mono text-positive shrink-0">{formatValue(w.net)}</span>
+                        </div>
+                        <div className="text-[11px] text-content-faint mt-0.5">{REASON_LABEL[w.reason] ?? w.reason}</div>
+                    </li>
+                ))}
+            </ul>
+        );
+    }
+    if (why.kind === 'conversion') {
+        const total = why.federalTaxCost + why.stateTaxCost;
+        return (
+            <ul className="space-y-1 text-sm">
+                <li className="flex items-center justify-between gap-3">
+                    <span className="text-content-default">Federal tax cost</span>
+                    <span className="font-mono text-warning shrink-0">{formatValue(why.federalTaxCost)}</span>
+                </li>
+                {why.stateTaxCost >= MIN_WHY_THRESHOLD && (
+                    <li className="flex items-center justify-between gap-3">
+                        <span className="text-content-default">State tax cost</span>
+                        <span className="font-mono text-warning shrink-0">{formatValue(why.stateTaxCost)}</span>
+                    </li>
+                )}
+                <li className="flex items-center justify-between gap-3 border-t border-border-faint mt-1 pt-1">
+                    <span className="text-content-default font-semibold">Incremental tax</span>
+                    <span className="font-mono text-content-emphasis shrink-0">{formatValue(total)}</span>
+                </li>
+            </ul>
+        );
+    }
+    if (why.kind === 'deficit') {
+        return (
+            <div className="text-sm">
+                <p className="text-content-default">
+                    Expenses and taxes exceeded spendable income by{' '}
+                    <span className="font-mono text-negative">{formatValue(why.amount)}</span>.
+                </p>
+                {why.coveredFrom.length > 0 && (
+                    <>
+                        <div className="text-[11px] text-content-faint mt-1.5 mb-0.5">Covered from</div>
+                        <ul className="space-y-1">
+                            {why.coveredFrom.map((c, idx) => (
+                                <li key={`${c.label}-${idx}`} className="flex items-center justify-between gap-3">
+                                    <span className="truncate text-content-default">{c.label}</span>
+                                    <span className="font-mono text-content-emphasis shrink-0">{formatValue(c.value)}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    </>
+                )}
+            </div>
+        );
+    }
+    // surplus
+    return (
+        <ul className="space-y-1 text-sm">
+            {why.destinations.map((d, idx) => (
+                <li key={`${d.label}-${idx}`} className="flex items-center justify-between gap-3">
+                    <span className="truncate text-content-default">{d.label}</span>
+                    <span className="font-mono text-content-emphasis shrink-0">{formatValue(d.value)}</span>
+                </li>
+            ))}
+        </ul>
+    );
+};
+
+/** Inline-SVG sparkline dimensions (viewBox units; scaled to the popover width). */
+const SPARK_W = 248;
+const SPARK_H = 40;
+
+/**
+ * "How it evolves": a tiny inline-SVG bar sparkline of the clicked flow/node's
+ * value across every projection year, with the current year highlighted and each
+ * year clickable to drive the host's year selector. No Nivo — this lives inside a
+ * popover and must stay cheap. The per-year series is cached (see
+ * cashflowSankeySeries), so re-deriving on each open is inexpensive.
+ */
+const FlowTrajectory = ({ simulationData, target, currentYear, onSelectYear, formatValue }: {
+    simulationData: SimulationYear[];
+    target: SeriesTarget;
+    currentYear: number;
+    onSelectYear?: (year: number) => void;
+    formatValue: (v: number) => string;
+}) => {
+    const years = getSeriesYears(simulationData);
+    const values = target.kind === 'node'
+        ? getNodeSeries(simulationData, target.nodeId)
+        : getFlowSeries(simulationData, target.sourceId, target.targetId);
+    const summary = summarizeSeries(years, values);
+
+    if (years.length === 0) return null;
+
+    const n = years.length;
+    const maxVal = Math.max(...values, 1);
+    const barW = SPARK_W / n;
+    const currentIdx = years.indexOf(currentYear);
+
+    const selectIdx = (i: number) => {
+        if (onSelectYear && i >= 0 && i < n) onSelectYear(years[i]);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<SVGSVGElement>) => {
+        if (!onSelectYear) return;
+        if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            selectIdx((currentIdx < 0 ? -1 : currentIdx) + 1);
+        } else if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            selectIdx((currentIdx < 0 ? n : currentIdx) - 1);
+        }
+    };
+
+    return (
+        <div>
+            <svg
+                viewBox={`0 0 ${SPARK_W} ${SPARK_H}`}
+                width="100%"
+                height={SPARK_H}
+                preserveAspectRatio="none"
+                role={onSelectYear ? 'slider' : 'img'}
+                tabIndex={onSelectYear ? 0 : undefined}
+                aria-label="Value across projection years"
+                aria-valuenow={onSelectYear ? currentYear : undefined}
+                aria-valuemin={onSelectYear ? years[0] : undefined}
+                aria-valuemax={onSelectYear ? years[n - 1] : undefined}
+                onKeyDown={handleKeyDown}
+                style={{ display: 'block', touchAction: 'none', outline: 'none' }}
+            >
+                {values.map((v, i) => {
+                    const h = Math.max(0, (Math.max(0, v) / maxVal) * (SPARK_H - 2));
+                    const isCurrent = i === currentIdx;
+                    return (
+                        <g key={years[i]}>
+                            <rect
+                                x={i * barW}
+                                y={SPARK_H - h}
+                                width={Math.max(barW - 0.5, 0.5)}
+                                height={h}
+                                fill={isCurrent ? 'var(--c-accent-solid)' : 'var(--c-content-muted)'}
+                                opacity={isCurrent ? 1 : 0.5}
+                            />
+                            {/* Full-height transparent hit target so even a 1px bar is clickable. */}
+                            <rect
+                                x={i * barW}
+                                y={0}
+                                width={barW}
+                                height={SPARK_H}
+                                fill="transparent"
+                                data-testid={`spark-year-${years[i]}`}
+                                style={{ cursor: onSelectYear ? 'pointer' : 'default' }}
+                                onClick={() => selectIdx(i)}
+                            >
+                                <title>{`${years[i]}: ${formatValue(v)}`}</title>
+                            </rect>
+                        </g>
+                    );
+                })}
+            </svg>
+            <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-content-muted">
+                <span>Lifetime <span className="font-mono text-content-emphasis">{formatValue(summary.total)}</span></span>
+                {summary.peakYear !== null && summary.peakValue > 0 && (
+                    <span>Peak <span className="font-mono text-content-emphasis">{formatValue(summary.peakValue)}</span> in {summary.peakYear}</span>
+                )}
+                {summary.firstActiveYear !== null && summary.lastActiveYear !== null && (
+                    <span>Active {summary.firstActiveYear}{summary.lastActiveYear !== summary.firstActiveYear ? `–${summary.lastActiveYear}` : ''}</span>
+                )}
+            </div>
+            {onSelectYear && (
+                <div className="text-[10px] text-content-faint mt-0.5">Click a year to jump the diagram there</div>
+            )}
+        </div>
+    );
+};
 
 /** Threshold above which a flow's share is "the whole thing" and not worth a row. */
 const FULL_SHARE = 0.9995;
@@ -511,7 +871,7 @@ const FULL_SHARE = 0.9995;
  * dismissal from useClickOutside. Repositions on scroll/resize so a fixed
  * popover doesn't drift away from its anchor.
  */
-const SankeyDetailPanel = ({ content, chartContainerRef, formatValue, onClose }: SankeyDetailPanelProps) => {
+const SankeyDetailPanel = ({ content, chartContainerRef, formatValue, onClose, simulationData, currentYear, onSelectYear }: SankeyDetailPanelProps) => {
     const isOpen = !!content;
     const { modalRef, handleKeyDown } = useModalAccessibility(isOpen, onClose);
     // Dismiss when pressing outside both the popover and the chart. Clicks inside
@@ -525,10 +885,11 @@ const SankeyDetailPanel = ({ content, chartContainerRef, formatValue, onClose }:
     // A primitive signature of the content so the layout effect re-measures when
     // the panel's size could change, without depending on the (re-derived every
     // render) content object identity.
+    const hasTrajectory = !!simulationData;
     const signature = content
         ? content.kind === 'flow'
-            ? `flow:${content.sourceLabel}->${content.targetLabel}:${content.value}`
-            : `node:${content.label}:${content.items.length}`
+            ? `flow:${content.sourceLabel}->${content.targetLabel}:${content.value}:${content.why?.kind ?? ''}:${hasTrajectory}`
+            : `node:${content.label}:${content.items.length}:${content.why?.kind ?? ''}:${hasTrajectory}`
         : '';
 
     // Measure then clamp into the viewport, writing position directly to the
@@ -580,6 +941,11 @@ const SankeyDetailPanel = ({ content, chartContainerRef, formatValue, onClose }:
                 left: anchorX,
                 top: anchorY,
                 width: POPOVER_WIDTH,
+                // Growth guard: a tall three-section panel scrolls internally rather
+                // than overflowing the viewport (the position clamp handles the anchor,
+                // not the size).
+                maxHeight: '80vh',
+                overflowY: 'auto',
                 visibility: 'hidden',
                 zIndex: 9999,
             }}
@@ -588,6 +954,31 @@ const SankeyDetailPanel = ({ content, chartContainerRef, formatValue, onClose }:
             {body}
         </div>,
         document.body,
+    );
+
+    // Sections 2 ("Why it's this size") and 3 ("How it evolves"), shared by the flow
+    // and node branches. Each renders only when its data exists: the "why" only for
+    // withdrawal/conversion/deficit/surplus clicks, the trajectory only when the host
+    // passes simulationData (so the Dashboard's pre-sim chart shows neither).
+    const renderExtraSections = (series: SeriesTarget, why?: WhySection) => (
+        <>
+            {why && (
+                <PanelSection title="Why it's this size" hint={WHY_HINT[why.kind]}>
+                    <WhyContent why={why} formatValue={formatValue} />
+                </PanelSection>
+            )}
+            {simulationData && (
+                <PanelSection title="How it evolves" hint="Across every projection year">
+                    <FlowTrajectory
+                        simulationData={simulationData}
+                        target={series}
+                        currentYear={currentYear}
+                        onSelectYear={onSelectYear}
+                        formatValue={formatValue}
+                    />
+                </PanelSection>
+            )}
+        </>
     );
 
     if (content.kind === 'flow') {
@@ -625,6 +1016,7 @@ const SankeyDetailPanel = ({ content, chartContainerRef, formatValue, onClose }:
                         ))}
                     </ul>
                 )}
+                {renderExtraSections(content.series, content.why)}
             </>
         ));
     }
@@ -669,6 +1061,7 @@ const SankeyDetailPanel = ({ content, chartContainerRef, formatValue, onClose }:
                     );
                 })}
             </ul>
+            {renderExtraSections(content.series, content.why)}
         </>
     ));
 };
