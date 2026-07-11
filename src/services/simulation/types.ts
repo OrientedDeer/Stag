@@ -28,6 +28,35 @@ export interface CashflowIncomeSource {
 }
 
 /**
+ * One structured withdrawal the engine actually planned/executed this year, kept
+ * so the cashflow click panel's "why is this withdrawal here" section can read the
+ * per-withdrawal gross/tax/penalty/net and the reason (RMD vs spending deficit vs
+ * conversion tax) instead of scraping the engine's text logs. Populated straight
+ * from the same `PlannedWithdrawal[]` the engine iterates when executing the plan —
+ * see SimulationEngine.executeYearPlan — so it never re-derives the numbers.
+ *
+ * Unlike `SimulationYear.cashflow.withdrawalDetail` (a per-account gross total that
+ * deliberately EXCLUDES RMDs, since RMDs surface as income), this array carries
+ * EVERY planned withdrawal including RMDs, so each reason is representable.
+ */
+export interface CashflowWithdrawalDetail {
+    /** Source account id. */
+    accountId: string;
+    /** Source account display name (as the engine logged it). */
+    accountName: string;
+    /** Gross amount withdrawn. */
+    gross: number;
+    /** Tax attributable to this withdrawal (ordinary + LTCG pass-through). */
+    tax: number;
+    /** Early-withdrawal penalty (0 unless under 59½). */
+    penalty: number;
+    /** Net received after tax/penalty. */
+    net: number;
+    /** Why the withdrawal happened (mirrors PlannedWithdrawal.reason). */
+    reason: PlannedWithdrawal['reason'];
+}
+
+/**
  * Detailed cashflow breakdown the simulation has already computed but
  * historically wasn't surfaced. The Sankey chart uses these values directly
  * instead of re-deriving them from raw incomes/expenses (which led to drift).
@@ -66,6 +95,13 @@ export interface CashflowDetail {
      * was applied; auth LTCG in that case is captured by `unfundedDeficit`.
      */
     brokerageLTCGFromGross: number;
+    /**
+     * Per-withdrawal provenance (gross/tax/penalty/net/reason) for every planned
+     * withdrawal this year, INCLUDING RMDs. Powers the cashflow click panel's "why"
+     * section. Undefined for callers that don't run the engine (e.g. the Dashboard's
+     * pre-simulation chart), which have no structured withdrawal plan.
+     */
+    withdrawals?: CashflowWithdrawalDetail[];
 }
 
 // Define the shape of a single year's result

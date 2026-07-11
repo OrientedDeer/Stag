@@ -19,6 +19,7 @@ import {
     type CashflowDetail,
     type CashflowIncomeKind,
     type CashflowIncomeSource,
+    type CashflowWithdrawalDetail,
 } from "./types";
 import { distributeProportional } from "../../utils/distribute";
 
@@ -108,6 +109,13 @@ interface BuildCashflowDetailInput {
      * reinvested this year (e.g. the EOY path, or callers with no savings APR).
      */
     interestAccountIdByIncomeId?: Record<string, string>;
+    /**
+     * Per-withdrawal provenance captured by SimulationEngine.executeYearPlan (gross/
+     * tax/penalty/net/reason for every planned withdrawal, including RMDs). Passed
+     * straight through onto CashflowDetail.withdrawals; not re-derived here. Omitted
+     * by non-engine callers (e.g. the Dashboard pre-simulation chart).
+     */
+    withdrawalDetails?: CashflowWithdrawalDetail[];
 }
 
 /**
@@ -118,7 +126,7 @@ interface BuildCashflowDetailInput {
  * to re-derive it (and drift from the sim's actual values).
  */
 export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDetail {
-    const { incomes, expenses, accounts, insurance, year, brokerageLTCGFromGross, employerInflows, userContributions, userContributionsByIncome, rsuVestWithholding, rsuVestAccountId, interestAccountIdByIncomeId } = input;
+    const { incomes, expenses, accounts, insurance, year, brokerageLTCGFromGross, employerInflows, userContributions, userContributionsByIncome, rsuVestWithholding, rsuVestAccountId, interestAccountIdByIncomeId, withdrawalDetails } = input;
 
     // buildCashflowDetail runs once per simulated year, so build the account-by-id
     // lookup ONCE at the top and reuse it for every account resolution below (match
@@ -485,5 +493,6 @@ export function buildCashflowDetail(input: BuildCashflowDetailInput): CashflowDe
         mortgageInterestEscrow,
         expensesByCategory,
         brokerageLTCGFromGross,
+        withdrawals: withdrawalDetails,
     };
 }

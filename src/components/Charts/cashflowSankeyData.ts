@@ -6,7 +6,7 @@
  * so the chart component can stay focused on rendering.
  */
 import { WorkIncome, type AnyIncome, PassiveIncome } from '../Objects/Income/models';
-import { MortgageExpense, type AnyExpense, CLASS_TO_CATEGORY } from '../Objects/Expense/models';
+import { MortgageExpense, type AnyExpense, CLASS_TO_CATEGORY, isLongTermGoal } from '../Objects/Expense/models';
 import { type AnyAccount, InvestedAccount, DebtAccount, DeficitDebtAccount } from '../Objects/Accounts/models';
 import { type CashflowDetail } from '../../services/simulation/types';
 import { totalTaxesOf, type TaxComponents } from './taxTotals';
@@ -76,6 +76,15 @@ export interface SankeyRothConversion {
     amount: number;
     fromAccounts: Record<string, number>;
     toAccounts: Record<string, number>;
+    /**
+     * True incremental federal tax cost of the conversion (#164), carried through
+     * from `SimulationYear.rothConversion.federalTaxCost`. Optional because the
+     * Dashboard's pre-simulation chart has no conversion cost to report. Consumed
+     * by the click panel's "why" section; not used by the graph math here.
+     */
+    federalTaxCost?: number;
+    /** True incremental state tax cost of the conversion (from `rothConversion.stateTaxCost`). */
+    stateTaxCost?: number;
 }
 
 export interface BuildCashflowSankeyInput {
@@ -718,6 +727,57 @@ export function buildCashflowSankeyData(input: BuildCashflowSankeyInput): BuildC
             ...reinvestedIncomeItems.map(item => ({ label: `→ ${item.accountName}`, value: item.net })),
         ];
         addProvenance('Net Pay', 'destinations', netPayItems);
+
+        // Expense category nodes: the individual expenses inside each rendered
+        // category. cashflowDetail.expensesByCategory is totals-only, so itemize
+        // from the expense INSTANCES (this builder's `expenses` prop), grouped with
+        // the SAME rules that produced the node totals in CashflowDetailBuilder —
+        // mortgage excluded (it has its own principal/interest nodes) and long-term
+        // goals excluded (their node total is a sinking-fund set-aside, not
+        // getAnnualAmount). A category is made drillable only when (1) it has 2+
+        // constituents — a single-expense category is left to the leaf/flow panel,
+        // which shows its share of Net Pay rather than a trivial 100% one-row list —
+        // and (2) its itemized rows reconcile to the node total within $0.50. The
+        // one known non-reconciling case is a surplus-paid-down loan (#60/#147): the
+        // displayed post-paydown balance amortizes a smaller regular payment than the
+        // pre-paydown figure baked into the node total, so its rows would understate
+        // the node — skip it and degrade gracefully rather than show wrong shares.
+        const expenseItemsByCategory = new Map<string, SankeyProvenanceItem[]>();
+        for (const exp of expenses) {
+            if (exp instanceof MortgageExpense) continue;
+            if (isLongTermGoal(exp)) continue;
+            const amount = exp.getAnnualAmount(year);
+            if (amount < MIN_DISPLAY_THRESHOLD) continue;
+            const category = CLASS_TO_CATEGORY[exp.constructor.name] || 'Other';
+            const bucket = expenseItemsByCategory.get(category);
+            if (bucket) bucket.push({ label: exp.name, value: amount });
+            else expenseItemsByCategory.set(category, [{ label: exp.name, value: amount }]);
+        }
+        for (const cat of sortedExpenseCategories) {
+            const items = expenseItemsByCategory.get(cat);
+            if (!items || items.length < 2) continue; // single-expense → leaf/flow panel
+            const itemsSum = items.reduce((s, i) => s + i.value, 0);
+            const nodeTotal = expenseCatTotals.get(cat) || 0;
+            if (Math.abs(itemsSum - nodeTotal) > 0.5) continue; // non-reconciling (e.g. paid-down loan) — degrade gracefully
+            addProvenance(cat, 'breakdown', items);
+        }
+
+        // Withdrawal nodes ("From <account>"): pair the drawn amount (the node's own
+        // value) with the account's remaining balance from the accounts prop, so a
+        // click reads e.g. "$40k drawn, $310k remaining". The remaining-balance row
+        // is CONTEXT, not a decomposition — it can exceed the node total (the panel's
+        // share% is measured against the node value), which the redesigned popover
+        // section presents appropriately. Same-named accounts merged into one node
+        // have their balances summed, mirroring the node's own name-keyed merge.
+        withdrawalItems.forEach(([accountName, netAmount]) => {
+            const remaining = accounts
+                .filter(acc => acc.name === accountName)
+                .reduce((sum, acc) => sum + acc.amount, 0);
+            addProvenance(`Withdraw: ${accountName}`, 'breakdown', [
+                { label: 'Withdrawn', value: netAmount },
+                { label: 'Remaining balance', value: remaining },
+            ]);
+        });
 
         // Only keep provenance for nodes that actually rendered.
         for (const id of Object.keys(provenance)) {

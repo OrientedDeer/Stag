@@ -10,7 +10,7 @@ import * as TaxService from "../../Objects/Taxes/TaxService";
 
 // Re-export types from the new module structure
 export type { SimulationYear } from "../../../services/simulation/types";
-import { type SimulationYear, type WithdrawalState, type BaselineProjections } from "../../../services/simulation/types";
+import { type SimulationYear, type WithdrawalState, type BaselineProjections, type CashflowWithdrawalDetail } from "../../../services/simulation/types";
 
 // Re-export helper for external consumers (e.g., RothConversionService tests)
 export { calculateEffectiveConversionTax } from "../../../services/simulation/helpers";
@@ -65,9 +65,12 @@ function executeYearPlan(
     accounts: AnyAccount[],
     withdrawalState: WithdrawalState,
     logs: string[]
-): { conversionDeposits: Record<string, number>; conversionSources: Record<string, number> } {
+): { conversionDeposits: Record<string, number>; conversionSources: Record<string, number>; withdrawalDetails: CashflowWithdrawalDetail[] } {
     const conversionDeposits: Record<string, number> = {};
     const conversionSources: Record<string, number> = {};
+    // Per-withdrawal provenance for the cashflow click panel's "why" section,
+    // captured in this same loop so it never re-derives the engine's numbers.
+    const withdrawalDetails: CashflowWithdrawalDetail[] = [];
 
     // Execute withdrawals
     for (const withdrawal of plan.withdrawals) {
@@ -75,6 +78,19 @@ function executeYearPlan(
         if (!account || !(account instanceof InvestedAccount || account instanceof SavedAccount || account instanceof ESPPAccount || account instanceof RSUAccount)) {
             continue;
         }
+
+        // Record EVERY resolved withdrawal — including RMDs, which are skipped below
+        // for the execution/withdrawalDetail totals (RMDService already applied them)
+        // but still belong in the provenance array so their reason is representable.
+        withdrawalDetails.push({
+            accountId: account.id,
+            accountName: withdrawal.accountName,
+            gross: withdrawal.gross,
+            tax: withdrawal.tax,
+            penalty: withdrawal.penalty,
+            net: withdrawal.net,
+            reason: withdrawal.reason,
+        });
 
         // Skip RMDs — RMDService.processRMDs() already deducted from the account and
         // recorded the totals. The RMD entry is in plan.withdrawals only as a tracking
@@ -168,7 +184,7 @@ function executeYearPlan(
         }
     }
 
-    return { conversionDeposits, conversionSources };
+    return { conversionDeposits, conversionSources, withdrawalDetails };
 }
 
 /**
@@ -793,7 +809,7 @@ function simulateOneYearWithNewEngine(
     // ------------------------------------------------------------------
     // EXECUTE YEAR PLAN (Phase 3)
     // ------------------------------------------------------------------
-    const { conversionDeposits, conversionSources } = executeYearPlan(yearPlan, accounts, withdrawalState, logs);
+    const { conversionDeposits, conversionSources, withdrawalDetails } = executeYearPlan(yearPlan, accounts, withdrawalState, logs);
     updateWithdrawalStateFromPlan(yearPlan, withdrawalState);
 
     // ------------------------------------------------------------------
@@ -1113,6 +1129,7 @@ function simulateOneYearWithNewEngine(
         rsuVestWithholding: rsuVestingResult.vestWithholdingByIncomeId,
         rsuVestAccountId: rsuVestingResult.vestAccountIdByIncomeId,
         interestAccountIdByIncomeId: incomeResult.interestAccountIdByIncomeId,
+        withdrawalDetails,
     });
 
     // ------------------------------------------------------------------
