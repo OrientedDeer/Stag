@@ -26,8 +26,16 @@ import { notNull } from '../utils/notNull';
 const post = (msg: McWorkerResponse): void =>
     (self as unknown as { postMessage: (m: McWorkerResponse) => void }).postMessage(msg);
 
-self.onmessage = async (e: MessageEvent): Promise<void> => {
-    const req = e.data as McWorkerRequest;
+/**
+ * Handle one MC run request. Exported for the cache-key parity test (#130),
+ * which invokes it directly — vitest can't run real web workers, mirroring
+ * jointSearch.worker.ts's `handleJointSearchRequest` / this worker's own
+ * montecarloWorkerGuard.test.ts precedent.
+ */
+export async function handleMcRequest(
+    req: McWorkerRequest,
+    postMsg: (msg: McWorkerResponse) => void,
+): Promise<void> {
     try {
         const accounts = req.accounts.map(reconstituteAccount).filter(notNull);
         const incomes = req.incomes.map(reconstituteIncome).filter(notNull);
@@ -61,6 +69,22 @@ self.onmessage = async (e: MessageEvent): Promise<void> => {
             );
         }
 
+        // Round returnMean/returnStdDev ONCE here, into the config object used
+        // for ALL THREE consumers below (cache key, solve, run) — not just the
+        // cache key. Before #130, the cache key rounded rm/rs to 4dp but the
+        // solve and run consumed the full-precision req.config directly, so two
+        // configs that round identically (e.g. float noise like 7.00000049)
+        // could share a cached policy solved for a DIFFERENT rate than the one
+        // actually run. policyCache's full-key recheck doesn't catch this: the
+        // "full key" IS the rounded key, so a mismatched full-precision config
+        // still matches it. Rounding once and threading the same object through
+        // keeps the cache key and the actual run permanently in agreement.
+        const config = {
+            ...req.config,
+            returnMean: Number(req.config.returnMean.toFixed(4)),
+            returnStdDev: Number(req.config.returnStdDev.toFixed(4)),
+        };
+
         // Cache key: everything the policy depends on, EXCLUDING seed and
         // numScenarios (they don't change the policy), so re-running with only
         // those changed is an instant cache hit. Hashed off the raw cloned request:
@@ -77,8 +101,8 @@ self.onmessage = async (e: MessageEvent): Promise<void> => {
             // (solveWorkingYear #98 lookup) — pre-#159/#169 cached policies lack
             // gap-year coverage, so force a re-solve.
             v: 'v3-169',
-            rm: Number(req.config.returnMean.toFixed(4)),
-            rs: Number(req.config.returnStdDev.toFixed(4)),
+            rm: config.returnMean,
+            rs: config.returnStdDev,
             a: req.accounts,
             i: req.incomes,
             e: req.expenses,
@@ -86,21 +110,25 @@ self.onmessage = async (e: MessageEvent): Promise<void> => {
             ts: req.taxState,
             y: new Date().getFullYear(),
         });
-        post({ type: 'phase', phase: 'solving' });
+        postMsg({ type: 'phase', phase: 'solving' });
         let plan = await getCachedPlan(cacheKey);
         if (!plan) {
-            plan = solveMcConversionPlan(req.config, accounts, incomes, expenses, req.assumptions, req.taxState);
+            plan = solveMcConversionPlan(config, accounts, incomes, expenses, req.assumptions, req.taxState);
             await putCachedPlan(cacheKey, plan); // no-op when there's no policy (non-DP)
         }
 
-        post({ type: 'phase', phase: 'running' });
+        postMsg({ type: 'phase', phase: 'running' });
         const summary = await runMonteCarloSimulation(
-            req.config, accounts, incomes, expenses, req.assumptions, req.taxState,
-            (pct) => post({ type: 'progress', pct }),
+            config, accounts, incomes, expenses, req.assumptions, req.taxState,
+            (pct) => postMsg({ type: 'progress', pct }),
             plan,
         );
-        post({ type: 'done', summary });
+        postMsg({ type: 'done', summary });
     } catch (err) {
-        post({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+        postMsg({ type: 'error', message: err instanceof Error ? err.message : String(err) });
     }
+}
+
+self.onmessage = (e: MessageEvent): void => {
+    void handleMcRequest(e.data as McWorkerRequest, post);
 };
