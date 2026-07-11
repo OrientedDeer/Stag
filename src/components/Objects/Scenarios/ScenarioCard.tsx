@@ -7,14 +7,18 @@ import { Button } from "../../Layout/Primitives";
 
 /**
  * The loosely-structured, possibly-legacy assumptions blob this modal edits by
- * nested string path. It intentionally allows a `macro.housingAppreciation`
- * field the UI writes there for historical reasons, and carries a string index
- * signature so the dynamic path-based edit helpers type-check. Loaded scenarios
- * run this through migrateAssumptions() before simulating, so it need not be a
- * complete AssumptionsState.
+ * nested string path. Carries a string index signature so the dynamic path-based
+ * edit helpers type-check. Loaded scenarios run this through migrateAssumptions()
+ * before simulating, so it need not be a complete AssumptionsState.
+ *
+ * Housing appreciation lives under `expenses` because that is the path the engine
+ * actually reads (assumptions.expenses.housingAppreciation) and the only one
+ * migrateAssumptions carries through — writing it under `macro` was a silent
+ * no-op (#203).
  */
 type EditableAssumptions = {
-    macro?: { inflationRate?: number; housingAppreciation?: number };
+    macro?: { inflationRate?: number };
+    expenses?: { housingAppreciation?: number };
     investments?: { returnRates?: { ror?: number }; withdrawalRate?: number };
     milestones?: CustomMilestone[];
 } & Record<string, unknown>;
@@ -91,13 +95,14 @@ const ScenarioAssumptionsModal: React.FC<{
     };
 
     const handleSave = () => {
-        // The working copy is a real (possibly partial) assumptions blob edited
-        // by path; the phantom macro.housingAppreciation is harmless excess.
+        // The working copy is a real (possibly partial) assumptions blob edited by
+        // path — every field written here lives at a path migrateAssumptions reads.
         onSave(editedAssumptions as Partial<AssumptionsState>);
         onClose();
     };
 
     const macro = editedAssumptions.macro;
+    const expenses = editedAssumptions.expenses;
     const investments = editedAssumptions.investments;
     const milestones = editedAssumptions.milestones ?? [];
 
@@ -138,8 +143,8 @@ const ScenarioAssumptionsModal: React.FC<{
                                 <input
                                     type="number"
                                     step="0.1"
-                                    value={macro?.housingAppreciation ?? 3}
-                                    onChange={(e) => handleChange('macro', 'housingAppreciation', parseFloat(e.target.value))}
+                                    value={expenses?.housingAppreciation ?? 3}
+                                    onChange={(e) => handleChange('expenses', 'housingAppreciation', parseFloat(e.target.value))}
                                     className="w-full bg-surface-overlay border border-border-default rounded px-3 py-2 text-white text-sm"
                                 />
                             </div>
