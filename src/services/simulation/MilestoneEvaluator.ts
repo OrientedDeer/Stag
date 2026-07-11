@@ -1,9 +1,9 @@
-import { AnyAccount, InvestedAccount, SavedAccount, DebtAccount, PropertyAccount, ESPPAccount, RSUAccount, DeficitDebtAccount } from "../../components/Objects/Accounts/models";
-import { MortgageExpense, LoanExpense, AnyExpense } from "../../components/Objects/Expense/models";
-import { AnyIncome, isIncomeActiveInCurrentMonth } from "../../components/Objects/Income/models";
-import { CustomMilestone, MilestoneCondition, MilestoneReachEvent, SimulationYear } from "./types";
+import { type AnyAccount, InvestedAccount, SavedAccount, DebtAccount, PropertyAccount, ESPPAccount, RSUAccount, DeficitDebtAccount } from "../../components/Objects/Accounts/models";
+import { MortgageExpense, LoanExpense, type AnyExpense } from "../../components/Objects/Expense/models";
+import { type AnyIncome, isIncomeActiveInCurrentMonth } from "../../components/Objects/Income/models";
+import { type CustomMilestone, type MilestoneCondition, type MilestoneReachEvent, type SimulationYear } from "./types";
 import { getTaxParameters, calculateTotalFederalTax } from "../../components/Objects/Taxes/TaxService";
-import { FilingStatus } from "../../data/TaxData";
+import { type FilingStatus } from "../../data/TaxData";
 
 /**
  * Context for evaluating milestone conditions
@@ -302,28 +302,11 @@ function evaluateCondition(condition: MilestoneCondition, context: MilestoneCont
     }
 }
 
-/**
- * Normalize a raw milestone array loaded from persisted/imported data so every
- * milestone is guaranteed to carry a `conditions` ARRAY.
- *
- * `CustomMilestone.conditions` is a REQUIRED `MilestoneCondition[]` in the type, but
- * milestones are restored from localStorage / file imports / QR backups via an
- * UNCHECKED cast (`data.milestones as CustomMilestone[]`). A malformed or older backup
- * whose milestone object lacks `conditions` violates the type, and every downstream
- * dereference (`milestone.conditions.every(...)`, `.find(...)`, `.some(...)`) then throws
- * `TypeError: ...reading 'every'` — white-screening the Priority/Income/Withdrawal tabs on
- * the very first render.
- *
- * Normalizing ONCE at the load boundary fixes all those call sites structurally: each
- * milestone is mapped to a copy whose `conditions` is the original array when it is one,
- * and `[]` otherwise. Valid milestones pass through with the SAME reference (no needless
- * copy). Use this at every milestone-load boundary (see migrateAssumptions).
- */
-export function normalizeMilestones(raw: CustomMilestone[]): CustomMilestone[] {
-    return raw.map(m => (
-        Array.isArray(m.conditions) ? m : { ...m, conditions: [] }
-    ));
-}
+// normalizeMilestones lives in its own leaf module so AssumptionsContext can
+// call it at the milestone-load boundary without importing this file (which
+// value-imports TaxService — that edge closed a real runtime import cycle).
+// Re-exported here for the existing consumers/tests.
+export { normalizeMilestones } from "./normalizeMilestones";
 
 /**
  * Evaluate if a milestone has been reached (all conditions must be met)

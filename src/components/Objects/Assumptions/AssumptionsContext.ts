@@ -1,8 +1,11 @@
 import { createContext, useContext } from 'react';
-import { EarningsRecord } from '../../../services/SocialSecurityCalculator';
-import { CustomMilestone } from '../../../services/simulation/types';
-import { normalizeMilestones } from '../../../services/simulation/MilestoneEvaluator';
-import { RothConversionStrategy, DEFAULT_ROTH_CONVERSION_STRATEGY } from './rothConversionStrategy';
+import { type EarningsRecord } from '../../../services/SocialSecurityCalculator';
+import { type CustomMilestone } from '../../../services/simulation/types';
+// From the leaf module, NOT MilestoneEvaluator: that file value-imports
+// TaxService, whose submodules import getBirthYear back from here — importing
+// it there made this Context module part of a genuine runtime import cycle.
+import { normalizeMilestones } from '../../../services/simulation/normalizeMilestones';
+import { type RothConversionStrategy, DEFAULT_ROTH_CONVERSION_STRATEGY } from './rothConversionStrategy';
 
 // Built-in milestone IDs that cannot be removed
 export const BUILTIN_MILESTONE_IDS = {

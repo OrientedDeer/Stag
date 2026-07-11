@@ -14,8 +14,11 @@
  * - SSA Benefit Formula: https://www.ssa.gov/oact/cola/piaformula.html
  */
 
-import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
-import { WorkIncome, AnyIncome } from '../components/Objects/Income/models';
+// Type comes from the leaf module, NOT via SimulationEngine's re-export: this
+// edge sits on every madge cycle through the engine, and importing the engine
+// here (even for a type) is what made the whole graph look circular.
+import { type SimulationYear } from './simulation/types';
+import { WorkIncome, type AnyIncome } from '../components/Objects/Income/models';
 import {
   getWageIndexFactor,
   getBendPoints,
