@@ -1,4 +1,4 @@
-import { Profiler, ProfilerOnRenderCallback, ReactNode, useCallback, useRef } from 'react';
+import { Profiler, ProfilerOnRenderCallback, ReactNode, useCallback, useState } from 'react';
 
 /**
  * In-code React Profiler wrapper that auto-logs slow renders. No need to open
@@ -55,9 +55,11 @@ interface PerformanceProfilerProps {
  * Pass-through when profiling is disabled (no Profiler overhead).
  */
 export function PerformanceProfiler({ id, children }: PerformanceProfilerProps) {
-    // Resolve flag once per mount; cheap enough and avoids per-commit cost.
-    const enabled = useRef(isProfilerEnabled());
-    const threshold = useRef(readThresholdMs());
+    // Resolve flag once per mount (lazy state init); cheap enough and avoids
+    // per-commit cost. Kept as state — not a ref — so it can be read during
+    // render without violating the ref-usage rule. It never changes after mount.
+    const [enabled] = useState(isProfilerEnabled);
+    const [threshold] = useState(readThresholdMs);
 
     const onRender = useCallback<ProfilerOnRenderCallback>((
         profilerId,
@@ -65,15 +67,14 @@ export function PerformanceProfiler({ id, children }: PerformanceProfilerProps) 
         actualDuration,
         baseDuration,
     ) => {
-        if (actualDuration < threshold.current) return;
-        // eslint-disable-next-line no-console
+        if (actualDuration < threshold) return;
         console.warn(
             `[perf] slow ${phase} in "${profilerId}": actual=${actualDuration.toFixed(1)}ms ` +
             `base=${baseDuration.toFixed(1)}ms ` +
-            `(threshold=${threshold.current}ms)`
+            `(threshold=${threshold}ms)`
         );
-    }, []);
+    }, [threshold]);
 
-    if (!enabled.current) return <>{children}</>;
+    if (!enabled) return <>{children}</>;
     return <Profiler id={id} onRender={onRender}>{children}</Profiler>;
 }

@@ -145,10 +145,14 @@ export default function TransactionsTab() {
 
     const handleRowEdit = useCallback((id: string) => setEditingId(id), []);
     const handleRowCancel = useCallback(() => setEditingId(null), []);
+    // Alias the (individually memoized) editor method to a plain identifier so
+    // the memoization is preserved — `editor` itself is a fresh object each
+    // render, so depending on it would recompute this callback every render.
+    const updateTransaction = editor.update;
     const handleRowUpdate = useCallback((id: string, updates: Partial<Transaction>) => {
-        editor.update(id, updates);
+        updateTransaction(id, updates);
         setEditingId(null);
-    }, [editor.update]);
+    }, [updateTransaction]);
 
     const handleToggleGroupBy = useCallback(() => setGroupByCategory(g => !g), []);
     const handleToggleAutoCreateRules = useCallback(

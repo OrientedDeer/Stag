@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   runHistoricalBacktest,
   getBacktestDataRange,
@@ -143,27 +143,57 @@ export const HistoricalBacktestPanel = React.memo(({ simulationData }: Historica
     gkAdjustmentPercent,
   });
 
-  // Update config when simulation defaults or strategy settings change (but only if user hasn't modified)
+  // Re-sync config when the simulation defaults or the assumptions-derived
+  // strategy settings change. The sim-default fields are only overwritten while
+  // the user hasn't modified them; strategy settings always track assumptions.
+  // Comparing against the previous inputs during render is React's recommended
+  // alternative to a syncing effect (and `simulationDefaults` is memoized, so
+  // this can't loop).
   const [hasUserModified, setHasUserModified] = useState(false);
-  useEffect(() => {
-    if (!hasUserModified) {
-      setConfig(prev => ({
-        ...prev,
-        startingBalance: simulationDefaults.startingBalance,
-        annualWithdrawal: simulationDefaults.annualWithdrawal,
-        retirementYears: simulationDefaults.retirementYears,
-      }));
-    }
-    // Always update strategy settings from assumptions
-    setConfig(prev => ({
-      ...prev,
+  const [prevSync, setPrevSync] = useState({
+    simulationDefaults,
+    hasUserModified,
+    withdrawalStrategy,
+    withdrawalRateFromAssumptions,
+    gkUpperGuardrail,
+    gkLowerGuardrail,
+    gkAdjustmentPercent,
+  });
+  if (
+    prevSync.simulationDefaults !== simulationDefaults ||
+    prevSync.hasUserModified !== hasUserModified ||
+    prevSync.withdrawalStrategy !== withdrawalStrategy ||
+    prevSync.withdrawalRateFromAssumptions !== withdrawalRateFromAssumptions ||
+    prevSync.gkUpperGuardrail !== gkUpperGuardrail ||
+    prevSync.gkLowerGuardrail !== gkLowerGuardrail ||
+    prevSync.gkAdjustmentPercent !== gkAdjustmentPercent
+  ) {
+    setPrevSync({
+      simulationDefaults,
+      hasUserModified,
       withdrawalStrategy,
-      withdrawalRate: withdrawalRateFromAssumptions,
+      withdrawalRateFromAssumptions,
       gkUpperGuardrail,
       gkLowerGuardrail,
       gkAdjustmentPercent,
-    }));
-  }, [simulationDefaults, hasUserModified, withdrawalStrategy, withdrawalRateFromAssumptions, gkUpperGuardrail, gkLowerGuardrail, gkAdjustmentPercent]);
+    });
+    setConfig(prev => {
+      const next = {
+        ...prev,
+        withdrawalStrategy,
+        withdrawalRate: withdrawalRateFromAssumptions,
+        gkUpperGuardrail,
+        gkLowerGuardrail,
+        gkAdjustmentPercent,
+      };
+      if (!hasUserModified) {
+        next.startingBalance = simulationDefaults.startingBalance;
+        next.annualWithdrawal = simulationDefaults.annualWithdrawal;
+        next.retirementYears = simulationDefaults.retirementYears;
+      }
+      return next;
+    });
+  }
 
   // Results state
   const [summary, setSummary] = useState<BacktestSummary | null>(null);

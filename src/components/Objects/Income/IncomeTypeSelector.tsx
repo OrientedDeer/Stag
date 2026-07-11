@@ -9,8 +9,18 @@ import {
     WindfallIncome
 } from './models';
 
+/** The income-class constructors this selector can emit. */
+type SelectableIncomeClass =
+    | typeof WorkIncome
+    | typeof CurrentSocialSecurityIncome
+    | typeof FutureSocialSecurityIncome
+    | typeof FERSPensionIncome
+    | typeof CSRSPensionIncome
+    | typeof PassiveIncome
+    | typeof WindfallIncome;
+
 interface IncomeTypeSelectorProps {
-    onSelect: (typeClass: any) => void;
+    onSelect: (typeClass: SelectableIncomeClass) => void;
 }
 
 const INCOME_CATEGORIES = [

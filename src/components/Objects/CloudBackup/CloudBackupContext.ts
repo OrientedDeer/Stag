@@ -96,8 +96,15 @@ const PRESENTATION_ONLY_DISPLAY_FIELDS = ['useCompactCurrency', 'showExperimenta
 // Produce the canonical string used for backup dirty-detection. Accepts either the
 // serialized blob (backup/restore paths) or the live payload object, strips
 // presentation-only fields, and returns deterministic JSON. Never mutates its input.
+// The only shape this function reads out of the parsed backup: an optional
+// `assumptions.display` bag of presentation flags. Everything else is opaque
+// and preserved as-is, so the rest is a permissive index signature.
+type DirtyCheckPayload = {
+    assumptions?: { display?: Record<string, unknown> } & Record<string, unknown>;
+} & Record<string, unknown>;
+
 export function normalizeForDirtyCheck(payload: string | object): string {
-    let data: any;
+    let data: DirtyCheckPayload;
     try {
         data = typeof payload === 'string' ? JSON.parse(payload) : payload;
     } catch {

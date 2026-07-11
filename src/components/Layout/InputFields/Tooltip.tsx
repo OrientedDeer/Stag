@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 interface TooltipProps {
@@ -12,9 +12,13 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children }) => {
     const [coords, setCoords] = useState({ top: 0, left: 0 });
     const triggerRef = useRef<HTMLButtonElement>(null);
 
-    useEffect(() => {
-        if (isVisible && triggerRef.current) {
-            const rect = triggerRef.current.getBoundingClientRect();
+    // Measure the trigger and position the tooltip in the handler that reveals
+    // it, rather than in an effect keyed on visibility. The trigger button is
+    // already mounted when these fire, so its rect is available immediately.
+    const show = (): void => {
+        const el = triggerRef.current;
+        if (el) {
+            const rect = el.getBoundingClientRect();
             const spaceAbove = rect.top;
             const tooltipHeight = 80; // Approximate tooltip height
             const tooltipWidth = 224; // w-56 = 14rem = 224px
@@ -40,7 +44,8 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children }) => {
 
             setCoords({ top, left });
         }
-    }, [isVisible]);
+        setIsVisible(true);
+    };
 
     const tooltipContent = isVisible && (
         <div
@@ -64,9 +69,9 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children }) => {
                 ref={triggerRef}
                 type="button"
                 className="w-4 h-4 rounded-full bg-surface-input hover:bg-surface-hover text-content-muted hover:text-content-emphasis text-xs flex items-center justify-center transition-colors cursor-help"
-                onMouseEnter={() => setIsVisible(true)}
+                onMouseEnter={show}
                 onMouseLeave={() => setIsVisible(false)}
-                onFocus={() => setIsVisible(true)}
+                onFocus={show}
                 onBlur={() => setIsVisible(false)}
                 aria-label="Help"
             >

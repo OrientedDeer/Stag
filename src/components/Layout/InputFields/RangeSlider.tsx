@@ -1,17 +1,19 @@
 import React, { useCallback, useId, useState } from 'react';
 
 // --- Types ---
-interface RangeSliderProps {
+type RangeValue = number | [number, number];
+
+interface RangeSliderProps<T extends RangeValue> {
   label?: string;
-  value: number | [number, number];
+  value: T;
   /** Fires on release (mouseup / touchend / keyup / blur). */
-  onChange: (val: any) => void;
+  onChange: (val: T) => void;
   /**
    * Optional: fires on every drag tick with the in-flight value. Useful when
    * a parent wants to update cheap UI (numbers, labels) live but defer
    * expensive work (charts) to onChange.
    */
-  onLiveChange?: (val: any) => void;
+  onLiveChange?: (val: T) => void;
   min?: number;
   max?: number;
   step?: number;
@@ -24,7 +26,7 @@ interface RangeSliderProps {
 const TRACK_BG = "bg-surface-input";
 const TRACK_FILL = "bg-positive-solid/80";
 
-export const RangeSlider: React.FC<RangeSliderProps> = ({
+export function RangeSlider<T extends RangeValue>({
   label,
   value,
   onChange,
@@ -35,15 +37,15 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
   formatTooltip = (v) => `${v}`,
   className = "",
   hideHeader = false
-}) => {
+}: RangeSliderProps<T>) {
   const inputId = useId(); // Generates a unique ID for accessibility
 
   // Buffer the in-flight drag value locally. We only call props.onChange on
   // release — driving parent state on every mousemove kicks off a full
   // downstream chart re-render per tick (~80ms on the charts tab), turning
   // a smooth drag into 4-6 frames of jank per move.
-  const [pending, setPending] = useState<number | [number, number] | null>(null);
-  const displayValue: number | [number, number] = pending ?? value;
+  const [pending, setPending] = useState<T | null>(null);
+  const displayValue: T = pending ?? value;
   const isDual = Array.isArray(displayValue);
 
   const commit = useCallback(() => {
@@ -58,26 +60,30 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
     [min, max]
   );
 
+  // The single/dual handlers only fire for the matching value shape (the
+  // caller picks one via the `value` type), so `next` is guaranteed to match
+  // the generic `T`. TS can't correlate the runtime shape to `T`, hence the
+  // asserted casts.
   const handleSingleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const next = Number(e.target.value);
-    setPending(next);
-    onLiveChange?.(next);
+    setPending(next as T);
+    onLiveChange?.(next as T);
   };
 
   const handleMinChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!Array.isArray(displayValue)) return;
     const val = Math.min(Number(e.target.value), displayValue[1] - step);
     const next: [number, number] = [val, displayValue[1]];
-    setPending(next);
-    onLiveChange?.(next);
+    setPending(next as T);
+    onLiveChange?.(next as T);
   };
 
   const handleMaxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!Array.isArray(displayValue)) return;
     const val = Math.max(Number(e.target.value), displayValue[0] + step);
     const next: [number, number] = [displayValue[0], val];
-    setPending(next);
-    onLiveChange?.(next);
+    setPending(next as T);
+    onLiveChange?.(next as T);
   };
 
   const minPercent = isDual ? getPercent(displayValue[0]) : 0;
@@ -223,4 +229,4 @@ export const RangeSlider: React.FC<RangeSliderProps> = ({
       </div>
     </div>
   );
-};
+}

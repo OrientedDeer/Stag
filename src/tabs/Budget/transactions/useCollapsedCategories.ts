@@ -1,38 +1,52 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { AnyExpense } from '../../../components/Objects/Expense/models';
 
+// The fixed sections plus every expense category — the id universe used both
+// for the older-month auto-collapse default and the explicit "collapse all".
+function buildAllCategoryIds(expenses: AnyExpense[]): Set<string> {
+    return new Set([
+        'uncategorized',
+        'income',
+        'transfers',
+        'contributions',
+        ...expenses.map(e => e.id),
+    ]);
+}
+
 /**
- * Tracks which category sections are collapsed, with an auto-collapse-all
- * effect for older months (so historical browsing doesn't dump a wall of
- * rows). Current and future months expand all categories on mount.
+ * Tracks which category sections are collapsed, auto-collapsing all for older
+ * months (so historical browsing doesn't dump a wall of rows). Current and
+ * future months start expanded.
  */
 export function useCollapsedCategories(
     selectedMonth: number,
     selectedYear: number,
     expenses: AnyExpense[],
 ) {
-    const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-
-    useEffect(() => {
+    // The default collapse set for the currently-viewed month/expense set.
+    const computeDefault = (): Set<string> => {
         const now = new Date();
         const currentMonth = now.getMonth() + 1;
         const currentYear = now.getFullYear();
         const isOlderMonth = selectedYear < currentYear ||
             (selectedYear === currentYear && selectedMonth < currentMonth);
+        return isOlderMonth ? buildAllCategoryIds(expenses) : new Set<string>();
+    };
 
-        if (isOlderMonth) {
-            const allCategoryIds = new Set([
-                'uncategorized',
-                'income',
-                'transfers',
-                'contributions',
-                ...expenses.map(e => e.id),
-            ]);
-            setCollapsed(allCategoryIds);
-        } else {
-            setCollapsed(new Set());
-        }
-    }, [selectedMonth, selectedYear, expenses]);
+    const [collapsed, setCollapsed] = useState<Set<string>>(computeDefault);
+
+    // Reset to the default whenever the viewed month or the expense set changes.
+    // Comparing against the previous inputs during render is React's recommended
+    // alternative to a syncing effect (and avoids a one-frame flash on mount).
+    const [prevInputs, setPrevInputs] = useState({ selectedMonth, selectedYear, expenses });
+    if (
+        prevInputs.selectedMonth !== selectedMonth ||
+        prevInputs.selectedYear !== selectedYear ||
+        prevInputs.expenses !== expenses
+    ) {
+        setPrevInputs({ selectedMonth, selectedYear, expenses });
+        setCollapsed(computeDefault());
+    }
 
     const toggle = useCallback((categoryId: string) => {
         setCollapsed(prev => {
@@ -49,16 +63,10 @@ export function useCollapsedCategories(
     const expandAll = useCallback(() => setCollapsed(new Set()), []);
 
     const collapseAll = useCallback(() => {
-        // Same id universe the auto-collapse effect uses: the fixed sections plus
-        // every expense category. Ids for sections that aren't currently rendered
-        // are harmless (their `collapsed.has(...)` is simply never read).
-        setCollapsed(new Set([
-            'uncategorized',
-            'income',
-            'transfers',
-            'contributions',
-            ...expenses.map(e => e.id),
-        ]));
+        // Same id universe the auto-collapse default uses. Ids for sections that
+        // aren't currently rendered are harmless (their `collapsed.has(...)` is
+        // simply never read).
+        setCollapsed(buildAllCategoryIds(expenses));
     }, [expenses]);
 
     // Nothing collapsed -> everything is expanded.

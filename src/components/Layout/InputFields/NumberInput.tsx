@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { StyledInput } from "./StyleUI";
 import { stripLeadingZeros, handleEnterKeyBlur } from "./inputUtils";
 
@@ -24,12 +24,19 @@ function validateRange(val: number, min?: number, max?: number): string | undefi
 export const NumberInput: React.FC<NumberInputProps> = ({ label, value, onChange, onBlur, error, id, disabled, min, max, tooltip }) => {
     const [localValue, setLocalValue] = useState(value.toString());
     const [internalError, setInternalError] = useState<string | undefined>();
+    const [prevValue, setPrevValue] = useState(value);
 
-    useEffect(() => {
+    // Resync the local editing buffer when the `value` prop changes from the
+    // outside (not from our own onChange). Comparing to the previous prop
+    // during render is React's recommended alternative to a syncing effect.
+    // The parseFloat guard preserves an in-progress edit (e.g. "1." while the
+    // committed value is already 1).
+    if (value !== prevValue) {
+        setPrevValue(value);
         if (parseFloat(localValue) !== value) {
             setLocalValue(value.toString());
         }
-    }, [value]);
+    }
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
         const strVal = stripLeadingZeros(e.target.value);

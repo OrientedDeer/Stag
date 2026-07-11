@@ -3,6 +3,8 @@
  */
 
 import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
+import { TaxState } from '../components/Objects/Taxes/TaxContext';
+import { AmountHistoryEntry } from '../components/Objects/Accounts/AccountContext';
 
 /**
  * Metadata for a saved scenario
@@ -21,12 +23,21 @@ export interface ScenarioMetadata {
  * Matches the FullBackup structure from useFileManager
  */
 export interface ScenarioInputs {
-    accounts: any[];         // Serialized accounts
-    incomes: any[];          // Serialized incomes
-    expenses: any[];         // Serialized expenses
-    taxSettings: any;        // TaxState
-    assumptions: any;        // AssumptionsState
-    amountHistory?: any[];   // Optional account balance history
+    accounts: Array<Record<string, unknown>>;   // Serialized accounts (className-tagged)
+    incomes: Array<Record<string, unknown>>;    // Serialized incomes
+    expenses: Array<Record<string, unknown>>;   // Serialized expenses
+    taxSettings: TaxState;
+    // FLAGGED (lint #103): left as `any`. This is a serialized, possibly
+    // legacy/partial assumptions blob passed through migrateAssumptions() at
+    // load. It is written as a full AssumptionsState by producers, as a
+    // Partial<AssumptionsState> by ScenarioContext.updateScenarioAssumptions,
+    // and cast to Record<string, unknown> by a test — no single concrete type
+    // satisfies all three, and the sites that would need adjusting live in
+    // files owned by sibling agents (ScenarioContext.tsx, *.test.*). Tightening
+    // here belongs in a follow-up that can touch those together.
+    assumptions: any; // eslint-disable-line @typescript-eslint/no-explicit-any
+    // Optional account balance history, flattened to an array for serialization.
+    amountHistory?: Array<{ accountId: string; history: AmountHistoryEntry[] }>;
 }
 
 /**

@@ -1,4 +1,4 @@
-import React, { useState, useContext, useEffect } from "react";
+import React, { useState, useContext } from "react";
 import { IncomeContext, IncomeDispatchContext } from "./IncomeContext";
 import {
   WorkIncome,
@@ -99,20 +99,6 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
 
     const workIncomes = incomes.filter(inc => inc instanceof WorkIncome) as WorkIncome[];
 
-    useEffect(() => {
-        if (selectedType === WorkIncome && contributionAccounts.length > 0 && !form.matchAccountId) {
-            updateForm('matchAccountId', contributionAccounts[0].id);
-        }
-    }, [selectedType, contributionAccounts, form.matchAccountId]);
-
-    // Auto-select first work income for pension linking
-    useEffect(() => {
-        if ((selectedType === FERSPensionIncome || selectedType === CSRSPensionIncome) &&
-            workIncomes.length > 0 && !form.linkedIncomeId) {
-            updateForm('linkedIncomeId', workIncomes[0].id);
-        }
-    }, [selectedType, workIncomes, form.linkedIncomeId]);
-
     const handleClose = () => {
         setStep('select');
         setSelectedType(null);
@@ -135,10 +121,20 @@ const AddIncomeModal: React.FC<AddIncomeModalProps> = ({ isOpen, onClose }) => {
         // Set smart default end milestone based on income type
         if (typeClass === WorkIncome) {
             updateForm('endMilestoneId', BUILTIN_MILESTONE_IDS.RETIRE);
+            // Default the employer-match destination to the first eligible
+            // contribution account (previously done via a selectedType effect).
+            if (contributionAccounts.length > 0 && !form.matchAccountId) {
+                updateForm('matchAccountId', contributionAccounts[0].id);
+            }
         } else if (typeClass === PassiveIncome || typeClass === CurrentSocialSecurityIncome ||
                    typeClass === FutureSocialSecurityIncome || typeClass === SocialSecurityIncome ||
                    typeClass === FERSPensionIncome || typeClass === CSRSPensionIncome) {
             updateForm('endMilestoneId', BUILTIN_MILESTONE_IDS.END_OF_PLAN);
+            // Default the High-3 link to the first work income for pensions.
+            if ((typeClass === FERSPensionIncome || typeClass === CSRSPensionIncome) &&
+                workIncomes.length > 0 && !form.linkedIncomeId) {
+                updateForm('linkedIncomeId', workIncomes[0].id);
+            }
         }
         // WindfallIncome gets no default - it's a one-time event
         setStep('details');

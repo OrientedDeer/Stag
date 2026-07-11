@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { StyledInput } from "./StyleUI";
 import { formatDecimal, stripLeadingZeros, handleEnterKeyBlur } from "./inputUtils";
 
@@ -22,15 +22,13 @@ function validatePercentage(val: number, max: number): string | undefined {
 }
 
 export const PercentageInput: React.FC<PercentageInputProps> = ({ label, value, onChange, onBlur, error, id, isAboveInflation, disabled, max = 100, tooltip }) => {
+    // While focused, `displayValue` is the raw editing buffer. While not
+    // focused, the shown value is derived directly from the `value` prop
+    // during render (see the `value=` prop below), so no effect is needed to
+    // keep them in sync.
     const [displayValue, setDisplayValue] = useState("");
     const [isFocused, setIsFocused] = useState(false);
     const [internalError, setInternalError] = useState<string | undefined>();
-
-    useEffect(() => {
-        if (!isFocused) {
-            setDisplayValue(formatDecimal(value));
-        }
-    }, [value, isFocused]);
 
     const handleFocus = (): void => {
         setIsFocused(true);
@@ -73,7 +71,7 @@ export const PercentageInput: React.FC<PercentageInputProps> = ({ label, value, 
             id={id}
             label={isAboveInflation ? `${label} (%) (above inflation)` : `${label} (%)`}
             type="text"
-            value={isFocused ? displayValue : `${displayValue}%`}
+            value={isFocused ? displayValue : `${formatDecimal(value)}%`}
             onChange={handleChange}
             onFocus={handleFocus}
             onBlur={handleBlur}

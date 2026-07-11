@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { StyledInput } from "./StyleUI";
 import { formatWholeDollar, stripLeadingZeros, handleEnterKeyBlur } from "./inputUtils";
 
@@ -14,15 +14,13 @@ interface CurrencyInputProps {
 }
 
 export const CurrencyInput: React.FC<CurrencyInputProps> = ({ label, value, onChange, onBlur, error, id, tooltip, disabled = false }) => {
+    // While focused, `displayValue` is the raw editing buffer. While not
+    // focused, the shown value is derived directly from the `value` prop
+    // during render (see the `value=` prop below), so no effect is needed to
+    // keep them in sync.
     const [displayValue, setDisplayValue] = useState("");
     const [isFocused, setIsFocused] = useState(false);
     const [internalError, setInternalError] = useState<string | undefined>();
-
-    useEffect(() => {
-        if (!isFocused) {
-            setDisplayValue(formatWholeDollar(value));
-        }
-    }, [value, isFocused]);
 
     const handleFocus = (): void => {
         setIsFocused(true);
@@ -67,7 +65,7 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({ label, value, onCh
             id={id}
             label={displayLabel}
             type="text"
-            value={isFocused ? displayValue : `$${displayValue}`}
+            value={isFocused ? displayValue : `$${formatWholeDollar(value)}`}
             onChange={handleChange}
             onFocus={handleFocus}
             onBlur={handleBlur}

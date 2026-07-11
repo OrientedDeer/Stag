@@ -17,6 +17,8 @@ import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngi
 import { AssumptionsState, getRetirementAge, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
 import { findFinancialIndependenceYear } from './MilestoneCalculator';
 import { AnyAccount, DebtAccount, PropertyAccount } from '../components/Objects/Accounts/models';
+import { AnyIncome } from '../components/Objects/Income/models';
+import { AnyExpense } from '../components/Objects/Expense/models';
 import { TaxState } from '../components/Objects/Taxes/TaxContext';
 import { AmountHistoryEntry } from '../components/Objects/Accounts/AccountContext';
 
@@ -139,8 +141,8 @@ export const getScenarioById = (id: string): SavedScenario | null => {
 export const captureCurrentState = (
     accounts: AnyAccount[],
     amountHistory: Record<string, AmountHistoryEntry[]>,
-    incomes: any[],
-    expenses: any[],
+    incomes: AnyIncome[],
+    expenses: AnyExpense[],
     taxSettings: TaxState,
     assumptions: AssumptionsState
 ): ScenarioInputs => {

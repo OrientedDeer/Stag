@@ -335,6 +335,11 @@ export function growAccounts(
     assumptions: AssumptionsState,
     year: number,
     returnOverride: number | undefined,
+    // Reserved logs-threading slot (see CLAUDE.md). growAccounts does no logging
+    // of its own today, but the engine and many tests pass `logs` positionally as
+    // the final argument, so the parameter must stay. This config's no-unused-vars
+    // doesn't honor the `_` prefix, hence the targeted disable.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _logs: string[]
 ): AnyAccount[] {
     const DEFICIT_DEBT_ID = 'system-deficit-debt';

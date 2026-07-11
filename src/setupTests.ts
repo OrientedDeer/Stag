@@ -24,4 +24,4 @@ class MockResizeObserver {
     disconnect() {}
 }
 
-(globalThis as any).ResizeObserver = MockResizeObserver;
+globalThis.ResizeObserver = MockResizeObserver;

@@ -31,7 +31,7 @@ function loadFromStorage<S>(
             // Default: merge parsed with initial to handle new fields
             return { ...initialState, ...parsed };
         }
-    } catch (e) {
+    } catch {
         // Silently fall back to initial state on parse errors
     }
     return initialState;

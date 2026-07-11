@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import { ReactNode, useEffect, useRef } from 'react';
 import { placePopover } from './popoverPosition';
 
 interface ChartTooltipPortalProps {
@@ -18,14 +18,11 @@ interface ChartTooltipPortalProps {
  */
 export const ChartTooltipPortal = ({ children }: ChartTooltipPortalProps) => {
     const tooltipRef = useRef<HTMLDivElement>(null);
-    // One render after mount so the portal div exists and the ref is bound.
-    // After that, we never call setState again — pointer-driven position
-    // updates happen directly via ref.
-    const [mounted, setMounted] = useState(false);
+    // The portal is rendered immediately (hidden until the first pointer event
+    // positions it). No component state is used: pointer-driven position
+    // updates happen directly via ref, so the tooltip body never re-renders.
 
     useEffect(() => {
-        setMounted(true);
-
         let rafId: number | null = null;
         let pendingX = 0;
         let pendingY = 0;
@@ -65,8 +62,6 @@ export const ChartTooltipPortal = ({ children }: ChartTooltipPortalProps) => {
             window.removeEventListener('pointerdown', handlePointerEvent);
         };
     }, []);
-
-    if (!mounted) return null;
 
     return createPortal(
         <div

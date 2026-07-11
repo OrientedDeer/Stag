@@ -323,7 +323,25 @@ interface DetailedYearPanelProps {
     accountsContext: AnyAccount[];
 }
 
-function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYearPanelProps) {
+// Module-level (not defined during DetailedYearPanel's render) so it has a
+// stable component identity. The parent passes the expanded flag and toggle
+// handler explicitly instead of closing over them.
+function SectionHeader({ title, expanded, onToggle, count }: { title: string; expanded: boolean; onToggle: () => void; count?: number }) {
+    return (
+        <button
+            onClick={onToggle}
+            className="w-full flex items-center justify-between p-3 bg-surface-overlay hover:bg-surface-input rounded-lg transition-colors"
+        >
+            <span className="font-semibold text-white flex items-center gap-2">
+                {title}
+                {count !== undefined && <span className="text-xs bg-surface-hover px-2 py-0.5 rounded">{count}</span>}
+            </span>
+            <span className="text-content-muted">{expanded ? '▼' : '▶'}</span>
+        </button>
+    );
+}
+
+function DetailedYearPanel({ simYear, accountsContext }: DetailedYearPanelProps) {
     const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
         accounts: true,
         income: true,
@@ -336,19 +354,6 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
     const toggleSection = (section: string) => {
         setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
     };
-
-    const SectionHeader = ({ title, section, count }: { title: string; section: string; count?: number }) => (
-        <button
-            onClick={() => toggleSection(section)}
-            className="w-full flex items-center justify-between p-3 bg-surface-overlay hover:bg-surface-input rounded-lg transition-colors"
-        >
-            <span className="font-semibold text-white flex items-center gap-2">
-                {title}
-                {count !== undefined && <span className="text-xs bg-surface-hover px-2 py-0.5 rounded">{count}</span>}
-            </span>
-            <span className="text-content-muted">{expandedSections[section] ? '▼' : '▶'}</span>
-        </button>
-    );
 
     // Extract detailed account info
     const accountDetails = simYear.accounts.map(acc => {
@@ -462,7 +467,7 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
         <div className="space-y-3 mt-4">
             {/* 1. Account Balances */}
             <div>
-                <SectionHeader title="Account Balances (End of Year)" section="accounts" count={accountDetails.length} />
+                <SectionHeader title="Account Balances (End of Year)" expanded={expandedSections.accounts} onToggle={() => toggleSection('accounts')} count={accountDetails.length} />
                 {expandedSections.accounts && (
                     <div className="mt-2 bg-surface-raised rounded-lg p-3 overflow-x-auto">
                         <table className="w-full text-sm">
@@ -512,7 +517,7 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
 
             {/* 2. Income */}
             <div>
-                <SectionHeader title="Income Sources" section="income" count={incomeDetails.length} />
+                <SectionHeader title="Income Sources" expanded={expandedSections.income} onToggle={() => toggleSection('income')} count={incomeDetails.length} />
                 {expandedSections.income && (
                     <div className="mt-2 bg-surface-raised rounded-lg p-3 space-y-3">
                         {Object.entries(incomeByCategory).map(([category, items]) => (
@@ -550,7 +555,7 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
 
             {/* 3. Withdrawals */}
             <div>
-                <SectionHeader title="Withdrawals" section="withdrawals" count={withdrawalBreakdown.length} />
+                <SectionHeader title="Withdrawals" expanded={expandedSections.withdrawals} onToggle={() => toggleSection('withdrawals')} count={withdrawalBreakdown.length} />
                 {expandedSections.withdrawals && (
                     <div className="mt-2 bg-surface-raised rounded-lg p-3">
                         {withdrawalBreakdown.length === 0 ? (
@@ -614,7 +619,7 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
 
             {/* 4. Contributions/Inflows */}
             <div>
-                <SectionHeader title="Contributions & Inflows" section="inflows" />
+                <SectionHeader title="Contributions & Inflows" expanded={expandedSections.inflows} onToggle={() => toggleSection('inflows')} />
                 {expandedSections.inflows && (
                     <div className="mt-2 bg-surface-raised rounded-lg p-3 space-y-2">
                         <div className="grid grid-cols-2 gap-4">
@@ -650,7 +655,7 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
 
             {/* 5. Taxes */}
             <div>
-                <SectionHeader title="Tax Breakdown" section="taxes" />
+                <SectionHeader title="Tax Breakdown" expanded={expandedSections.taxes} onToggle={() => toggleSection('taxes')} />
                 {expandedSections.taxes && (
                     <div className="mt-2 bg-surface-raised rounded-lg p-3">
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
@@ -722,7 +727,7 @@ function DetailedYearPanel({ simYear, age: _age, accountsContext }: DetailedYear
             {/* 6. Roth Conversions */}
             {simYear.rothConversion && simYear.rothConversion.amount > 0 && (
                 <div>
-                    <SectionHeader title="Roth Conversion" section="rothConversion" />
+                    <SectionHeader title="Roth Conversion" expanded={expandedSections.rothConversion} onToggle={() => toggleSection('rothConversion')} />
                     {expandedSections.rothConversion && (
                         <div className="mt-2 bg-surface-raised rounded-lg p-3">
                             <div className="grid grid-cols-3 gap-3 mb-3">
@@ -3009,7 +3014,7 @@ function TaxBracketVisualizationTab() {
                 marginalRate,
                 standardDeduction: fedParams.standardDeduction,
             };
-        }).filter(Boolean);
+        }).filter((d): d is NonNullable<typeof d> => d !== null);
     }, [simulation, birthYear, filingStatus, assumptions]);
 
     // Bracket colors
@@ -3056,7 +3061,7 @@ function TaxBracketVisualizationTab() {
                             </tr>
                         </thead>
                         <tbody>
-                            {bracketData.map((data: any) => (
+                            {bracketData.map((data) => (
                                 <tr key={data.year} className="border-b border-border-subtle hover:bg-surface-overlay/50">
                                     <td className="p-2 text-white">{data.year}</td>
                                     <td className="p-2 text-content-default">{data.age}</td>
@@ -3105,7 +3110,7 @@ function TaxBracketVisualizationTab() {
                             </tr>
                         </thead>
                         <tbody>
-                            {bracketData.map((data: any) => {
+                            {bracketData.map((data) => {
                                 const params = getTaxParameters(data.year, filingStatus, 'federal', undefined, assumptions);
                                 if (!params) return null;
                                 return (
@@ -3666,7 +3671,7 @@ function PensionDebugTab() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {detail.colaProjection.slice(0, 15).map((row: any) => (
+                                    {detail.colaProjection.slice(0, 15).map((row) => (
                                         <tr key={row.age} className={`border-b border-border-subtle ${row.age === 62 ? 'bg-cat-cyan-tint/20' : ''}`}>
                                             <td className="p-2 text-white">{row.age}</td>
                                             <td className="p-2 text-content-default">{row.year}</td>
@@ -3775,7 +3780,7 @@ function PensionDebugTab() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {detail.colaProjection.slice(0, 15).map((row: any) => (
+                                    {detail.colaProjection.slice(0, 15).map((row) => (
                                         <tr key={row.age} className="border-b border-border-subtle">
                                             <td className="p-2 text-white">{row.age}</td>
                                             <td className="p-2 text-content-default">{row.year}</td>
@@ -3811,7 +3816,7 @@ function PensionDebugTab() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {high3Tracking.high3History.map((row: any) => (
+                                {high3Tracking.high3History.map((row) => (
                                     <tr key={row.year} className="border-b border-border-subtle hover:bg-surface-overlay/50">
                                         <td className="p-2 text-white">{row.year}</td>
                                         <td className="p-2 text-content-default">{row.age}</td>
@@ -5264,12 +5269,9 @@ function AccountsDebugTab() {
     const retirementAge = getRetirementAge(assumptions.milestones);
     const inflationRate = assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0;
 
-    if (simulation.length === 0) return <div className="text-content-muted p-4">No simulation data available. Run the simulation first.</div>;
-
-    const investedAccounts = simulation[0].accounts.filter((a): a is InvestedAccount => a instanceof InvestedAccount);
-    const accountOptions = ['All', ...investedAccounts.map(a => a.name)];
-
     // Section 1: Investment Returns
+    // NOTE: all hooks below must run unconditionally, so the empty-simulation
+    // guard and the simulation[0]-derived values live just before the return.
     const returnsData = useMemo(() => {
         return simulation.map((simYear, idx) => {
             const prevYear = idx > 0 ? simulation[idx - 1] : null;
@@ -5279,7 +5281,7 @@ function AccountsDebugTab() {
             const withdrawals = simYear.cashflow.withdrawalDetail || {};
 
             const accountReturns: Record<string, { startBal: number; endBal: number; netContrib: number; growth: number; returnPct: number; realReturn: number }> = {};
-            let totalStart = 0, totalEnd = 0, totalGrowth = 0;
+            let totalStart = 0, totalGrowth = 0;
 
             simYear.accounts.forEach(acc => {
                 if (!(acc instanceof InvestedAccount)) return;
@@ -5295,7 +5297,6 @@ function AccountsDebugTab() {
                 const realReturn = returnPct - (inflationRate * 100);
                 accountReturns[acc.id] = { startBal, endBal, netContrib, growth, returnPct, realReturn };
                 totalStart += startBal;
-                totalEnd += endBal;
                 totalGrowth += growth;
             });
 
@@ -5360,6 +5361,11 @@ function AccountsDebugTab() {
             return { year: simYear.year, age, matchAccounts };
         }).filter(d => d.matchAccounts.length > 0);
     }, [simulation, startAge, assumptions.investments.returnRates.ror]);
+
+    if (simulation.length === 0) return <div className="text-content-muted p-4">No simulation data available. Run the simulation first.</div>;
+
+    const investedAccounts = simulation[0].accounts.filter((a): a is InvestedAccount => a instanceof InvestedAccount);
+    const accountOptions = ['All', ...investedAccounts.map(a => a.name)];
 
     return (
         <div className="space-y-6">
@@ -5494,9 +5500,8 @@ function IncomeExpensesDebugTab() {
     const startAge = currentYear - getBirthYear(assumptions.milestones);
     const inflationRate = assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0;
 
-    if (simulation.length === 0) return <div className="text-content-muted p-4">No simulation data available. Run the simulation first.</div>;
-
     // Section 1: Salary Projections
+    // NOTE: the empty-simulation guard lives below the hooks so they always run.
     const salaryData = useMemo(() => {
         return simulation.map((simYear, idx) => {
             const age = startAge + idx;
@@ -5565,6 +5570,8 @@ function IncomeExpensesDebugTab() {
             return { year: simYear.year, age, totalHealthcare, realCost, pctOfIncome, isMedicare: age >= 65 };
         }).filter(d => d.totalHealthcare > 0);
     }, [simulation, startAge, inflationRate]);
+
+    if (simulation.length === 0) return <div className="text-content-muted p-4">No simulation data available. Run the simulation first.</div>;
 
     return (
         <div className="space-y-6">
@@ -5712,8 +5719,7 @@ function CashFlowDebugTab() {
     const retirementAge = getRetirementAge(assumptions.milestones);
     const inflationRate = assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0;
 
-    if (simulation.length === 0) return <div className="text-content-muted p-4">No simulation data available. Run the simulation first.</div>;
-
+    // NOTE: the empty-simulation guard lives below the hooks so they always run.
     const filteredSimulation = useMemo(() => {
         if (periodFilter === 'Accumulation') return simulation.filter((_, idx) => startAge + idx < retirementAge);
         if (periodFilter === 'Retirement') return simulation.filter((_, idx) => startAge + idx >= retirementAge);
@@ -5735,7 +5741,6 @@ function CashFlowDebugTab() {
 
     // Section 2: Net Worth Timeline
     const netWorthData = useMemo(() => {
-        let peakNW = -Infinity, peakYear = 0;
         const data = simulation.map((simYear, idx) => {
             const age = startAge + idx;
             let assets = 0, liabilities = 0;
@@ -5747,9 +5752,15 @@ function CashFlowDebugTab() {
                 }
             });
             const netWorth = assets - liabilities;
-            if (netWorth > peakNW) { peakNW = netWorth; peakYear = simYear.year; }
             return { year: simYear.year, age, assets, liabilities, netWorth };
         });
+        // Peak net worth (first year achieving the max). Computed with a reduce
+        // rather than reassigning variables across the map closure, which the
+        // compiler flags.
+        const { peakNW, peakYear } = data.reduce(
+            (best, d) => (d.netWorth > best.peakNW ? { peakNW: d.netWorth, peakYear: d.year } : best),
+            { peakNW: -Infinity, peakYear: 0 }
+        );
         return { data, peakYear, peakNW };
     }, [simulation, startAge]);
 
@@ -5778,6 +5789,8 @@ function CashFlowDebugTab() {
             return { year: simYear.year, age: startAge + idx, cumulativeInflation, purchasingPower, nominalIncome, realIncome };
         });
     }, [simulation, startAge, inflationRate]);
+
+    if (simulation.length === 0) return <div className="text-content-muted p-4">No simulation data available. Run the simulation first.</div>;
 
     return (
         <div className="space-y-6">
@@ -6483,6 +6496,7 @@ function ValidationDebugTab() {
 
     const currentYear = new Date().getFullYear();
     const startAge = currentYear - getBirthYear(assumptions.milestones);
+    const retirementAge = getRetirementAge(assumptions.milestones);
 
     type Issue = { type: 'error' | 'warning' | 'info'; title: string; detail: string; section: string };
 
@@ -6588,7 +6602,7 @@ function ValidationDebugTab() {
             }
 
             // Negative discretionary without withdrawals
-            if (simYear.cashflow.discretionary < -1 && simYear.cashflow.withdrawals <= 0 && age >= getRetirementAge(assumptions.milestones)) {
+            if (simYear.cashflow.discretionary < -1 && simYear.cashflow.withdrawals <= 0 && age >= retirementAge) {
                 issues.push({ type: 'warning', title: `Negative cash flow in ${year}`, detail: `Discretionary: ${toCurrency(simYear.cashflow.discretionary)} with no withdrawals at age ${age}`, section: 'Consistency' });
             }
         });
@@ -6606,7 +6620,7 @@ function ValidationDebugTab() {
         });
 
         return issues;
-    }, [simulation, startAge, incomes, expenses, getRetirementAge(assumptions.milestones)]);
+    }, [simulation, startAge, incomes, expenses, retirementAge]);
 
     const allIssues = [...consistencyIssues, ...assumptionIssues, ...missingDataIssues];
     const filteredIssues = severityFilter === 'All' ? allIssues

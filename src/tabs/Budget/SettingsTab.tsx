@@ -41,7 +41,7 @@ export default function SettingsTab() {
 
         setFormData({ pattern: '', expenseId: '', isRegex: false });
         setShowAddRule(false);
-    }, [formData, dispatch]);
+    }, [formData, dispatch, expenses]);
 
     const handleUpdateRule = useCallback((id: string, updates: Partial<CategoryMapping>) => {
         dispatch({

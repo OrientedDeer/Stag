@@ -48,10 +48,19 @@ export function TriggerSelector({
     // they're actively editing just because the value is momentarily empty
     // (e.g. mid-typing a date, the native input briefly reports ""). Only switch
     // when a concrete date or milestone is present.
-    useEffect(() => {
+    //
+    // We compare against the previous props during render (React's recommended
+    // alternative to a syncing effect). The date is keyed by its time value so
+    // a fresh Date instance with the same value doesn't churn.
+    const dateKey = date ? date.getTime() : null;
+    const [prevDateKey, setPrevDateKey] = useState(dateKey);
+    const [prevMilestoneId, setPrevMilestoneId] = useState(milestoneId);
+    if (dateKey !== prevDateKey || milestoneId !== prevMilestoneId) {
+        setPrevDateKey(dateKey);
+        setPrevMilestoneId(milestoneId);
         if (date) setMode('date');
         else if (milestoneId) setMode('milestone');
-    }, [date, milestoneId]);
+    }
 
     // If milestone was deleted, reset to default
     useEffect(() => {

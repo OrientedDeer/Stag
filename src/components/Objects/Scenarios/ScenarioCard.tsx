@@ -1,8 +1,23 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { SavedScenario } from '../../../services/ScenarioTypes';
 import { ConfirmDialog } from '../../Layout/ConfirmDialog';
-import { getRetirementAge, getLifeExpectancy, BUILTIN_MILESTONE_IDS } from '../Assumptions/AssumptionsContext';
+import { getRetirementAge, getLifeExpectancy, BUILTIN_MILESTONE_IDS, AssumptionsState } from '../Assumptions/AssumptionsContext';
+import { CustomMilestone } from '../../../services/simulation/types';
 import { Button } from "../../Layout/Primitives";
+
+/**
+ * The loosely-structured, possibly-legacy assumptions blob this modal edits by
+ * nested string path. It intentionally allows a `macro.housingAppreciation`
+ * field the UI writes there for historical reasons, and carries a string index
+ * signature so the dynamic path-based edit helpers type-check. Loaded scenarios
+ * run this through migrateAssumptions() before simulating, so it need not be a
+ * complete AssumptionsState.
+ */
+type EditableAssumptions = {
+    macro?: { inflationRate?: number; housingAppreciation?: number };
+    investments?: { returnRates?: { ror?: number }; withdrawalRate?: number };
+    milestones?: CustomMilestone[];
+} & Record<string, unknown>;
 
 interface ScenarioCardProps {
     scenario: SavedScenario;
@@ -13,7 +28,7 @@ interface ScenarioCardProps {
     onDelete: () => void;
     onExport: () => void;
     onRename: (newName: string) => void;
-    onUpdateAssumptions?: (assumptions: any) => void;
+    onUpdateAssumptions?: (assumptions: Partial<AssumptionsState>) => void;
 }
 
 /**
@@ -23,50 +38,50 @@ const ScenarioAssumptionsModal: React.FC<{
     isOpen: boolean;
     scenario: SavedScenario;
     onClose: () => void;
-    onSave: (assumptions: any) => void;
+    onSave: (assumptions: Partial<AssumptionsState>) => void;
 }> = ({ isOpen, scenario, onClose, onSave }) => {
-    const assumptions = scenario.inputs?.assumptions || {};
-    const [editedAssumptions, setEditedAssumptions] = useState(assumptions);
+    const seedAssumptions = (): EditableAssumptions =>
+        (scenario.inputs?.assumptions ?? {}) as EditableAssumptions;
+    const [editedAssumptions, setEditedAssumptions] = useState<EditableAssumptions>(seedAssumptions);
 
-    // Reset when scenario changes
-    useEffect(() => {
-        setEditedAssumptions(scenario.inputs?.assumptions || {});
-    }, [scenario]);
+    // Reset the working copy when the scenario prop changes. Comparing against
+    // the previous prop during render is React's recommended alternative to a
+    // syncing effect (which would setState in an effect body).
+    const [prevScenario, setPrevScenario] = useState(scenario);
+    if (scenario !== prevScenario) {
+        setPrevScenario(scenario);
+        setEditedAssumptions(seedAssumptions());
+    }
 
     if (!isOpen) return null;
 
     const handleChange = (section: string, key: string, value: number) => {
-        setEditedAssumptions((prev: any) => ({
-            ...prev,
-            [section]: {
-                ...prev[section],
-                [key]: value,
-            },
-        }));
+        setEditedAssumptions(prev => {
+            const sectionObj = (prev[section] as Record<string, unknown>) || {};
+            return { ...prev, [section]: { ...sectionObj, [key]: value } };
+        });
     };
 
     const handleNestedChange = (section: string, subsection: string, key: string, value: number) => {
-        setEditedAssumptions((prev: any) => ({
-            ...prev,
-            [section]: {
-                ...prev[section],
-                [subsection]: {
-                    ...(prev[section]?.[subsection] || {}),
-                    [key]: value,
-                },
-            },
-        }));
+        setEditedAssumptions(prev => {
+            const sectionObj = (prev[section] as Record<string, unknown>) || {};
+            const subObj = (sectionObj[subsection] as Record<string, unknown>) || {};
+            return {
+                ...prev,
+                [section]: { ...sectionObj, [subsection]: { ...subObj, [key]: value } },
+            };
+        });
     };
 
     // Update a milestone's condition value
     const handleMilestoneChange = (milestoneId: string, conditionType: 'AGE' | 'YEAR', value: number) => {
-        setEditedAssumptions((prev: any) => {
-            const milestones = prev.milestones || [];
-            const updatedMilestones = milestones.map((m: any) => {
+        setEditedAssumptions(prev => {
+            const milestones = prev.milestones ?? [];
+            const updatedMilestones = milestones.map(m => {
                 if (m.id !== milestoneId) return m;
                 return {
                     ...m,
-                    conditions: m.conditions.map((c: any) =>
+                    conditions: m.conditions.map(c =>
                         c.type === conditionType ? { ...c, value } : c
                     ),
                 };
@@ -76,13 +91,15 @@ const ScenarioAssumptionsModal: React.FC<{
     };
 
     const handleSave = () => {
-        onSave(editedAssumptions);
+        // The working copy is a real (possibly partial) assumptions blob edited
+        // by path; the phantom macro.housingAppreciation is harmless excess.
+        onSave(editedAssumptions as Partial<AssumptionsState>);
         onClose();
     };
 
-    const macro = editedAssumptions.macro || {};
-    const investments = editedAssumptions.investments || {};
-    const milestones = editedAssumptions.milestones || [];
+    const macro = editedAssumptions.macro;
+    const investments = editedAssumptions.investments;
+    const milestones = editedAssumptions.milestones ?? [];
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
@@ -111,7 +128,7 @@ const ScenarioAssumptionsModal: React.FC<{
                                 <input
                                     type="number"
                                     step="0.1"
-                                    value={macro.inflationRate ?? 3}
+                                    value={macro?.inflationRate ?? 3}
                                     onChange={(e) => handleChange('macro', 'inflationRate', parseFloat(e.target.value))}
                                     className="w-full bg-surface-overlay border border-border-default rounded px-3 py-2 text-white text-sm"
                                 />
@@ -121,7 +138,7 @@ const ScenarioAssumptionsModal: React.FC<{
                                 <input
                                     type="number"
                                     step="0.1"
-                                    value={macro.housingAppreciation ?? 3}
+                                    value={macro?.housingAppreciation ?? 3}
                                     onChange={(e) => handleChange('macro', 'housingAppreciation', parseFloat(e.target.value))}
                                     className="w-full bg-surface-overlay border border-border-default rounded px-3 py-2 text-white text-sm"
                                 />
@@ -138,7 +155,7 @@ const ScenarioAssumptionsModal: React.FC<{
                                 <input
                                     type="number"
                                     step="0.1"
-                                    value={investments.returnRates?.ror ?? 5.9}
+                                    value={investments?.returnRates?.ror ?? 5.9}
                                     onChange={(e) => handleNestedChange('investments', 'returnRates', 'ror', parseFloat(e.target.value))}
                                     className="w-full bg-surface-overlay border border-border-default rounded px-3 py-2 text-white text-sm"
                                 />
@@ -148,7 +165,7 @@ const ScenarioAssumptionsModal: React.FC<{
                                 <input
                                     type="number"
                                     step="0.1"
-                                    value={investments.withdrawalRate ?? 4}
+                                    value={investments?.withdrawalRate ?? 4}
                                     onChange={(e) => handleChange('investments', 'withdrawalRate', parseFloat(e.target.value))}
                                     className="w-full bg-surface-overlay border border-border-default rounded px-3 py-2 text-white text-sm"
                                 />

@@ -23,10 +23,16 @@ export function useDebouncedLocalStorage<T>(
     const serializerRef = useRef(serializer);
     const keyRef = useRef(key);
 
-    // Update refs on every render so cleanup always has latest values
-    valueRef.current = value;
-    serializerRef.current = serializer;
-    keyRef.current = key;
+    // Keep refs current so the debounced write and the unload/unmount flush
+    // paths always serialize the latest value. Updating them in an effect
+    // (rather than during render) satisfies the ref-usage rule; every consumer
+    // reads these refs after commit (in a timeout, an event handler, or a
+    // cleanup), so they always observe the post-commit values.
+    useEffect(() => {
+        valueRef.current = value;
+        serializerRef.current = serializer;
+        keyRef.current = key;
+    });
 
     useEffect(() => {
         if (timeoutRef.current) {
