@@ -25,7 +25,6 @@ import { buildProjectionAsync } from '../Future/buildProjection';
 import { JointSearchSupersededError } from '../../services/jointSearchRunner';
 import { getSimulationInputHash } from '../../services/simulationHash';
 import {
-    getTaxParameters,
     getMarginalTaxRate,
     getGrossIncome,
     getPreTaxExemptions,
@@ -34,9 +33,12 @@ import {
     getTaxableSocialSecurityBenefits,
     getItemizedDeductions,
     getYesDeductions,
-    getSALTCap,
-    getEffectiveDeduction,
 } from '../../components/Objects/Taxes/TaxService';
+// Imported from the source modules, not the TaxService barrel: this file is its
+// own chunk (#202), and re-exports that cross a chunk boundary inside the
+// Taxes/engine import cycle trip Rollup's circular-chunk warning.
+import { getTaxParameters, getSALTCap } from '../../components/Objects/Taxes/taxService/parameters';
+import { getEffectiveDeduction } from '../../components/Objects/Taxes/taxService/federalTax';
 import {
     extractEarningsFromSimulation,
     calculateAIME

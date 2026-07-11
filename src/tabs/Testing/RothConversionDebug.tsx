@@ -2,7 +2,9 @@ import { useState, useMemo, useContext } from 'react';
 import { AssumptionsContext, AssumptionsState, getBirthYear, getRetirementAge } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
-import { getTaxParameters } from '../../components/Objects/Taxes/TaxService';
+// Source module, not the TaxService barrel — avoids a re-export crossing the
+// Testing chunk boundary inside the Taxes/engine import cycle (Rollup warning).
+import { getTaxParameters } from '../../components/Objects/Taxes/taxService/parameters';
 import { FilingStatus } from '../../data/TaxData';
 import { getRMDStartAge, getDistributionPeriod } from '../../data/RMDData';
 import { SimulationYear, RateMatchWalkRow, ConversionLimitingFactor, DPYearTrace } from '../../services/simulation/types';
