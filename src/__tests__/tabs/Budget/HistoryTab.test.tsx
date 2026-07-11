@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import HistoryTab from '../../../tabs/Budget/HistoryTab';
 import { BudgetContext } from '../../../components/Objects/Budget/BudgetContext';
 import type { BudgetState, MonthlySnapshot, Transaction } from '../../../components/Objects/Budget/BudgetTypes';
 import { ExpenseContext } from '../../../components/Objects/Expense/ExpenseContext';
-import { OtherExpense, AnyExpense } from '../../../components/Objects/Expense/models';
+import { OtherExpense, type AnyExpense } from '../../../components/Objects/Expense/models';
 
 /**
  * react-datasheet-grid doesn't render meaningfully in jsdom; stub it but

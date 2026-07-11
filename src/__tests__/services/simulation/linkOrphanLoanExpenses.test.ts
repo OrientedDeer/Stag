@@ -2,13 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { linkOrphanLoanExpenses } from '../../../services/simulation/linkOrphanLoanExpenses';
 import { calculateNetWorth, calculateTotalDebt } from '../../../services/simulation/MilestoneEvaluator';
 import {
-    AnyAccount,
+    type AnyAccount,
     PropertyAccount,
     DebtAccount,
     SavedAccount,
 } from '../../../components/Objects/Accounts/models';
 import {
-    AnyExpense,
+    type AnyExpense,
     MortgageExpense,
     LoanExpense,
     OtherExpense,

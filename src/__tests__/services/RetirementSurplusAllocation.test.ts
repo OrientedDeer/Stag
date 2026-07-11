@@ -4,7 +4,7 @@ import { defaultAssumptions, createBuiltinMilestones, BUILTIN_MILESTONE_IDS } fr
 import { defaultTaxState } from '../../components/Objects/Taxes/TaxContext';
 import { SavedAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
 import { FoodExpense, OtherExpense } from '../../components/Objects/Expense/models';
-import { AnyIncome, PassiveIncome } from '../../components/Objects/Income/models';
+import { type AnyIncome, PassiveIncome } from '../../components/Objects/Income/models';
 
 describe('Fixed Real Withdrawal Strategy', () => {
     it('should only withdraw what is needed for expenses, not force 4% target', () => {

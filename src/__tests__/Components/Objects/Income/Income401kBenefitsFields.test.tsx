@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { Income401kFields, Income401kFieldValues } from '../../../../components/Objects/Income/card/Income401kFields';
+import { Income401kFields, type Income401kFieldValues } from '../../../../components/Objects/Income/card/Income401kFields';
 import { BenefitsFields } from '../../../../components/Objects/Income/card/BenefitsFields';
 import type { InvestedAccount } from '../../../../components/Objects/Accounts/models';
 

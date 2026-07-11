@@ -1,4 +1,4 @@
-import { MonteCarloSummary } from '../../../services/MonteCarloTypes';
+import { type MonteCarloSummary } from '../../../services/MonteCarloTypes';
 import { formatCompactCurrency } from './FutureUtils';
 import { Tooltip } from '../../../components/Layout/InputFields/Tooltip';
 

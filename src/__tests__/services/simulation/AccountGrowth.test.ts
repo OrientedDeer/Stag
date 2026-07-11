@@ -20,8 +20,8 @@ import {
 } from '../../../components/Objects/Accounts/models';
 import { WorkIncome } from '../../../components/Objects/Income/models';
 import { MortgageExpense, LoanExpense } from '../../../components/Objects/Expense/models';
-import { AssumptionsState, defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { WithdrawalState } from '../../../services/simulation/types';
+import { type AssumptionsState, defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type WithdrawalState } from '../../../services/simulation/types';
 
 // Helper to create a fresh withdrawal state
 function createWithdrawalState(overrides: Partial<WithdrawalState> = {}): WithdrawalState {

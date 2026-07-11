@@ -1,8 +1,8 @@
-import { AnyAccount, InvestedAccount } from "../../components/Objects/Accounts/models";
+import { type AnyAccount, InvestedAccount } from "../../components/Objects/Accounts/models";
 import { PassiveIncome } from "../../components/Objects/Income/models";
-import { AssumptionsState, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
-import { calculateRMD, isAccountSubjectToRMD, isRMDRequired, RMDCalculation } from "../../data/RMDData";
-import { SimulationYear, WithdrawalState } from "./types";
+import { type AssumptionsState, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { calculateRMD, isAccountSubjectToRMD, isRMDRequired, type RMDCalculation } from "../../data/RMDData";
+import { type SimulationYear, type WithdrawalState } from "./types";
 
 export interface RMDResult {
     rmdDetails: SimulationYear['rmdDetails'];

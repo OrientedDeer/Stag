@@ -5,7 +5,7 @@ import '@testing-library/jest-dom';
 import { WorkIncomeFields } from '../../../../components/Objects/Income/WorkIncomeFields';
 import {
     getInitialFormState,
-    IncomeFormState
+    type IncomeFormState
 } from '../../../../components/Objects/Income/incomeFormTypes';
 import {
     get401kSummary,
@@ -14,7 +14,7 @@ import {
     getRSUSummary,
     getPensionSummary
 } from '../../../../components/Objects/Income/workIncomeSummaries';
-import { ESPPAccount, InvestedAccount, RSUAccount } from '../../../../components/Objects/Accounts/models';
+import { type ESPPAccount, InvestedAccount, RSUAccount } from '../../../../components/Objects/Accounts/models';
 
 describe('workIncomeSummaries', () => {
     const base = getInitialFormState();

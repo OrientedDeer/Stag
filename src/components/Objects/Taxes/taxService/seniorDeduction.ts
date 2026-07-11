@@ -12,7 +12,7 @@
  * bases, MAGI phaseout) is NOT here — it lives in federalTax.ts because it is a
  * federal-only departure from the uniform state add-on.
  */
-import { FilingStatus, TaxParameters } from "../../../../data/TaxData";
+import { type FilingStatus, type TaxParameters } from "../../../../data/TaxData";
 
 /**
  * 65+ senior-deduction eligibility: a defined age at or above the senior-age

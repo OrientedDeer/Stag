@@ -5,7 +5,7 @@ import {
   LoanExpense,
   HealthcareExpense,
   BaseExpense,
-  AnyExpense,
+  type AnyExpense,
   reconstituteExpense,
   getExpenseActiveMultiplier,
   isExpenseActiveInCurrentMonth,
@@ -20,7 +20,7 @@ import {
   TransportExpense,
   FoodExpense,
 } from '../../../../components/Objects/Expense/models';
-import { defaultAssumptions, AssumptionsState } from '../../../../components/Objects/Assumptions/AssumptionsContext';
+import { defaultAssumptions, type AssumptionsState } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 
 // Mock Assumptions for testing the 'increment' methods
 const mockAssumptions: AssumptionsState = {

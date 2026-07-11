@@ -13,7 +13,7 @@
  * those keys. The optional fields (acaOptions, irmaaSurchargeForMAGI, baseline
  * diagnostics) are omitted unless an override supplies them.
  */
-import { DPYearContext } from '../../../services/simulation/RothConversionDP';
+import { type DPYearContext } from '../../../services/simulation/RothConversionDP';
 import * as TaxService from '../../../components/Objects/Taxes/TaxService';
 
 /**

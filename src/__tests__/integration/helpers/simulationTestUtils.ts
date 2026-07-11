@@ -5,10 +5,10 @@
  * across realistic multi-decade scenarios.
  */
 
-import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
-import { AnyAccount, InvestedAccount, SavedAccount, PropertyAccount, DebtAccount, DeficitDebtAccount } from '../../../components/Objects/Accounts/models';
-import { AnyExpense } from '../../../components/Objects/Expense/models';
-import { AnyIncome, WorkIncome, FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
+import { type SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
+import { type AnyAccount, InvestedAccount, SavedAccount, PropertyAccount, DebtAccount, DeficitDebtAccount } from '../../../components/Objects/Accounts/models';
+import { type AnyExpense } from '../../../components/Objects/Expense/models';
+import { type AnyIncome, WorkIncome, FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
 
 /**
  * Calculate age for a given simulation year

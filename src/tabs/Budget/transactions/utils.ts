@@ -4,10 +4,10 @@
  * focused on orchestration and makes the grouping logic independently
  * testable.
  */
-import { Transaction, MonthlySnapshot, IncomeCategory, INCOME_CATEGORIES, TRANSFER_CATEGORY_ID } from '../../../components/Objects/Budget/BudgetContext';
-import { AnyExpense } from '../../../components/Objects/Expense/models';
-import { AnyAccount } from '../../../components/Objects/Accounts/models';
-import { PriorityBucket } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type Transaction, type MonthlySnapshot, type IncomeCategory, INCOME_CATEGORIES, TRANSFER_CATEGORY_ID } from '../../../components/Objects/Budget/BudgetContext';
+import { type AnyExpense } from '../../../components/Objects/Expense/models';
+import { type AnyAccount } from '../../../components/Objects/Accounts/models';
+import { type PriorityBucket } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { sortTransactionsByDateThenAmount } from '../../../components/Objects/Budget/budgetUtils';
 
 /**

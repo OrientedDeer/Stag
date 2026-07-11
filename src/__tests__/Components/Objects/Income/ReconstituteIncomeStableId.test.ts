@@ -22,7 +22,7 @@ import { describe, it, expect } from 'vitest';
 import {
     reconstituteIncome,
     WorkIncome,
-    AnyIncome,
+    type AnyIncome,
 } from '../../../../components/Objects/Income/models';
 import { getSimulationInputHash } from '../../../../services/simulationHash';
 import { defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';

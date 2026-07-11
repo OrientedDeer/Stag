@@ -1,6 +1,6 @@
-import { SimulationYear } from "./simulation/types";
+import { type SimulationYear } from "./simulation/types";
 import {
-    AssumptionsState,
+    type AssumptionsState,
     getBirthYear,
     getRetirementAge,
 } from "../components/Objects/Assumptions/AssumptionsContext";

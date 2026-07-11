@@ -3,8 +3,8 @@ import { useSubTabKeyboardNav } from '../../hooks/useKeyboardShortcuts';
 import { useSubTabDeepLink } from '../../hooks/useSubTabDeepLink';
 import { ExpenseContext, ExpenseDispatchContext } from '../../components/Objects/Expense/ExpenseContext';
 import {
-    AnyExpense,
-    ExpenseFrequency,
+    type AnyExpense,
+    type ExpenseFrequency,
     LoanExpense,
     CLASS_TO_CATEGORY,
     CATEGORY_PALETTES,
@@ -16,7 +16,7 @@ import {
 } from '../../components/Objects/Expense/models';
 import ExpenseCard from '../../components/Objects/Expense/ExpenseCard';
 import AddExpenseModal from '../../components/Objects/Expense/AddExpenseModal';
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import { ObjectsIcicleChart } from '../../components/Charts/ObjectsIcicleChart';
 import { tailwindToCssVar, getDistributedColors } from '../../components/Charts/icicleChartHelpers';
 import { Panel } from "../../components/Layout/Primitives";

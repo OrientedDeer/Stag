@@ -14,8 +14,8 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { spawn, ChildProcess } from "node:child_process";
-import { AddressInfo } from "node:net";
+import { spawn, type ChildProcess } from "node:child_process";
+import { type AddressInfo } from "node:net";
 import { resolve as resolvePath } from "node:path";
 
 const BACKUP_DB = "stag_backups";

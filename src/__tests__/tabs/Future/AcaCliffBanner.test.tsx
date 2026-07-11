@@ -3,12 +3,12 @@ import { render, screen } from '@testing-library/react';
 import { CashflowTab } from '../../../tabs/Future/tabs/CashflowTabs';
 import {
     AssumptionsContext,
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
     getBirthYear,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxContext, TaxState, defaultTaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { TaxContext, type TaxState, defaultTaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome } from '../../../components/Objects/Income/models';
 import { FoodExpense } from '../../../components/Objects/Expense/models';

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { getCombinedMarginalRate } from '../../components/Objects/Taxes/TaxService';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
-import { defaultAssumptions, AssumptionsState } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { defaultAssumptions, type AssumptionsState } from '../../components/Objects/Assumptions/AssumptionsContext';
 
 // --- Helpers (mirror ReviewFixes_PR55_marginalRates.test.ts) ---
 

@@ -23,13 +23,13 @@
  * conversion exceeds the old throttled amount.
  */
 import { describe, it, expect } from 'vitest';
-import { solveRetirementYear, YearSolverInput } from '../../../services/simulation/YearSolver';
+import { solveRetirementYear, type YearSolverInput } from '../../../services/simulation/YearSolver';
 import { getAcaCliffThreshold } from '../../../services/simulation/TaxOptimizedWithdrawal';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { PassiveIncome } from '../../../components/Objects/Income/models';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 
 const BIRTH_YEAR = 1970; // Age 60 in 2030: retired, sub-65 (ACA cliff active), no early-withdrawal penalty
 // 400% FPL, single, INFLATED forward to 2030 from the latest published table (2026)

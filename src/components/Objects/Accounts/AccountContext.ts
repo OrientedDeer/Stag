@@ -1,5 +1,5 @@
-import { createContext, Dispatch } from 'react';
-import { AnyAccount, reconstituteAccount } from './models';
+import { createContext, type Dispatch } from 'react';
+import { type AnyAccount, reconstituteAccount } from './models';
 import { formatDateForInput, jsonDateReplacer } from '../../../utils/formatters';
 
 type AllKeys<T> = T extends unknown ? keyof T : never;

@@ -38,17 +38,17 @@ import { describe, it, expect } from 'vitest';
 import {
     buildDPYearContexts,
     evaluateCell,
-    DPYearContext,
+    type DPYearContext,
 } from '../../../services/simulation/RothConversionDP';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { PassiveIncome } from '../../../components/Objects/Income/models';
-import { SimulationYear } from '../../../services/simulation/types';
+import { type SimulationYear } from '../../../services/simulation/types';
 
 const START_YEAR = new Date().getFullYear();
 const RETIREMENT_AGE = 65;

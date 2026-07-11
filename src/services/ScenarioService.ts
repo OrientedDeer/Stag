@@ -3,24 +3,24 @@
  */
 
 import {
-    SavedScenario,
-    ScenarioMetadata,
-    ScenarioInputs,
-    MilestonesSummary,
-    LoadedScenario,
-    ScenarioComparison,
-    YearComparison,
+    type SavedScenario,
+    type ScenarioMetadata,
+    type ScenarioInputs,
+    type MilestonesSummary,
+    type LoadedScenario,
+    type ScenarioComparison,
+    type YearComparison,
     SCENARIO_VERSION,
     SCENARIOS_STORAGE_KEY
 } from './ScenarioTypes';
-import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
-import { AssumptionsState, getRetirementAge, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
+import { type SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
+import { type AssumptionsState, getRetirementAge, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
 import { findFinancialIndependenceYear } from './MilestoneCalculator';
-import { AnyAccount, DebtAccount, PropertyAccount } from '../components/Objects/Accounts/models';
-import { AnyIncome } from '../components/Objects/Income/models';
-import { AnyExpense } from '../components/Objects/Expense/models';
-import { TaxState } from '../components/Objects/Taxes/TaxContext';
-import { AmountHistoryEntry } from '../components/Objects/Accounts/AccountContext';
+import { type AnyAccount, DebtAccount, PropertyAccount } from '../components/Objects/Accounts/models';
+import { type AnyIncome } from '../components/Objects/Income/models';
+import { type AnyExpense } from '../components/Objects/Expense/models';
+import { type TaxState } from '../components/Objects/Taxes/TaxContext';
+import { type AmountHistoryEntry } from '../components/Objects/Accounts/AccountContext';
 
 // ============================================================================
 // Utility Functions

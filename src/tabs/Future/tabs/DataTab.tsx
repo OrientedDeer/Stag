@@ -1,7 +1,7 @@
 import React, { useMemo, useContext, useState, useCallback } from 'react';
 import { CHART_MONEY } from '../../../components/Charts/chartColors';
 import { ResponsiveLine } from '@nivo/line';
-import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
+import { type SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { DebtAccount } from '../../../components/Objects/Accounts/models';
 import { LoanExpense, MortgageExpense } from '../../../components/Objects/Expense/models';
 import { AssumptionsContext } from '../../../components/Objects/Assumptions/AssumptionsContext';
@@ -10,7 +10,7 @@ import { IncomeContext } from '../../../components/Objects/Income/IncomeContext'
 import { ExpenseContext } from '../../../components/Objects/Expense/ExpenseContext';
 import { TaxContext } from '../../../components/Objects/Taxes/TaxContext';
 import { MonteCarloContext } from '../../../components/Objects/Assumptions/MonteCarloContext';
-import { exportToExcel, ExportData } from '../../../services/ExcelExportService';
+import { exportToExcel, type ExportData } from '../../../services/ExcelExportService';
 import { captureChart, collectReportData, generatePDFReport } from '../../../services/PDFReportService';
 import { formatCompactCurrency, formatCurrency, getNetWorthBreakdown } from './FutureUtils';
 import { totalTaxesOf } from '../../../components/Charts/taxTotals';

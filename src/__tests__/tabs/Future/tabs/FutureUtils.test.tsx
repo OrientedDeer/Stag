@@ -8,9 +8,9 @@ import {
   formatCompactCurrency,
   findFinancialIndependenceYear,
 } from '../../../../tabs/Future/tabs/FutureUtils';
-import { SavedAccount, InvestedAccount, DebtAccount, ESPPAccount, RSUAccount, AnyAccount, ESPPLot, RSULot } from '../../../../components/Objects/Accounts/models';
-import { SimulationYear } from '../../../../components/Objects/Assumptions/SimulationEngine';
-import { AssumptionsState, defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
+import { SavedAccount, InvestedAccount, DebtAccount, ESPPAccount, RSUAccount, type AnyAccount, type ESPPLot, type RSULot } from '../../../../components/Objects/Accounts/models';
+import { type SimulationYear } from '../../../../components/Objects/Assumptions/SimulationEngine';
+import { type AssumptionsState, defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 
 describe('FutureUtils', () => {
   describe('getAccountTotals and calculateNetWorth', () => {

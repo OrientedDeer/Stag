@@ -1,4 +1,4 @@
-import { ReactElement } from 'react';
+import { type ReactElement } from 'react';
 import { CurrencyInput } from '../../../Layout/InputFields/CurrencyInput';
 import { DropdownInput } from '../../../Layout/InputFields/DropdownInput';
 import { NumberInput } from '../../../Layout/InputFields/NumberInput';

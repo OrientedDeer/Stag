@@ -1,5 +1,5 @@
 import { createContext } from 'react';
-import { BackupMetadata } from '../../../services/cloud/CloudBackupService';
+import { type BackupMetadata } from '../../../services/cloud/CloudBackupService';
 import { jsonDateReplacer } from '../../../utils/formatters';
 
 export interface CloudBackupState {

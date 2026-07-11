@@ -1,13 +1,13 @@
 import { useState, useMemo, useContext } from 'react';
-import { AssumptionsContext, AssumptionsState, getBirthYear, getRetirementAge } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsContext, type AssumptionsState, getBirthYear, getRetirementAge } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 // Source module, not the TaxService barrel — avoids a re-export crossing the
 // Testing chunk boundary inside the Taxes/engine import cycle (Rollup warning).
 import { getTaxParameters } from '../../components/Objects/Taxes/taxService/parameters';
-import { FilingStatus } from '../../data/TaxData';
+import { type FilingStatus } from '../../data/TaxData';
 import { getRMDStartAge, getDistributionPeriod } from '../../data/RMDData';
-import { SimulationYear, RateMatchWalkRow, ConversionLimitingFactor, DPYearTrace } from '../../services/simulation/types';
+import { type SimulationYear, type RateMatchWalkRow, type ConversionLimitingFactor, type DPYearTrace } from '../../services/simulation/types';
 import { DP_BACKLOAD_DELTA } from '../../services/simulation/RothConversionDP';
 import { Panel } from "../../components/Layout/Primitives";
 

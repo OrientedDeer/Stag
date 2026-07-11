@@ -1,4 +1,4 @@
-import { ReactElement } from 'react';
+import { type ReactElement } from 'react';
 import { NumberInput } from '../../../Layout/InputFields/NumberInput';
 import { DropdownInput } from '../../../Layout/InputFields/DropdownInput';
 import { PercentageInput } from '../../../Layout/InputFields/PercentageInput';

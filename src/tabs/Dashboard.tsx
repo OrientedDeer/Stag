@@ -6,7 +6,7 @@ import { AccountContext } from '../components/Objects/Accounts/AccountContext';
 import { defaultData } from '../data/defaultData';
 import { TaxContext } from '../components/Objects/Taxes/TaxContext';
 import { AssumptionsContext, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
-import { WorkIncome, AnyIncome } from '../components/Objects/Income/models';
+import { WorkIncome, type AnyIncome } from '../components/Objects/Income/models';
 import { TAX_DATABASE } from '../data/TaxData';
 import { calculateFederalTaxFromIncomes, calculateFicaTax, calculateStateTax } from '../components/Objects/Taxes/TaxService';
 import { useFileManager } from '../components/Objects/Accounts/useFileManager';

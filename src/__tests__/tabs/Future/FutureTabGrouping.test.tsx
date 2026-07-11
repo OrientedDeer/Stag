@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import FutureTab from '../../../tabs/Future/FutureTab';
 import { migrateSavedFutureTab } from '../../../tabs/Future/futureTabs';
 import { SimulationContext } from '../../../components/Objects/Assumptions/SimulationContext';
-import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
+import { type SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 
 /**
  * P7 — the nine flat Projection subtabs are grouped: Monte Carlo (with its

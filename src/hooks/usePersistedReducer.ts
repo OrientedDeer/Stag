@@ -1,4 +1,4 @@
-import { useReducer, useCallback, Reducer, Dispatch } from 'react';
+import { useReducer, useCallback, type Reducer, type Dispatch } from 'react';
 import { useDebouncedLocalStorage } from './useDebouncedLocalStorage';
 
 /**

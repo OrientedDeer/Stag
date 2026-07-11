@@ -1,4 +1,4 @@
-import { AnyExpense, MortgageExpense, getExpenseActiveMultiplier } from "../../Expense/models";
+import { type AnyExpense, MortgageExpense, getExpenseActiveMultiplier } from "../../Expense/models";
 
 /**
  * Narrow an expense to those that declare a numeric `tax_deductible` field.

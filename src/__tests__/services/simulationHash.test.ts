@@ -6,8 +6,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { hashString, getSimulationInputHash } from '../../services/simulationHash';
-import { AssumptionsState } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { WorkIncome } from '../../components/Objects/Income/models';
 import type { AnyAccount } from '../../components/Objects/Accounts/models';
 import type { AnyIncome } from '../../components/Objects/Income/models';

@@ -10,7 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     allocateSurplus,
-    SurplusAllocationSettings,
+    type SurplusAllocationSettings,
     isOfferableDebt,
     isSurplusPaydownDebt,
 } from '../../../services/simulation/SurplusAllocator';

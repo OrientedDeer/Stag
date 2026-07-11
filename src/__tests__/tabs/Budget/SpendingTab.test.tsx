@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
-import { ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import SpendingTab from '../../../tabs/Budget/SpendingTab';
 import { BudgetContext } from '../../../components/Objects/Budget/BudgetContext';
 import type { BudgetState, MonthlySnapshot } from '../../../components/Objects/Budget/BudgetTypes';
@@ -10,10 +10,10 @@ import { IncomeContext } from '../../../components/Objects/Income/IncomeContext'
 import {
     AssumptionsContext,
     defaultAssumptions,
-    PriorityBucket,
+    type PriorityBucket,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { OtherExpense, AnyExpense } from '../../../components/Objects/Expense/models';
-import { SavedAccount, AnyAccount } from '../../../components/Objects/Accounts/models';
+import { OtherExpense, type AnyExpense } from '../../../components/Objects/Expense/models';
+import { SavedAccount, type AnyAccount } from '../../../components/Objects/Accounts/models';
 
 // The spending grid itself isn't under test — stub out react-datasheet-grid
 // (it doesn't render meaningfully in jsdom). keyColumn/floatColumn/textColumn

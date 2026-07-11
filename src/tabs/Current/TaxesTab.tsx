@@ -4,7 +4,7 @@ import { ExpenseContext } from "../../components/Objects/Expense/ExpenseContext"
 import { MortgageExpense, getExpenseActiveMultiplier } from "../../components/Objects/Expense/models";
 import { TaxContext } from "../../components/Objects/Taxes/TaxContext";
 import { AssumptionsContext, getBirthYear, getLifeExpectancy } from "../../components/Objects/Assumptions/AssumptionsContext";
-import { TAX_DATABASE, FilingStatus, getClosestTaxYear } from "../../data/TaxData";
+import { TAX_DATABASE, type FilingStatus, getClosestTaxYear } from "../../data/TaxData";
 import {
     calculateFicaTax,
     getGrossIncome,
@@ -22,8 +22,8 @@ import { DropdownInput } from "../../components/Layout/InputFields/DropdownInput
 import { NumberInput } from "../../components/Layout/InputFields/NumberInput";
 import { ToggleInput } from "../../components/Layout/InputFields/ToggleInput";
 import { TaxLifeEventsEditor } from "../../components/Objects/Taxes/TaxLifeEventsEditor";
-import { TaxLifeEvent } from "../../components/Objects/Taxes/TaxContext";
-import { DeductionMethod } from "../../components/Objects/Taxes/TaxContext";
+import { type TaxLifeEvent } from "../../components/Objects/Taxes/TaxContext";
+import { type DeductionMethod } from "../../components/Objects/Taxes/TaxContext";
 import { Panel } from "../../components/Layout/Primitives";
 import { Tooltip } from "../../components/Layout/InputFields/Tooltip";
 import { AlertBanner } from "../../components/Layout/AlertBanner";

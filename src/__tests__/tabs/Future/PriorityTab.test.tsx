@@ -9,7 +9,7 @@ import {
     AssumptionsContext,
     defaultAssumptions,
     createBuiltinMilestones,
-    PriorityBucket,
+    type PriorityBucket,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';

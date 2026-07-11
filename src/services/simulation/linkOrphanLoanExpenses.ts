@@ -1,5 +1,5 @@
-import { AnyAccount, DebtAccount, PropertyAccount } from '../../components/Objects/Accounts/models';
-import { AnyExpense, MortgageExpense, LoanExpense } from '../../components/Objects/Expense/models';
+import { type AnyAccount, DebtAccount, PropertyAccount } from '../../components/Objects/Accounts/models';
+import { type AnyExpense, MortgageExpense, LoanExpense } from '../../components/Objects/Expense/models';
 
 /**
  * Orphan-loan repair for imported / restored state (#124).

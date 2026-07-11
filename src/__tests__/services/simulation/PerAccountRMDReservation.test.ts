@@ -15,12 +15,12 @@
  * must match that per account.
  */
 import { describe, it, expect } from 'vitest';
-import { solveRetirementYear, YearSolverInput } from '../../../services/simulation/YearSolver';
+import { solveRetirementYear, type YearSolverInput } from '../../../services/simulation/YearSolver';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
 import { calculateRMD } from '../../../data/RMDData';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 
 const YEAR = 2030;
 const AGE = 75;

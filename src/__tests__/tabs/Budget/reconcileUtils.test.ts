@@ -3,7 +3,7 @@ import {
     computeStatementCompare,
     getKnownSources,
 } from '../../../tabs/Budget/reconcile/reconcileUtils';
-import { Transaction, MonthlySnapshot } from '../../../components/Objects/Budget/BudgetContext';
+import { type Transaction, type MonthlySnapshot } from '../../../components/Objects/Budget/BudgetContext';
 
 function txn(partial: Partial<Transaction> & Pick<Transaction, 'id' | 'date' | 'amount'>): Transaction {
     return { description: '', ...partial };

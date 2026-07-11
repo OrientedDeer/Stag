@@ -1,16 +1,16 @@
 // src/components/Simulation/SimulationEngine.ts
 // Thin orchestrator - delegates to focused service modules.
 
-import { AnyAccount } from "../../Objects/Accounts/models";
-import { AnyExpense, MortgageExpense, LoanExpense, isLongTermGoal, isGoalDueInYear, getGoalFundAnnualSetAside, goalEndsBeforeYear } from "../Expense/models";
-import { AnyIncome, WorkIncome, PassiveIncome } from "../../Objects/Income/models";
-import { AssumptionsState, getBirthYear, getLifeExpectancy, BUILTIN_MILESTONE_IDS } from "./AssumptionsContext";
-import { TaxState } from "../../Objects/Taxes/TaxContext";
+import { type AnyAccount } from "../../Objects/Accounts/models";
+import { type AnyExpense, MortgageExpense, LoanExpense, isLongTermGoal, isGoalDueInYear, getGoalFundAnnualSetAside, goalEndsBeforeYear } from "../Expense/models";
+import { type AnyIncome, WorkIncome, PassiveIncome } from "../../Objects/Income/models";
+import { type AssumptionsState, getBirthYear, getLifeExpectancy, BUILTIN_MILESTONE_IDS } from "./AssumptionsContext";
+import { type TaxState } from "../../Objects/Taxes/TaxContext";
 import * as TaxService from "../../Objects/Taxes/TaxService";
 
 // Re-export types from the new module structure
 export type { SimulationYear } from "../../../services/simulation/types";
-import { SimulationYear, WithdrawalState, BaselineProjections } from "../../../services/simulation/types";
+import { type SimulationYear, type WithdrawalState, type BaselineProjections } from "../../../services/simulation/types";
 
 // Re-export helper for external consumers (e.g., RothConversionService tests)
 export { calculateEffectiveConversionTax } from "../../../services/simulation/helpers";
@@ -21,15 +21,15 @@ import { processRMDs } from "../../../services/simulation/RMDService";
 import { applyLifestyleCreep, calculateStrategyTarget, calculateTotalDiscretionary } from "../../../services/simulation/SpendingStrategy";
 import { processDeficitDebt } from "../../../services/simulation/WithdrawalService";
 import { processInflows, growAccounts } from "../../../services/simulation/AccountGrowth";
-import { evaluateAllMilestones, isActiveByMilestone, MilestoneContext } from "../../../services/simulation/MilestoneEvaluator";
+import { evaluateAllMilestones, isActiveByMilestone, type MilestoneContext } from "../../../services/simulation/MilestoneEvaluator";
 import { InvestedAccount, SavedAccount, ESPPAccount, RSUAccount, DebtAccount, DeficitDebtAccount } from "../Accounts/models";
 import { DEBT_PAYOFF_EPSILON } from "../../../services/simulation/SurplusAllocator";
 import { processRSUVesting } from "../../../services/simulation/RSUVesting";
-import { solveYear, YearSolverInput } from "../../../services/simulation/YearSolver";
-import { evaluateGuytonKlingerGuardrail, computeGKDiscretionaryAdjustment, fundingRate, WithdrawalResult } from "../../../services/WithdrawalStrategies";
+import { solveYear, type YearSolverInput } from "../../../services/simulation/YearSolver";
+import { evaluateGuytonKlingerGuardrail, computeGKDiscretionaryAdjustment, fundingRate, type WithdrawalResult } from "../../../services/WithdrawalStrategies";
 import { sumInvestedAssets } from "../Accounts/accountUtils";
-import { DPPolicy } from "../../../services/simulation/RothConversionDP";
-import { YearPlan } from "../../../services/simulation/types";
+import { type DPPolicy } from "../../../services/simulation/RothConversionDP";
+import { type YearPlan } from "../../../services/simulation/types";
 import { buildCashflowDetail } from "../../../services/simulation/CashflowDetailBuilder";
 
 // =============================================================================

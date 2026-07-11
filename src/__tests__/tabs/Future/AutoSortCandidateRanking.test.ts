@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { InvestedAccount, SavedAccount, ESPPAccount, RSUAccount, ESPPLot, RSULot } from '../../../components/Objects/Accounts/models';
+import { InvestedAccount, SavedAccount, ESPPAccount, RSUAccount, type ESPPLot, type RSULot } from '../../../components/Objects/Accounts/models';
 import { taxOptimalWithdrawalOrder } from '../../../services/simulation/WithdrawalPlanner';
-import { WithdrawalBucket } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type WithdrawalBucket } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { reorderWithdrawalStrategyTaxOptimal } from '../../../tabs/Future/withdrawal/reorderWithdrawalStrategy';
 
 /**

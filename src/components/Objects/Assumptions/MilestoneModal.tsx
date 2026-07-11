@@ -2,7 +2,7 @@ import React, { useState, useContext } from "react";
 import { AssumptionsContext, isBuiltinMilestone } from "./AssumptionsContext";
 import { IncomeContext } from "../Income/IncomeContext";
 import { ExpenseContext } from "../Expense/ExpenseContext";
-import { CustomMilestone, MilestoneCondition, MilestoneConditionType, MilestoneOperator, MilestoneValueType } from "../../../services/simulation/types";
+import { type CustomMilestone, type MilestoneCondition, type MilestoneConditionType, type MilestoneOperator, type MilestoneValueType } from "../../../services/simulation/types";
 import { NameInput } from "../../Layout/InputFields/NameInput";
 import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { DropdownInput } from "../../Layout/InputFields/DropdownInput";

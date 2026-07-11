@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
-import { useContext, ReactNode } from 'react';
+import { useContext, type ReactNode } from 'react';
 import { BudgetSpendingReconciler } from '../../components/BudgetSpendingReconciler';
 import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
 import { BudgetProvider } from '../../components/Objects/Budget/BudgetProvider';

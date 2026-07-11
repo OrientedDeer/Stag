@@ -12,7 +12,7 @@ import {
   LoanExpense,
   MortgageExpense,
   OtherExpense,
-  AnyExpense,
+  type AnyExpense,
   getExpenseActiveMultiplier,
   isGoalDueInYear,
   getGoalFundAnnualSetAside,

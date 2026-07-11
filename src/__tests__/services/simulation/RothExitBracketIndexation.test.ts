@@ -23,11 +23,11 @@ import { describe, it, expect } from 'vitest';
 import {
     bracketAwareTradExitValue,
     planConversionsViaDP,
-    DPYearContext,
+    type DPYearContext,
 } from '../../../services/simulation/RothConversionDP';
 import * as TaxService from '../../../components/Objects/Taxes/TaxService';
 import { getDistributionPeriod } from '../../../data/RMDData';
-import { TaxParameters, FilingStatus } from '../../../data/TaxData';
+import { type TaxParameters, type FilingStatus } from '../../../data/TaxData';
 import { defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { makeDPContext } from './dpFixtures';
 

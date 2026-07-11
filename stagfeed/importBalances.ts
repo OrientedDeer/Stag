@@ -20,9 +20,9 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
 import process from 'node:process';
 
-import { decrypt, encrypt, EncryptedBackup } from '../src/services/encryption/CryptoService';
+import { decrypt, encrypt, type EncryptedBackup } from '../src/services/encryption/CryptoService';
 import { parseBalancesCSV } from '../src/services/simplefinBalances';
-import { applyBalances, MergeBlob } from '../src/services/backupMerge';
+import { applyBalances, type MergeBlob } from '../src/services/backupMerge';
 import { env, flagReasonCounts, MAX_BACKUP_SIZE, serializeBlob, stagVerbose } from './importShared';
 
 // Re-exported so the test can pull the shared helpers through this module too. The

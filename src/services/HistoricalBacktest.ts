@@ -16,8 +16,8 @@ import {
 } from '../data/HistoricalReturns';
 import {
   calculateStrategyWithdrawal,
-  WithdrawalResult,
-  GuardrailTrigger,
+  type WithdrawalResult,
+  type GuardrailTrigger,
 } from './WithdrawalStrategies';
 
 /**

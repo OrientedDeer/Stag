@@ -20,13 +20,13 @@ import { RSUAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome } from '../../../components/Objects/Income/models';
 import { runSimulation } from '../../../components/Objects/Assumptions/useSimulation';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
-import { CustomMilestone } from '../../../services/simulation/types';
+import { type CustomMilestone } from '../../../services/simulation/types';
 
 const BIRTH_YEAR = 1985; // working-age throughout the test horizon.
 

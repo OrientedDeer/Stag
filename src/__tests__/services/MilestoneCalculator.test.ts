@@ -5,8 +5,8 @@ import {
   formatAge,
   yearsUntil,
 } from '../../services/MilestoneCalculator';
-import { AssumptionsState, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
+import { type AssumptionsState, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { type SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { InvestedAccount } from '../../components/Objects/Accounts/models';
 import { OtherExpense } from '../../components/Objects/Expense/models';
 

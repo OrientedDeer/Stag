@@ -1,4 +1,4 @@
-import { ReactElement, useContext } from "react";
+import { type ReactElement, useContext } from "react";
 import { AssumptionsContext } from "../../../components/Objects/Assumptions/AssumptionsContext";
 import { PercentageInput } from "../../../components/Layout/InputFields/PercentageInput";
 import { SegmentedInput } from "../../../components/Layout/InputFields/SegmentedInput";

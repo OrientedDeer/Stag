@@ -5,7 +5,7 @@ import {
     PropertyAccount,
     DebtAccount,
     DeficitDebtAccount,
-    AnyAccount,
+    type AnyAccount,
 } from '../../components/Objects/Accounts/models';
 import { getAccountTotals as canonicalGetAccountTotals } from '../../components/Objects/Accounts/accountTotals';
 import { getAccountTotals as futureUtilsGetAccountTotals } from '../../tabs/Future/tabs/FutureUtils';

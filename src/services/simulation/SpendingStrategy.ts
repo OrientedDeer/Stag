@@ -1,10 +1,10 @@
-import { AnyExpense, MortgageExpense, LoanExpense, isLongTermGoal } from "../../components/Objects/Expense/models";
-import { AnyIncome, WorkIncome } from "../../components/Objects/Income/models";
-import { AnyAccount } from "../../components/Objects/Accounts/models";
+import { type AnyExpense, MortgageExpense, LoanExpense, isLongTermGoal } from "../../components/Objects/Expense/models";
+import { type AnyIncome, WorkIncome } from "../../components/Objects/Income/models";
+import { type AnyAccount } from "../../components/Objects/Accounts/models";
 import { sumInvestedAssets } from "../../components/Objects/Accounts/accountUtils";
-import { AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
-import { calculateStrategyWithdrawal, WithdrawalResult } from "../WithdrawalStrategies";
-import { SimulationYear } from "./types";
+import { type AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { calculateStrategyWithdrawal, type WithdrawalResult } from "../WithdrawalStrategies";
+import { type SimulationYear } from "./types";
 
 export interface SpendingStrategyResult {
     nextExpenses: AnyExpense[];

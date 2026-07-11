@@ -22,7 +22,7 @@ import { describe, it, expect } from 'vitest';
 
 // Monte Carlo imports
 import { runMonteCarloSimulationSync } from '../../../services/MonteCarloEngine';
-import { MonteCarloConfig } from '../../../services/MonteCarloTypes';
+import { type MonteCarloConfig } from '../../../services/MonteCarloTypes';
 
 // Simulation imports
 import { simulateOneYear } from '../../../components/Objects/Assumptions/SimulationEngine';
@@ -31,9 +31,9 @@ import { simulateOneYear } from '../../../components/Objects/Assumptions/Simulat
 import { InvestedAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
 import { SocialSecurityIncome, PassiveIncome } from '../../../components/Objects/Income/models';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
-import { SimulationYear } from '../../../services/simulation/types';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type SimulationYear } from '../../../services/simulation/types';
 
 // =============================================================================
 // TEST FIXTURES

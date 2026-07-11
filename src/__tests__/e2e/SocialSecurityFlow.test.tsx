@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { WorkIncome, FutureSocialSecurityIncome, CurrentSocialSecurityIncome } from '../../components/Objects/Income/models';
-import { simulateOneYear, SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
+import { simulateOneYear, type SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { defaultAssumptions } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { max_year } from '../../data/TaxData';
-import { AnyExpense } from '../../components/Objects/Expense/models';
-import { AnyAccount } from '../../components/Objects/Accounts/models';
+import { type AnyExpense } from '../../components/Objects/Expense/models';
+import { type AnyAccount } from '../../components/Objects/Accounts/models';
 
 const testTaxState: TaxState = {
   filingStatus: 'Single',

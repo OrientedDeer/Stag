@@ -13,19 +13,19 @@
  * comparison; the production MC summary is nominal-only, so we score after-tax per-path here).
  */
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
-import { AnyAccount, InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type AnyAccount, InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
 import { FutureSocialSecurityIncome } from '../../components/Objects/Income/models';
 import { FoodExpense } from '../../components/Objects/Expense/models';
-import { EarningsRecord } from '../../services/SocialSecurityCalculator';
+import { type EarningsRecord } from '../../services/SocialSecurityCalculator';
 import { runSimulation } from '../../components/Objects/Assumptions/useSimulation';
 import { solveMcConversionPlan, mcYearsToRun } from '../../services/MonteCarloEngine';
 import { SeededRandom } from '../../services/RandomGenerator';
 import { buildTradValuation, terminalAfterTaxNetWorth } from '../../tabs/Future/tabs/FutureUtils';
-import { DPPolicy } from '../../services/simulation/RothConversionDP';
+import { type DPPolicy } from '../../services/simulation/RothConversionDP';
 import type { MonteCarloConfig } from '../../services/MonteCarloTypes';
-import { Scenario, makeSSHeavyScenario, makeLowBracketBrokerageScenario } from './harness';
+import { type Scenario, makeSSHeavyScenario, makeLowBracketBrokerageScenario } from './harness';
 
 const TIMEOUT = { timeout: 240_000 };
 const mcConfig = (o: Partial<MonteCarloConfig> = {}): MonteCarloConfig => ({

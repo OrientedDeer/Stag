@@ -1,9 +1,9 @@
-import { ReactElement, useContext, useMemo } from "react";
+import { type ReactElement, useContext, useMemo } from "react";
 import {
     AssumptionsContext,
     ACA_SUBSIDY_LOSS_DEFAULT,
     WITHDRAWAL_STRATEGY_OPTIONS,
-    WithdrawalStrategy,
+    type WithdrawalStrategy,
 } from "../../../components/Objects/Assumptions/AssumptionsContext";
 import { SimulationContext } from "../../../components/Objects/Assumptions/SimulationContext";
 import { PercentageInput } from "../../../components/Layout/InputFields/PercentageInput";

@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, ReactElement } from 'react';
-import { CustomMilestone } from '../../../services/simulation/types';
+import { useState, useRef, useEffect, type ReactElement } from 'react';
+import { type CustomMilestone } from '../../../services/simulation/types';
 import { BUILTIN_MILESTONE_IDS } from '../../Objects/Assumptions/AssumptionsContext';
 import { formatDateForInput } from '../../../utils/formatters';
 import { DateInput } from './DateInput';

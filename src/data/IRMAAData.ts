@@ -27,8 +27,8 @@
  *   Part D:   $14.50   $37.50   $60.40   $83.30   $91.00
  */
 
-import { FilingStatus } from "./TaxData";
-import { AssumptionsState } from "../components/Objects/Assumptions/AssumptionsContext";
+import { type FilingStatus } from "./TaxData";
+import { type AssumptionsState } from "../components/Objects/Assumptions/AssumptionsContext";
 import { getTaxableSocialSecurityBenefits } from "../components/Objects/Taxes/taxService/socialSecurity";
 
 /** Age at which Medicare (and therefore IRMAA) eligibility begins. */

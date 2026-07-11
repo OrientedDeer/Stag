@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { processDeficitDebt } from '../../../services/simulation/WithdrawalService';
-import { AnyAccount, DeficitDebtAccount } from '../../../components/Objects/Accounts/models';
+import { type AnyAccount, DeficitDebtAccount } from '../../../components/Objects/Accounts/models';
 
 describe('processDeficitDebt', () => {
     describe('no deficit scenarios', () => {

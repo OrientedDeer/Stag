@@ -4,7 +4,6 @@ import {
   waitForLocalStorageSave,
   navigateToTab,
   getLocalStorageItem,
-  setLocalStorageItem,
 } from './helpers/app-helpers';
 import { testAccounts, testIncome, testExpenses, STORAGE_KEYS } from './fixtures/test-data';
 

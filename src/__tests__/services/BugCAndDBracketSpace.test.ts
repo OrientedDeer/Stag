@@ -12,10 +12,10 @@ import {
 } from '../../services/simulation/TaxOptimizedWithdrawal';
 import { extractBaselineProjections } from '../../components/Objects/Assumptions/useSimulation';
 import * as TaxService from '../../components/Objects/Taxes/TaxService';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
-import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { InvestedAccount } from '../../components/Objects/Accounts/models';
-import { AnyIncome } from '../../components/Objects/Income/models';
+import { type AnyIncome } from '../../components/Objects/Income/models';
 // Note: Income model classes not directly imported - we use mock objects with className
 
 // =============================================================================

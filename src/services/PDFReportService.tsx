@@ -7,10 +7,10 @@
 import { pdf } from '@react-pdf/renderer';
 import html2canvas from 'html2canvas';
 import { FinancialReport } from './FinancialReport';
-import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
-import { AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
-import { MonteCarloSummary } from './MonteCarloTypes';
-import { AnyAccount, DebtAccount, PropertyAccount } from '../components/Objects/Accounts/models';
+import { type SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
+import { type AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
+import { type MonteCarloSummary } from './MonteCarloTypes';
+import { type AnyAccount, DebtAccount, PropertyAccount } from '../components/Objects/Accounts/models';
 
 // ============================================================================
 // Types

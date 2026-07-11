@@ -15,8 +15,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome, FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
 import { FoodExpense } from '../../../components/Objects/Expense/models';

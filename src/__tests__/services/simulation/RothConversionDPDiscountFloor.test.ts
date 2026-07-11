@@ -30,8 +30,8 @@
 import { describe, it, expect } from 'vitest';
 import {
     planConversionsViaDP,
-    DPYearContext,
-    DPObjectiveOptions,
+    type DPYearContext,
+    type DPObjectiveOptions,
 } from '../../../services/simulation/RothConversionDP';
 import { TAX_DATABASE } from '../../../data/TaxData';
 import { makeDPContext } from './dpFixtures';

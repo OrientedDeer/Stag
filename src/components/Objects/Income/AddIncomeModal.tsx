@@ -10,7 +10,7 @@ import {
   PassiveIncome,
   WindfallIncome,
   calculateSocialSecurityStartDate,
-  IncomeFrequency
+  type IncomeFrequency
 } from './models';
 import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput";
 import { NameInput } from "../../Layout/InputFields/NameInput";
@@ -28,9 +28,9 @@ import { WorkIncomeFields } from "./WorkIncomeFields";
 import { FERSPensionFields } from "./FERSPensionFields";
 import { CSRSPensionFields } from "./CSRSPensionFields";
 import {
-    IncomeFormState,
-    PassiveSourceType,
-    EarnedIncomeOption,
+    type IncomeFormState,
+    type PassiveSourceType,
+    type EarnedIncomeOption,
     getInitialFormState
 } from "./incomeFormTypes";
 import { Button } from "../../Layout/Primitives";

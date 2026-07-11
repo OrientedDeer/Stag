@@ -1,13 +1,13 @@
 import { memo, useState } from 'react';
 import {
-    Transaction,
+    type Transaction,
     TRANSFER_CATEGORY_ID,
     INCOME_CATEGORIES,
-    IncomeCategory,
+    type IncomeCategory,
 } from '../../../components/Objects/Budget/BudgetContext';
-import { AnyExpense } from '../../../components/Objects/Expense/models';
-import { AnyAccount } from '../../../components/Objects/Accounts/models';
-import { PriorityBucket } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type AnyExpense } from '../../../components/Objects/Expense/models';
+import { type AnyAccount } from '../../../components/Objects/Accounts/models';
+import { type PriorityBucket } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { formatCurrency } from '../../../components/Objects/Budget/budgetUtils';
 import { CONTRIBUTION_PREFIX, toLocalDateString } from './utils';
 

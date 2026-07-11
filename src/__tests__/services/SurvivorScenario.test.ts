@@ -15,13 +15,13 @@
  */
 import { describe, it, expect } from 'vitest';
 import { runSimulation } from '../../components/Objects/Assumptions/useSimulation';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState, resolveTaxEventsForYear } from '../../components/Objects/Taxes/TaxContext';
-import { SurvivorScenario, activeSurvivorScenario, applySurvivorTransition } from '../../services/simulation/SurvivorScenario';
-import { AnyAccount, InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
-import { AnyIncome, CurrentSocialSecurityIncome, FutureSocialSecurityIncome } from '../../components/Objects/Income/models';
-import { AnyExpense, FoodExpense, LoanExpense } from '../../components/Objects/Expense/models';
-import { SimulationYear } from '../../services/simulation/types';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState, resolveTaxEventsForYear } from '../../components/Objects/Taxes/TaxContext';
+import { type SurvivorScenario, activeSurvivorScenario, applySurvivorTransition } from '../../services/simulation/SurvivorScenario';
+import { type AnyAccount, InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
+import { type AnyIncome, CurrentSocialSecurityIncome, FutureSocialSecurityIncome } from '../../components/Objects/Income/models';
+import { type AnyExpense, FoodExpense, LoanExpense } from '../../components/Objects/Expense/models';
+import { type SimulationYear } from '../../services/simulation/types';
 import * as TaxService from '../../components/Objects/Taxes/TaxService';
 import { shortenKeys, expandKeys } from '../../components/Objects/Accounts/QRTransfer/qrUtils';
 

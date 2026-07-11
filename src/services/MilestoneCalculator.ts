@@ -4,8 +4,8 @@
  * Calculates retirement milestones and financial independence metrics.
  */
 
-import { AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear, BUILTIN_MILESTONE_IDS } from '../components/Objects/Assumptions/AssumptionsContext';
-import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
+import { type AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear, BUILTIN_MILESTONE_IDS } from '../components/Objects/Assumptions/AssumptionsContext';
+import { type SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
 import { InvestedAccount } from '../components/Objects/Accounts/models';
 import { MortgageExpense } from '../components/Objects/Expense/models';
 

@@ -1,9 +1,9 @@
 import { memo } from 'react';
-import { AnyAccount } from '../../../components/Objects/Accounts/models';
-import { AnyIncome } from '../../../components/Objects/Income/models';
-import { AnyExpense } from '../../../components/Objects/Expense/models';
-import { AssumptionsState } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type AnyAccount } from '../../../components/Objects/Accounts/models';
+import { type AnyIncome } from '../../../components/Objects/Income/models';
+import { type AnyExpense } from '../../../components/Objects/Expense/models';
+import { type AssumptionsState } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { formatCompactCurrency } from '../tabs/FutureUtils';
 import { useHorizonTriptych } from '../tabs/useHorizonTriptych';
 

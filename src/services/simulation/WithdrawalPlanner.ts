@@ -14,19 +14,19 @@
  * LTCG tax is NOT included in the deficit before grossing up - that causes double-counting.
  */
 
-import { AnyAccount, InvestedAccount, SavedAccount, ESPPAccount, RSUAccount } from "../../components/Objects/Accounts/models";
-import { TaxState } from "../../components/Objects/Taxes/TaxContext";
-import { AssumptionsState } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { type AnyAccount, InvestedAccount, SavedAccount, ESPPAccount, RSUAccount } from "../../components/Objects/Accounts/models";
+import { type TaxState } from "../../components/Objects/Taxes/TaxContext";
+import { type AssumptionsState } from "../../components/Objects/Assumptions/AssumptionsContext";
 import {
-    PlannedWithdrawal,
-    AccountBalanceSnapshot,
-    WithdrawalAccountType,
-    DecisionLogEntry,
+    type PlannedWithdrawal,
+    type AccountBalanceSnapshot,
+    type WithdrawalAccountType,
+    type DecisionLogEntry,
 } from "./types";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
 import { getLTCGRate as getLTCGRateForIncome } from "../../components/Objects/Taxes/taxService/capitalGainsTax";
 import { midYearSaleDate } from "./dates";
-import { TaxBracket } from "../../data/TaxData";
+import { type TaxBracket } from "../../data/TaxData";
 
 // =============================================================================
 // CONSTANTS

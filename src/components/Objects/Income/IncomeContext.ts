@@ -1,5 +1,5 @@
-import { createContext, Dispatch } from 'react';
-import { AnyIncome, reconstituteIncome } from './models';
+import { createContext, type Dispatch } from 'react';
+import { type AnyIncome, reconstituteIncome } from './models';
 import { jsonDateReplacer } from '../../../utils/formatters';
 
 type AllKeys<T> = T extends unknown ? keyof T : never;

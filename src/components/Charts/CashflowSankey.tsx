@@ -2,12 +2,12 @@ import { memo, useMemo, useContext, useCallback, useState, useEffect, useRef, us
 import { createPortal } from 'react-dom';
 import { ResponsiveSankey } from '@nivo/sankey';
 import type { CustomSankeyLayerProps, SankeyNodeDatum } from '@nivo/sankey';
-import { AnyIncome } from '../Objects/Income/models';
-import { AnyExpense } from '../Objects/Expense/models';
-import { AnyAccount } from '../Objects/Accounts/models';
+import { type AnyIncome } from '../Objects/Income/models';
+import { type AnyExpense } from '../Objects/Expense/models';
+import { type AnyAccount } from '../Objects/Accounts/models';
 import { AssumptionsContext } from '../Objects/Assumptions/AssumptionsContext';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
-import { CashflowDetail } from '../../services/simulation/types';
+import { type CashflowDetail } from '../../services/simulation/types';
 import { SankeyErrorBoundary } from './SankeyErrorBoundary';
 import { useChartTheme } from './useChartTheme';
 import { ChartFrame } from "./ChartFrame";
@@ -16,13 +16,13 @@ import { useClickOutside } from '../../hooks/useClickOutside';
 import { placePopover } from './popoverPosition';
 import {
     buildCashflowSankeyData,
-    SankeyImbalance,
-    SankeyRothConversion,
-    SankeyTaxBreakdown,
-    SankeyProvenanceItem,
-    SankeyProvenanceDirection,
-    SankeyNode,
-    SankeyLink,
+    type SankeyImbalance,
+    type SankeyRothConversion,
+    type SankeyTaxBreakdown,
+    type SankeyProvenanceItem,
+    type SankeyProvenanceDirection,
+    type SankeyNode,
+    type SankeyLink,
 } from './cashflowSankeyData';
 
 export type { SankeyImbalance } from './cashflowSankeyData';

@@ -1,6 +1,6 @@
-import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
+import { type SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
 import { getAccountTotals } from '../tabs/Future/tabs/FutureUtils';
-import { AnyAccount, DebtAccount, DeficitDebtAccount } from '../components/Objects/Accounts/models';
+import { type AnyAccount, DebtAccount, DeficitDebtAccount } from '../components/Objects/Accounts/models';
 import type { AmountHistoryEntry } from '../components/Objects/Accounts/AccountContext';
 
 /**

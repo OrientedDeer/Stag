@@ -1,4 +1,4 @@
-import { ReactElement } from 'react';
+import { type ReactElement } from 'react';
 import { DropdownInput } from '../../../Layout/InputFields/DropdownInput';
 import { AlertBanner } from '../../../Layout/AlertBanner';
 import { CardSection } from '../../../Layout/CardSection';

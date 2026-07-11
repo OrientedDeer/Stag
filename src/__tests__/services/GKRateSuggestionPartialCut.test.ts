@@ -7,10 +7,10 @@ import {
 import {
     defaultAssumptions,
     createBuiltinMilestones,
-    AssumptionsState,
+    type AssumptionsState,
 } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { SimulationYear } from '../../services/simulation/types';
-import { WithdrawalResult } from '../../services/WithdrawalStrategies';
+import { type SimulationYear } from '../../services/simulation/types';
+import { type WithdrawalResult } from '../../services/WithdrawalStrategies';
 import { InvestedAccount } from '../../components/Objects/Accounts/models';
 
 const BIRTH_YEAR = 1990;

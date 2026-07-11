@@ -22,13 +22,13 @@ import {
     generateTaxProjections,
 } from '../../services/TaxOptimizationService';
 import { getCombinedMarginalRate } from '../../components/Objects/Taxes/TaxService';
-import { SimulationYear } from '../../services/simulation/types';
+import { type SimulationYear } from '../../services/simulation/types';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { WorkIncome, PassiveIncome } from '../../components/Objects/Income/models';
 
 // --- Helpers ---

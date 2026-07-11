@@ -62,17 +62,17 @@
  * READ-ONLY on production source: this file only consumes exported functions.
  */
 
-import { AnyAccount, InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
-import { AnyIncome, FutureSocialSecurityIncome } from '../../components/Objects/Income/models';
-import { AnyExpense, FoodExpense } from '../../components/Objects/Expense/models';
+import { type AnyAccount, InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
+import { type AnyIncome, FutureSocialSecurityIncome } from '../../components/Objects/Income/models';
+import { type AnyExpense, FoodExpense } from '../../components/Objects/Expense/models';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
     getBirthYear,
 } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
-import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { runSimulation } from '../../components/Objects/Assumptions/useSimulation';
 import {
     buildTradValuation,

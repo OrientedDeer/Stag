@@ -2,9 +2,9 @@
  * Type definitions for the Scenario Comparison feature
  */
 
-import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
-import { TaxState } from '../components/Objects/Taxes/TaxContext';
-import { AmountHistoryEntry } from '../components/Objects/Accounts/AccountContext';
+import { type SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
+import { type TaxState } from '../components/Objects/Taxes/TaxContext';
+import { type AmountHistoryEntry } from '../components/Objects/Accounts/AccountContext';
 
 /**
  * Metadata for a saved scenario

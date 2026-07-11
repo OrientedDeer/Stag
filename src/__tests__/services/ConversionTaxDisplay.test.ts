@@ -21,14 +21,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { solveRetirementYear, YearSolverInput } from '../../services/simulation/YearSolver';
+import { solveRetirementYear, type YearSolverInput } from '../../services/simulation/YearSolver';
 import { simulateOneYear } from '../../components/Objects/Assumptions/SimulationEngine';
 
-import { InvestedAccount, BrokerageLot, AnyAccount } from '../../components/Objects/Accounts/models';
-import { PassiveIncome, AnyIncome } from '../../components/Objects/Income/models';
+import { InvestedAccount, type BrokerageLot, type AnyAccount } from '../../components/Objects/Accounts/models';
+import { PassiveIncome, type AnyIncome } from '../../components/Objects/Income/models';
 import { OtherExpense } from '../../components/Objects/Expense/models';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
 
 // =============================================================================
 // FIXTURES (invented numbers)

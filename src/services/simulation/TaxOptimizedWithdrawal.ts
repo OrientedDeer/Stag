@@ -9,14 +9,14 @@
  * - Four-phase withdrawal logic with survival spending priority
  */
 
-import { TaxParameters, FilingStatus } from '../../data/TaxData';
+import { type TaxParameters, type FilingStatus } from '../../data/TaxData';
 import * as TaxService from '../../components/Objects/Taxes/TaxService';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
-import { AssumptionsState, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { calculateEffectiveConversionTax, computeConversionTaxBaseline, ACAOptions, IRMAAConversionOptions } from './helpers';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { calculateEffectiveConversionTax, computeConversionTaxBaseline, type ACAOptions, type IRMAAConversionOptions } from './helpers';
 import { computeIrmaaMAGI } from '../../data/IRMAAData';
 import { getDistributionPeriod, PEAK_RMD_DIVISOR } from '../../data/RMDData';
-import { BaselineProjections, RateMatchWalkRow } from './types';
+import { type BaselineProjections, type RateMatchWalkRow } from './types';
 
 // Re-export for convenience
 export type { TaxParameters, FilingStatus, TaxState };

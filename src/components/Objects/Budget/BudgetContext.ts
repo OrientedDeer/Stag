@@ -1,4 +1,4 @@
-import { createContext, Dispatch } from 'react';
+import { createContext, type Dispatch } from 'react';
 
 // Re-export types and constants for backward compatibility
 export {

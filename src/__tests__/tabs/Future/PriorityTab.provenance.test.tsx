@@ -4,7 +4,7 @@ import PriorityTab from '../../../tabs/Future/PriorityTab';
 import {
     AssumptionsContext,
     defaultAssumptions,
-    PriorityBucket,
+    type PriorityBucket,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { ExpenseContext } from '../../../components/Objects/Expense/ExpenseContext';
 import { OtherExpense } from '../../../components/Objects/Expense/models';

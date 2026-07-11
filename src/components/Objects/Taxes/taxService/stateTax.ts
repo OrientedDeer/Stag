@@ -1,7 +1,7 @@
-import { AnyExpense } from "../../Expense/models";
-import { AnyIncome } from "../../Income/models";
-import { TaxState } from "../TaxContext";
-import { AssumptionsState, getBirthYear } from "../../Assumptions/AssumptionsContext";
+import { type AnyExpense } from "../../Expense/models";
+import { type AnyIncome } from "../../Income/models";
+import { type TaxState } from "../TaxContext";
+import { type AssumptionsState, getBirthYear } from "../../Assumptions/AssumptionsContext";
 import { getTaxParameters } from "./parameters";
 import {
     getGrossIncome,

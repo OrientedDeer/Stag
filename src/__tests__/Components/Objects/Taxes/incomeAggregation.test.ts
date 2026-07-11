@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { getSocialSecurityBenefits } from '../../../../components/Objects/Taxes/taxService/incomeAggregation';
 import {
   BaseIncome,
-  AnyIncome,
+  type AnyIncome,
   SocialSecurityIncome,
   CurrentSocialSecurityIncome,
   FutureSocialSecurityIncome,

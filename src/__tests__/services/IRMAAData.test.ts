@@ -15,7 +15,7 @@ import {
     IRMAA_LOOKBACK_YEARS,
     MEDICARE_ELIGIBILITY_AGE,
 } from '../../data/IRMAAData';
-import { AssumptionsState, defaultAssumptions } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { type AssumptionsState, defaultAssumptions } from '../../components/Objects/Assumptions/AssumptionsContext';
 
 // Inflation OFF so the 2026 table is used verbatim (no forward indexing).
 const noInflation: AssumptionsState = {

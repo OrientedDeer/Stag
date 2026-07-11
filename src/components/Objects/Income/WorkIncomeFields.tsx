@@ -3,10 +3,10 @@ import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
 import { CardSection } from "../../Layout/CardSection";
 import { AlertBanner } from "../../Layout/AlertBanner";
 import {
-    PensionSystem
+    type PensionSystem
 } from './models';
-import { InvestedAccount, ESPPAccount, RSUAccount } from "../Accounts/models";
-import { IncomeFormState, UpdateForm } from './incomeFormTypes';
+import { type InvestedAccount, type ESPPAccount, type RSUAccount } from "../Accounts/models";
+import { type IncomeFormState, type UpdateForm } from './incomeFormTypes';
 import {
     get401kSummary,
     getBenefitsSummary,

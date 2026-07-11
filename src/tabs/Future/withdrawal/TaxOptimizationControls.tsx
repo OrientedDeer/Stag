@@ -1,5 +1,5 @@
 import { memo, useCallback } from 'react';
-import { AssumptionsState } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type AssumptionsState } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { ToggleInput } from '../../../components/Layout/InputFields/ToggleInput';
 import { Panel } from "../../../components/Layout/Primitives";
 

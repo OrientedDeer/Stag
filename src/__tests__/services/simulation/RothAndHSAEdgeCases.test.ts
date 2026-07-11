@@ -11,11 +11,11 @@ import { describe, it, expect } from 'vitest';
 import { planWithdrawals, createAccountSnapshot } from '../../../services/simulation/WithdrawalPlanner';
 import { InvestedAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 
 const YEAR = 2025;
 

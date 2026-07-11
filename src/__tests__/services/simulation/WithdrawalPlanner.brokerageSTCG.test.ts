@@ -12,8 +12,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { planWithdrawals, createAccountSnapshot } from '../../../services/simulation/WithdrawalPlanner';
-import { InvestedAccount, BrokerageLot } from '../../../components/Objects/Accounts/models';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { InvestedAccount, type BrokerageLot } from '../../../components/Objects/Accounts/models';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 
 const YEAR = 2025;
 

@@ -29,13 +29,13 @@ import { SeededRandom } from '../../services/RandomGenerator';
 import { runSimulation } from '../../components/Objects/Assumptions/useSimulation';
 import { terminalAfterTaxNetWorth } from '../../tabs/Future/tabs/FutureUtils';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
-import { AnyAccount, InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
-import { FoodExpense, AnyExpense } from '../../components/Objects/Expense/models';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type AnyAccount, InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
+import { FoodExpense, type AnyExpense } from '../../components/Objects/Expense/models';
 import type { AnyIncome } from '../../components/Objects/Income/models';
 import type { MonteCarloConfig } from '../../services/MonteCarloTypes';
 

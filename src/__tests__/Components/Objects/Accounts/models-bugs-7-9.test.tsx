@@ -9,9 +9,9 @@
 import { describe, it, expect } from 'vitest';
 import {
     PropertyAccount,
-    InvestedAccount,
-    ESPPAccount,
-    RSUAccount,
+    type InvestedAccount,
+    type ESPPAccount,
+    type RSUAccount,
     reconstituteAccount,
 } from '../../../../components/Objects/Accounts/models';
 import { defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';

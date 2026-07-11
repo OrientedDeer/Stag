@@ -14,9 +14,9 @@
  * 3. Any remaining: Brokerage (default catch-all)
  */
 
-import { AnyAccount, SavedAccount, InvestedAccount, DeficitDebtAccount, DebtAccount } from "../../components/Objects/Accounts/models";
-import { PlannedSurplusAllocation, DecisionLogEntry } from "./types";
-import { CapType, getBucketTargetBalance } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { type AnyAccount, SavedAccount, InvestedAccount, DeficitDebtAccount, DebtAccount } from "../../components/Objects/Accounts/models";
+import { type PlannedSurplusAllocation, type DecisionLogEntry } from "./types";
+import { type CapType, getBucketTargetBalance } from "../../components/Objects/Assumptions/AssumptionsContext";
 
 // =============================================================================
 // DEBT-PAYDOWN ELIGIBILITY (#60 C) — single source of truth

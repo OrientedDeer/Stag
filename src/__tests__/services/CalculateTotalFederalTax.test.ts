@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
     calculateTotalFederalTax,
-    TotalFederalTaxResult,
+    type TotalFederalTaxResult,
 } from '../../components/Objects/Taxes/TaxService';
-import { TaxParameters, FilingStatus } from '../../data/TaxData';
+import { type TaxParameters, type FilingStatus } from '../../data/TaxData';
 
 /**
  * Comprehensive tests for calculateTotalFederalTax function.

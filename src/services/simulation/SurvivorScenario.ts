@@ -33,8 +33,8 @@
  * `resolveTaxEventsForYear`, no other wiring exists — that is the point of the
  * seam.
  */
-import { AnyIncome, isSocialSecurity, FutureSocialSecurityIncome } from '../../components/Objects/Income/models';
-import { AnyExpense } from '../../components/Objects/Expense/models';
+import { type AnyIncome, isSocialSecurity, FutureSocialSecurityIncome } from '../../components/Objects/Income/models';
+import { type AnyExpense } from '../../components/Objects/Expense/models';
 
 /**
  * The persisted survivor-scenario config (stored on TaxState.survivorScenario,

@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
 import { ResponsiveSunburst } from '@nivo/sunburst';
-import { AnyExpense, RentExpense, MortgageExpense, FoodExpense, TransportExpense, HealthcareExpense, VacationExpense, LoanExpense, DependentExpense, getGoalFundAnnualSetAside, isLongTermGoal } from '../Objects/Expense/models';
-import { AnyIncome, WorkIncome } from '../Objects/Income/models';
-import { AnyAccount } from '../Objects/Accounts/models';
+import { type AnyExpense, RentExpense, MortgageExpense, FoodExpense, TransportExpense, HealthcareExpense, VacationExpense, LoanExpense, DependentExpense, getGoalFundAnnualSetAside, isLongTermGoal } from '../Objects/Expense/models';
+import { type AnyIncome, WorkIncome } from '../Objects/Income/models';
+import { type AnyAccount } from '../Objects/Accounts/models';
 import { useChartTheme } from './useChartTheme';
 import { ChartFrame } from "./ChartFrame";
 import { SunburstLegend } from './SunburstLegend';
 import { contrastInk, sunburstItemShade } from './chartColors';
-import { PriorityBucket, getBucketTargetBalance } from '../Objects/Assumptions/AssumptionsContext';
+import { type PriorityBucket, getBucketTargetBalance } from '../Objects/Assumptions/AssumptionsContext';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 
 interface SpendingSunburstProps {

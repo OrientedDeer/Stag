@@ -31,22 +31,22 @@ import { ScenarioContext } from '../../components/Objects/Scenarios/ScenarioCont
 import { ScenarioProvider } from '../../components/Objects/Scenarios/ScenarioProvider';
 import type { SavedScenario } from '../../services/ScenarioTypes';
 import {
-    AnyAccount, InvestedAccount, SavedAccount, reconstituteAccount,
+    type AnyAccount, InvestedAccount, SavedAccount, reconstituteAccount,
 } from '../../components/Objects/Accounts/models';
 import {
-    AnyIncome, FutureSocialSecurityIncome, reconstituteIncome,
+    type AnyIncome, FutureSocialSecurityIncome, reconstituteIncome,
 } from '../../components/Objects/Income/models';
-import { AnyExpense, FoodExpense, reconstituteExpense } from '../../components/Objects/Expense/models';
+import { type AnyExpense, FoodExpense, reconstituteExpense } from '../../components/Objects/Expense/models';
 import {
-    AssumptionsState, defaultAssumptions, createBuiltinMilestones,
+    type AssumptionsState, defaultAssumptions, createBuiltinMilestones,
 } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
 import {
     runSimulationWithOptimization, clearJointSearchArtifactCache,
 } from '../../components/Objects/Assumptions/useSimulation';
 import { handleJointSearchRequest } from '../../services/jointSearch.worker';
 import {
-    runJointSearchEphemeral, runJointSearchInWorker, JointSearchInput,
+    runJointSearchEphemeral, runJointSearchInWorker, type JointSearchInput,
 } from '../../services/jointSearchRunner';
 import { linkOrphanLoanExpenses } from '../../services/simulation/linkOrphanLoanExpenses';
 import type { JointSearchWorkerRequest, JointSearchWorkerResponse } from '../../services/jointSearchWorkerTypes';

@@ -1,4 +1,4 @@
-import { useEffect, RefObject } from 'react';
+import { useEffect, type RefObject } from 'react';
 
 /**
  * Call `onOutside` when a pointer press lands outside every supplied ref.

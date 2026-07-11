@@ -1,7 +1,7 @@
-import { SimulationYear, CustomMilestone } from '../../../services/simulation/types';
-import { AnyAccount } from '../../../components/Objects/Accounts/models';
+import { type SimulationYear, type CustomMilestone } from '../../../services/simulation/types';
+import { type AnyAccount } from '../../../components/Objects/Accounts/models';
 import { getBirthYear } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { AccountTimeline } from './WithdrawalBucketList';
+import { type AccountTimeline } from './WithdrawalBucketList';
 
 /**
  * Derive, per account, the first year it's tapped (drawn down) and the first

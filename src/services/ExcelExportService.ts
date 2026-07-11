@@ -2,14 +2,14 @@
 // Version 1.0 - Sheet Registry Pattern for extensibility
 
 import ExcelJS from 'exceljs';
-import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
-import { MonteCarloSummary, MonteCarloConfig } from './MonteCarloTypes';
-import { AnyAccount, InvestedAccount, SavedAccount, PropertyAccount, DebtAccount, DeficitDebtAccount } from '../components/Objects/Accounts/models';
+import { type SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
+import { type MonteCarloSummary, type MonteCarloConfig } from './MonteCarloTypes';
+import { type AnyAccount, InvestedAccount, SavedAccount, PropertyAccount, DebtAccount, DeficitDebtAccount } from '../components/Objects/Accounts/models';
 import { getAccountTotals } from '../components/Objects/Accounts/accountTotals';
-import { AnyIncome } from '../components/Objects/Income/models';
-import { AnyExpense } from '../components/Objects/Expense/models';
-import { TaxState } from '../components/Objects/Taxes/TaxContext';
-import { AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
+import { type AnyIncome } from '../components/Objects/Income/models';
+import { type AnyExpense } from '../components/Objects/Expense/models';
+import { type TaxState } from '../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
 import { totalTaxesOf } from '../components/Charts/taxTotals';
 
 // ============================================================================

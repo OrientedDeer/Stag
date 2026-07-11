@@ -1,5 +1,5 @@
 import React, { useState, useContext, useMemo } from 'react';
-import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
+import { type SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { useAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxContext } from '../../../components/Objects/Taxes/TaxContext';
 import { formatCompactCurrency, formatCurrency } from './FutureUtils';
@@ -11,12 +11,12 @@ import {
     analyzeRothPreTaxAllocation,
     analyzeConversionPlan,
     hasTraditionalRetirementBalance,
-    TaxAnalysis,
-    TaxRecommendation,
-    TaxProjection,
-    RothPreTaxAllocation,
-    ConversionPlan,
-    AllocationVerdict,
+    type TaxAnalysis,
+    type TaxRecommendation,
+    type TaxProjection,
+    type RothPreTaxAllocation,
+    type ConversionPlan,
+    type AllocationVerdict,
 } from '../../../services/TaxOptimizationService';
 
 interface TaxOptimizationTabProps {

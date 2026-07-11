@@ -18,19 +18,19 @@ import { describe, it, expect } from 'vitest';
 
 import * as TaxService from '../../../components/Objects/Taxes/TaxService';
 import { getEffectiveDeduction } from '../../../components/Objects/Taxes/taxService/federalTax';
-import { solveRetirementYear, YearSolverInput } from '../../../services/simulation/YearSolver';
+import { solveRetirementYear, type YearSolverInput } from '../../../services/simulation/YearSolver';
 import { buildDPYearContexts } from '../../../services/simulation/RothConversionDP';
 import { InvestedAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
 import { PassiveIncome } from '../../../components/Objects/Income/models';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
-import { TaxParameters } from '../../../data/TaxData';
-import { SimulationYear } from '../../../services/simulation/types';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type TaxParameters } from '../../../data/TaxData';
+import { type SimulationYear } from '../../../services/simulation/types';
 
 // =============================================================================
 // getEffectiveDeduction Standard path (senior add-ons) — unit

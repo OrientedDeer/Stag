@@ -1,8 +1,8 @@
-import { AnyAccount } from "../../components/Objects/Accounts/models";
-import { AnyExpense } from "../../components/Objects/Expense/models";
-import { AnyIncome } from "../../components/Objects/Income/models";
-import { WithdrawalResult, GuardrailTrigger } from "../WithdrawalStrategies";
-import { RMDCalculation } from "../../data/RMDData";
+import { type AnyAccount } from "../../components/Objects/Accounts/models";
+import { type AnyExpense } from "../../components/Objects/Expense/models";
+import { type AnyIncome } from "../../components/Objects/Income/models";
+import { type WithdrawalResult, type GuardrailTrigger } from "../WithdrawalStrategies";
+import { type RMDCalculation } from "../../data/RMDData";
 
 /**
  * Per-source income line for cashflow display.

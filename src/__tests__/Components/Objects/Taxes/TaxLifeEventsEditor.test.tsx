@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { TaxLifeEventsEditor } from '../../../../components/Objects/Taxes/TaxLifeEventsEditor';
-import { TaxLifeEvent } from '../../../../components/Objects/Taxes/TaxContext';
+import { type TaxLifeEvent } from '../../../../components/Objects/Taxes/TaxContext';
 
 const stateOptions = [{ value: 'California', label: 'California' }, { value: 'Texas', label: 'Texas' }];
 const filingOptions = [{ value: 'Single', label: 'Single' }, { value: 'Married Filing Jointly', label: 'Married Filing Jointly' }];

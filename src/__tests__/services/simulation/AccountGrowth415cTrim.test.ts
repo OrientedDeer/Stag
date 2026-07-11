@@ -22,8 +22,8 @@ import { processInflows } from '../../../services/simulation/AccountGrowth';
 import { buildCashflowDetail } from '../../../services/simulation/CashflowDetailBuilder';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome } from '../../../components/Objects/Income/models';
-import { AssumptionsState, defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { WithdrawalState } from '../../../services/simulation/types';
+import { type AssumptionsState, defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type WithdrawalState } from '../../../services/simulation/types';
 import { get415cLimit } from '../../../data/ContributionLimits';
 
 function createWithdrawalState(overrides: Partial<WithdrawalState> = {}): WithdrawalState {

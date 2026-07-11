@@ -1,6 +1,6 @@
-import { useEffect, Dispatch } from 'react';
-import { MonthlySnapshot } from '../components/Objects/Budget/BudgetTypes';
-import { BudgetAction } from '../components/Objects/Budget/BudgetContext';
+import { useEffect, type Dispatch } from 'react';
+import { type MonthlySnapshot } from '../components/Objects/Budget/BudgetTypes';
+import { type BudgetAction } from '../components/Objects/Budget/BudgetContext';
 import { computeSpendingReconciliation } from '../components/Objects/Budget/budgetUtils';
 
 /**

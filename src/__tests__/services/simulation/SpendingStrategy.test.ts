@@ -10,12 +10,12 @@ import {
     calculateStrategyTarget,
     calculateTotalDiscretionary,
 } from '../../../services/simulation/SpendingStrategy';
-import { AnyExpense, FoodExpense, VacationExpense, MortgageExpense, LoanExpense } from '../../../components/Objects/Expense/models';
+import { type AnyExpense, FoodExpense, VacationExpense, MortgageExpense, LoanExpense } from '../../../components/Objects/Expense/models';
 import { WorkIncome } from '../../../components/Objects/Income/models';
-import { AnyAccount, InvestedAccount, SavedAccount, ESPPAccount } from '../../../components/Objects/Accounts/models';
-import { AssumptionsState, createBuiltinMilestones, defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { WithdrawalResult, GuardrailTrigger } from '../../../services/WithdrawalStrategies';
-import { SimulationYear } from '../../../services/simulation/types';
+import { type AnyAccount, InvestedAccount, SavedAccount, ESPPAccount } from '../../../components/Objects/Accounts/models';
+import { type AssumptionsState, createBuiltinMilestones, defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type WithdrawalResult, type GuardrailTrigger } from '../../../services/WithdrawalStrategies';
+import { type SimulationYear } from '../../../services/simulation/types';
 
 // Helper to create test assumptions
 function createTestAssumptions(overrides: Partial<{

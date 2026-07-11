@@ -3,7 +3,7 @@ import {
   runSingleBacktest,
   runHistoricalBacktest,
   getBacktestDataRange,
-  BacktestConfig,
+  type BacktestConfig,
 } from '../../services/HistoricalBacktest';
 import { INFLATION_RATES } from '../../data/HistoricalReturns';
 

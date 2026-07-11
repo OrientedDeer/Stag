@@ -7,8 +7,8 @@ import { AccountProvider } from '../../components/Objects/Accounts/AccountProvid
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import { ExpenseProvider } from '../../components/Objects/Expense/ExpenseProvider';
 import { OrphanLoanReconciler } from '../../components/OrphanLoanReconciler';
-import { PropertyAccount, AnyAccount } from '../../components/Objects/Accounts/models';
-import { MortgageExpense, AnyExpense } from '../../components/Objects/Expense/models';
+import { PropertyAccount, type AnyAccount } from '../../components/Objects/Accounts/models';
+import { MortgageExpense, type AnyExpense } from '../../components/Objects/Expense/models';
 import { calculateNetWorth } from '../../services/simulation/MilestoneEvaluator';
 
 // localStorage mock (mirrors the AccountContext/ExpenseContext test pattern).

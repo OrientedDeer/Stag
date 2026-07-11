@@ -18,13 +18,13 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { solveRetirementYear, solveWorkingYear, YearSolverInput } from '../../../services/simulation/YearSolver';
+import { solveRetirementYear, solveWorkingYear, type YearSolverInput } from '../../../services/simulation/YearSolver';
 import { planWithdrawals, createAccountSnapshot } from '../../../services/simulation/WithdrawalPlanner';
-import { ESPPAccount, InvestedAccount, SavedAccount, ESPPLot } from '../../../components/Objects/Accounts/models';
+import { ESPPAccount, InvestedAccount, SavedAccount, type ESPPLot } from '../../../components/Objects/Accounts/models';
 import { WorkIncome } from '../../../components/Objects/Income/models';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 
 const YEAR = 2025;
 

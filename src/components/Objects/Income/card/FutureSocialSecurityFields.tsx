@@ -1,4 +1,4 @@
-import { ReactElement } from 'react';
+import { type ReactElement } from 'react';
 import { NumberInput } from '../../../Layout/InputFields/NumberInput';
 import { formatEarningsSummary } from '../../../../services/SSAImportService';
 import type { EarningsRecord } from '../../../../services/SocialSecurityCalculator';

@@ -4,7 +4,7 @@ import {
   waitForLocalStorageSave,
   navigateToTab,
 } from './helpers/app-helpers';
-import { testAccounts, testIncome } from './fixtures/test-data';
+import { testAccounts } from './fixtures/test-data';
 
 test.describe('Dashboard', () => {
   test.setTimeout(5000);

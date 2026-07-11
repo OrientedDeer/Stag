@@ -6,15 +6,15 @@
 
 import React, { useMemo, useState, useContext, useRef } from 'react';
 import { useArrowKeyAdjust } from '../../../hooks/useKeyboardShortcuts';
-import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
+import { type SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import {
   calculateFinancialRatios,
   calculateRatioTrends,
   getRatingColor,
   getRatingBgColor,
   getRatingLabel,
-  RatioResult,
-  FinancialRatios,
+  type RatioResult,
+  type FinancialRatios,
 } from '../../../services/FinancialRatioService';
 import { formatCompactCurrency } from './FutureUtils';
 import { Tooltip } from '../../../components/Layout/InputFields/Tooltip';

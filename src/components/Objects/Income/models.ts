@@ -1,5 +1,5 @@
-import { TaxType } from "../../Objects/Accounts/models";
-import { AssumptionsState } from '../Assumptions/AssumptionsContext';
+import { type TaxType } from "../../Objects/Accounts/models";
+import { type AssumptionsState } from '../Assumptions/AssumptionsContext';
 import { get401kLimit, getHSALimit } from '../../../data/ContributionLimits';
 import {
   getFERSCOLA,

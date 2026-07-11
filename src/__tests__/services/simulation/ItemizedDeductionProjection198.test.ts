@@ -25,15 +25,15 @@ import { getEffectiveDeduction } from '../../../components/Objects/Taxes/taxServ
 import { getItemizedDeductions } from '../../../components/Objects/Taxes/taxService/deductions';
 import { runSimulation } from '../../../components/Objects/Assumptions/useSimulation';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount, PropertyAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome } from '../../../components/Objects/Income/models';
 import { MortgageExpense, FoodExpense, CharityExpense } from '../../../components/Objects/Expense/models';
-import { SimulationYear } from '../../../services/simulation/types';
+import { type SimulationYear } from '../../../services/simulation/types';
 
 // =============================================================================
 // getEffectiveDeduction — unit

@@ -18,11 +18,11 @@ import { describe, it, expect } from 'vitest';
 import {
     searchConversionPlanByEngine,
     computeCliffHeadroomProbes,
-    ConversionPlanScore,
+    type ConversionPlanScore,
 } from '../../services/simulation/EngineDirectConversionSearch';
-import { DPYearContext } from '../../services/simulation/RothConversionDP';
-import { TaxParameters } from '../../data/TaxData';
-import { SimulationYear } from '../../services/simulation/types';
+import { type DPYearContext } from '../../services/simulation/RothConversionDP';
+import { type TaxParameters } from '../../data/TaxData';
+import { type SimulationYear } from '../../services/simulation/types';
 
 const YEAR1 = 2031;
 const YEAR2 = 2032;

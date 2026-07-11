@@ -13,7 +13,7 @@
  * </osss:EarningsRecord>
  */
 
-import { EarningsRecord } from './SocialSecurityCalculator';
+import { type EarningsRecord } from './SocialSecurityCalculator';
 
 export interface SSAEarningsImport {
   earnings: EarningsRecord[];

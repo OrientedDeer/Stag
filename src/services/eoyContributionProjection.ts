@@ -1,9 +1,9 @@
-import { PriorityBucket, AssumptionsState, CapType, getBirthYear, isBalanceTargetCap, getBucketTargetBalance } from '../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../components/Objects/Taxes/TaxContext';
-import { AnyAccount, InvestedAccount, DebtAccount, DeficitDebtAccount } from '../components/Objects/Accounts/models';
-import { AnyIncome, WorkIncome } from '../components/Objects/Income/models';
-import { AnyExpense, LoanExpense, MortgageExpense, getGoalFundAnnualSetAside, mergeGoalFundBuckets } from '../components/Objects/Expense/models';
-import { MonthlySnapshot } from '../components/Objects/Budget/BudgetTypes';
+import { type PriorityBucket, type AssumptionsState, type CapType, getBirthYear, isBalanceTargetCap, getBucketTargetBalance } from '../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../components/Objects/Taxes/TaxContext';
+import { type AnyAccount, InvestedAccount, DebtAccount, DeficitDebtAccount } from '../components/Objects/Accounts/models';
+import { type AnyIncome, WorkIncome } from '../components/Objects/Income/models';
+import { type AnyExpense, LoanExpense, MortgageExpense, getGoalFundAnnualSetAside, mergeGoalFundBuckets } from '../components/Objects/Expense/models';
+import { type MonthlySnapshot } from '../components/Objects/Budget/BudgetTypes';
 import { get401kLimit, getIRALimit, getHSALimit } from '../data/ContributionLimits';
 import { getActiveExpenses } from '../components/Objects/Budget/budgetUtils';
 

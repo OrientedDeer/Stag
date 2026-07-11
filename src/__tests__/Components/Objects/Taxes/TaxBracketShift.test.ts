@@ -5,7 +5,7 @@
  * brackets, thresholds, and years before the start are untouched.
  */
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
+import { type AssumptionsState, defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 import { getTaxParameters } from '../../../../components/Objects/Taxes/taxService/parameters';
 
 const withShift = (pct: number, startYear: number): AssumptionsState => ({

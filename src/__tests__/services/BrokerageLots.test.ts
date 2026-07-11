@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { InvestedAccount, BrokerageLot } from '../../components/Objects/Accounts/models';
-import { AssumptionsState, createBuiltinMilestones, defaultAssumptions } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { InvestedAccount, type BrokerageLot } from '../../components/Objects/Accounts/models';
+import { type AssumptionsState, createBuiltinMilestones, defaultAssumptions } from '../../components/Objects/Assumptions/AssumptionsContext';
 
 // Helper to create a minimal AssumptionsState for increment()
 function makeAssumptions(ror: number = 7): AssumptionsState {

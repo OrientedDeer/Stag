@@ -9,7 +9,7 @@
  * re-download and retry rather than clobber.
  */
 
-import { EncryptedBackup, encrypt, decrypt } from '../encryption/CryptoService';
+import { type EncryptedBackup, encrypt, decrypt } from '../encryption/CryptoService';
 
 export interface BackupMetadata {
     exists: boolean;

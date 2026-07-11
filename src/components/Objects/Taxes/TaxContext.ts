@@ -1,5 +1,5 @@
 import { createContext } from 'react';
-import { FilingStatus, max_year } from '../../../data/TaxData';
+import { type FilingStatus, max_year } from '../../../data/TaxData';
 import { activeSurvivorScenario, type SurvivorScenario } from '../../../services/simulation/SurvivorScenario';
 
 export type DeductionMethod = 'Standard' | 'Itemized' | 'Auto';

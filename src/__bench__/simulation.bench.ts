@@ -37,11 +37,11 @@ import { bench, describe } from 'vitest';
 
 import { runSimulation } from '../components/Objects/Assumptions/useSimulation';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../components/Objects/Taxes/TaxContext';
 import { InvestedAccount, SavedAccount } from '../components/Objects/Accounts/models';
 import { WorkIncome, FutureSocialSecurityIncome } from '../components/Objects/Income/models';
 import {

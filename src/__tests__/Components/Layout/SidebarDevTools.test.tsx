@@ -5,7 +5,7 @@ import Sidebar from '../../../components/Layout/Overlays/Sidebar';
 import {
     AssumptionsContext,
     defaultAssumptions,
-    AssumptionsState,
+    type AssumptionsState,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
 
 // Keep the test focused on nav entries — stub the data-management footer.

@@ -17,10 +17,10 @@ import {
   hydrateSimulationState,
 } from '../../../components/Objects/Assumptions/SimulationContext';
 
-import { ESPPAccount, RSUAccount, ESPPLot, RSULot } from '../../../components/Objects/Accounts/models';
+import { ESPPAccount, RSUAccount, type ESPPLot, type RSULot } from '../../../components/Objects/Accounts/models';
 import { PassiveIncome } from '../../../components/Objects/Income/models';
 import { FoodExpense } from '../../../components/Objects/Expense/models';
-import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
+import { type SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 
 /**
  * Regression for the #73 date-drift on the always-running localStorage persistence

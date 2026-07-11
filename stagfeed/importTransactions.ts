@@ -24,8 +24,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
 import process from 'node:process';
 
-import { decrypt, encrypt, EncryptedBackup } from '../src/services/encryption/CryptoService';
-import { applyTransactions, MergeBlob } from '../src/services/backupMerge';
+import { decrypt, encrypt, type EncryptedBackup } from '../src/services/encryption/CryptoService';
+import { applyTransactions, type MergeBlob } from '../src/services/backupMerge';
 import { csvToTransactions } from './csvToTransactions';
 import { env, MAX_BACKUP_SIZE, serializeBlob } from './importShared';
 

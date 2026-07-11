@@ -3,7 +3,7 @@ import { IncomeContext, IncomeDispatchContext } from "../../components/Objects/I
 import { useTodayMilestoneSet } from "../../components/Objects/Assumptions/useTodayMilestoneSet";
 import { isIncomeActiveToday } from "../../services/simulation/MilestoneEvaluator";
 import {
-	AnyIncome,
+	type AnyIncome,
 	CLASS_TO_CATEGORY,
 	CATEGORY_PALETTES,
 	INCOME_CATEGORIES,
@@ -15,7 +15,7 @@ import {
 	DragDropContext,
 	Droppable,
 	Draggable,
-	DropResult,
+	type DropResult,
 } from "@hello-pangea/dnd";
 import AddIncomeModal from "../../components/Objects/Income/AddIncomeModal";
 import { ObjectsIcicleChart } from "../../components/Charts/ObjectsIcicleChart";

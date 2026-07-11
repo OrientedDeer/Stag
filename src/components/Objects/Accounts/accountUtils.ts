@@ -1,4 +1,4 @@
-import { AnyAccount, InvestedAccount, SavedAccount, ESPPAccount, RSUAccount } from "./models";
+import { type AnyAccount, InvestedAccount, SavedAccount, ESPPAccount, RSUAccount } from "./models";
 
 /**
  * Sum the account balances that make up the "withdrawal portfolio" — the

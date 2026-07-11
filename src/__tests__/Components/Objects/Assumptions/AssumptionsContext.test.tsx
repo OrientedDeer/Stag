@@ -5,9 +5,9 @@ import React, { useContext } from 'react';
 import {
   AssumptionsContext,
   defaultAssumptions,
-  AssumptionsState,
-  PriorityBucket,
-  WithdrawalBucket,
+  type AssumptionsState,
+  type PriorityBucket,
+  type WithdrawalBucket,
   getRetirementAge,
   getLifeExpectancy,
   getBirthYear,
@@ -17,7 +17,7 @@ import {
 } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 import { AssumptionsProvider } from '../../../../components/Objects/Assumptions/AssumptionsProvider';
 import { evaluateMilestone } from '../../../../services/simulation/MilestoneEvaluator';
-import { CustomMilestone } from '../../../../services/simulation/types';
+import { type CustomMilestone } from '../../../../services/simulation/types';
 
 // Mock localStorage
 const localStorageMock = (() => {

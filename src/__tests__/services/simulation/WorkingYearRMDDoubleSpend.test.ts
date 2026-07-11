@@ -24,11 +24,11 @@ import { WorkIncome } from '../../../components/Objects/Income/models';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
 import { runSimulation } from '../../../components/Objects/Assumptions/useSimulation';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { calculateRMD } from '../../../data/RMDData';
 
 // Born ~1952 → SECURE 2.0 RMD age 73, so an RMD is required from the first simulated

@@ -1,4 +1,4 @@
-import { ReactElement, useContext, useMemo } from 'react';
+import { type ReactElement, useContext, useMemo } from 'react';
 import { ResponsiveLine } from '@nivo/line';
 import { AccountContext } from '../Objects/Accounts/AccountContext';
 import { SimulationContext } from '../Objects/Assumptions/SimulationContext';

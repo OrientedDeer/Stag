@@ -10,14 +10,14 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-    AnyAccount, InvestedAccount, SavedAccount, PropertyAccount, DebtAccount, DeficitDebtAccount,
+    type AnyAccount, InvestedAccount, SavedAccount, PropertyAccount, DebtAccount, DeficitDebtAccount,
 } from '../../components/Objects/Accounts/models';
 import {
-    withAllSellableAccounts, generateCandidateWithdrawalOrders, WithdrawalOrderItem,
+    withAllSellableAccounts, generateCandidateWithdrawalOrders, type WithdrawalOrderItem,
 } from '../../services/simulation/EngineDirectConversionSearch';
 import { isSellableAccount } from '../../services/simulation/WithdrawalPlanner';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { FutureSocialSecurityIncome } from '../../components/Objects/Income/models';
 import { FoodExpense } from '../../components/Objects/Expense/models';
 import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';

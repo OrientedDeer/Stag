@@ -12,7 +12,7 @@
  * All numbers invented.
  */
 import { describe, it, expect } from 'vitest';
-import { ESPPAccount, RSUAccount, ESPPLot, RSULot } from '../../../components/Objects/Accounts/models';
+import { ESPPAccount, RSUAccount, type ESPPLot, type RSULot } from '../../../components/Objects/Accounts/models';
 import { taxableTierRank } from '../../../services/simulation/WithdrawalPlanner';
 
 // Fixed sale date so lot ages are deterministic regardless of when the test runs.

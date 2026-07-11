@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
+import { type SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { DebtAccount } from '../../../components/Objects/Accounts/models';
 import { LoanExpense, MortgageExpense } from '../../../components/Objects/Expense/models';
-import { DebtStreamChart, DebtStreamData } from '../../../components/Charts/DebtStreamChart';
+import { DebtStreamChart, type DebtStreamData } from '../../../components/Charts/DebtStreamChart';
 import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider';
 import { useArrowKeyAdjust } from '../../../hooks/useKeyboardShortcuts';
 

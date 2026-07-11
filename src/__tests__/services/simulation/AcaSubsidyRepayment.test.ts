@@ -15,19 +15,19 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { solveRetirementYear, YearSolverInput } from '../../../services/simulation/YearSolver';
+import { solveRetirementYear, type YearSolverInput } from '../../../services/simulation/YearSolver';
 import { getAcaCliffThreshold } from '../../../services/simulation/TaxOptimizedWithdrawal';
 import { runSimulation } from '../../../components/Objects/Assumptions/useSimulation';
-import { InvestedAccount, SavedAccount, AnyAccount } from '../../../components/Objects/Accounts/models';
+import { InvestedAccount, SavedAccount, type AnyAccount } from '../../../components/Objects/Accounts/models';
 import { PassiveIncome } from '../../../components/Objects/Income/models';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
     ACA_SUBSIDY_LOSS_DEFAULT,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 
 const YEAR = new Date().getFullYear();
 const CLIFF = getAcaCliffThreshold('single', YEAR);

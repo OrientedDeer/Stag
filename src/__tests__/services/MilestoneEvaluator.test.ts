@@ -12,12 +12,12 @@ import {
     isIncomeActiveToday,
     isMilestoneSimDependent,
     isIncomeMilestoneGateUnresolved,
-    MilestoneContext,
+    type MilestoneContext,
 } from '../../services/simulation/MilestoneEvaluator';
-import { InvestedAccount, SavedAccount, DebtAccount, PropertyAccount, ESPPAccount, DeficitDebtAccount, AnyAccount } from '../../components/Objects/Accounts/models';
+import { InvestedAccount, SavedAccount, DebtAccount, PropertyAccount, ESPPAccount, DeficitDebtAccount, type AnyAccount } from '../../components/Objects/Accounts/models';
 import { OtherExpense } from '../../components/Objects/Expense/models';
 import { WorkIncome } from '../../components/Objects/Income/models';
-import { CustomMilestone } from '../../services/simulation/types';
+import { type CustomMilestone } from '../../services/simulation/types';
 
 describe('MilestoneEvaluator', () => {
     describe('calculateNetWorth', () => {

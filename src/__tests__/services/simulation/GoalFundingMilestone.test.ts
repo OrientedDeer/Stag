@@ -24,13 +24,13 @@ import { describe, it, expect } from 'vitest';
 import { simulateOneYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { InvestedAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { OtherExpense, getGoalFundAnnualSetAside } from '../../../components/Objects/Expense/models';
-import { CustomMilestone } from '../../../services/simulation/types';
+import { type CustomMilestone } from '../../../services/simulation/types';
 
 // =============================================================================
 // FIXTURES

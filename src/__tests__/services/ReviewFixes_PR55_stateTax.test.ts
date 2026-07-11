@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../components/Objects/Assumptions/AssumptionsContext';
@@ -10,8 +10,8 @@ import {
     calculateUnifiedStateTax,
     calculateFederalTaxFromIncomes,
 } from '../../components/Objects/Taxes/TaxService';
-import { WorkIncome, CurrentSocialSecurityIncome, AnyIncome } from '../../components/Objects/Income/models';
-import { MortgageExpense, AnyExpense } from '../../components/Objects/Expense/models';
+import { WorkIncome, CurrentSocialSecurityIncome, type AnyIncome } from '../../components/Objects/Income/models';
+import { MortgageExpense, type AnyExpense } from '../../components/Objects/Expense/models';
 
 /**
  * CHARACTERIZATION tests for PR #55 review fixes #7, #8, #11.

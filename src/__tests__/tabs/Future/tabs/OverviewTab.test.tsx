@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { SimulationYear } from '../../../../components/Objects/Assumptions/SimulationEngine';
+import { type SimulationYear } from '../../../../components/Objects/Assumptions/SimulationEngine';
 import { OverviewTab, computeXTickValues } from '../../../../tabs/Future/tabs/OverviewTab';
 import { DebtAccount, InvestedAccount, PropertyAccount, SavedAccount } from '../../../../components/Objects/Accounts/models';
 import { LoanExpense, MortgageExpense } from '../../../../components/Objects/Expense/models';

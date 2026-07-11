@@ -1,6 +1,6 @@
 // src/components/Accounts/EditHistoryModal.tsx
 import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { AccountContext, AccountDispatchContext, AmountHistoryEntry } from './AccountContext';
+import { AccountContext, AccountDispatchContext, type AmountHistoryEntry } from './AccountContext';
 import { CurrencyInput } from '../../Layout/InputFields/CurrencyInput';
 import { PropertyAccount } from './models';
 import { useModalAccessibility } from '../../../hooks/useModalAccessibility';

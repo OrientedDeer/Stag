@@ -6,8 +6,8 @@ import {
   SimulationContext,
 } from '../../../../components/Objects/Assumptions/SimulationContext';
 import { SimulationProvider } from '../../../../components/Objects/Assumptions/SimulationProvider';
-import { SimulationYear } from '../../../../components/Objects/Assumptions/SimulationEngine';
-import { AnyAccount, DebtAccount, PropertyAccount, SavedAccount } from '../../../../components/Objects/Accounts/models';
+import { type SimulationYear } from '../../../../components/Objects/Assumptions/SimulationEngine';
+import { type AnyAccount, DebtAccount, PropertyAccount, SavedAccount } from '../../../../components/Objects/Accounts/models';
 import { PassiveIncome } from '../../../../components/Objects/Income/models';
 import { FoodExpense } from '../../../../components/Objects/Expense/models';
 

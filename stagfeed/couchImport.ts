@@ -28,9 +28,9 @@ import { readFileSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
 import process from 'node:process';
 
-import { decrypt, encrypt, EncryptedBackup } from '../src/services/encryption/CryptoService';
+import { decrypt, encrypt, type EncryptedBackup } from '../src/services/encryption/CryptoService';
 import { parseBalancesCSV } from '../src/services/simplefinBalances';
-import { applyTransactions, applyBalances, MergeBlob } from '../src/services/backupMerge';
+import { applyTransactions, applyBalances, type MergeBlob } from '../src/services/backupMerge';
 import { csvToTransactions } from './csvToTransactions';
 import { env, flagReasonCounts, MAX_BACKUP_SIZE, serializeBlob, stagVerbose } from './importShared';
 

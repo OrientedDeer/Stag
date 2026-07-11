@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { simulateOneYear, SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
+import { simulateOneYear, type SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { defaultAssumptions, createBuiltinMilestones, BUILTIN_MILESTONE_IDS } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { defaultTaxState } from '../../components/Objects/Taxes/TaxContext';
 import { SavedAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
 import { FoodExpense } from '../../components/Objects/Expense/models';
-import { AnyIncome } from '../../components/Objects/Income/models';
+import { type AnyIncome } from '../../components/Objects/Income/models';
 
 describe('Retirement Bucket Withdrawal Bug', () => {
     it('should allow reinvestment up to withdrawal amount to correct over-withdrawals', () => {

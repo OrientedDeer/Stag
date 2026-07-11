@@ -3,7 +3,7 @@
  * month so we can later compare predictions to reality.
  */
 import { describe, it, expect } from 'vitest';
-import { captureSnapshot, extractNetWorthCurve, actualNetWorthByYear, ProjectionSnapshot } from '../../services/projectionHistory';
+import { captureSnapshot, extractNetWorthCurve, actualNetWorthByYear, type ProjectionSnapshot } from '../../services/projectionHistory';
 import { SavedAccount, DebtAccount } from '../../components/Objects/Accounts/models';
 import type { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 

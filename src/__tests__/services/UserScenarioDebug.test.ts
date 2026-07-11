@@ -15,14 +15,14 @@
 import { describe, it, expect } from 'vitest';
 import { runSimulation } from '../../components/Objects/Assumptions/useSimulation';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
-import { InvestedAccount, AnyAccount } from '../../components/Objects/Accounts/models';
-import { CurrentSocialSecurityIncome, AnyIncome } from '../../components/Objects/Income/models';
-import { AnyExpense, RentExpense, OtherExpense } from '../../components/Objects/Expense/models';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { InvestedAccount, type AnyAccount } from '../../components/Objects/Accounts/models';
+import { CurrentSocialSecurityIncome, type AnyIncome } from '../../components/Objects/Income/models';
+import { type AnyExpense, RentExpense, OtherExpense } from '../../components/Objects/Expense/models';
 // TODO: Re-implement tax optimization functions per TAX_OPTIMIZATION_SPEC.md
 
 // ============================================================================

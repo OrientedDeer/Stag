@@ -1,7 +1,7 @@
-import { memo, useContext, useState, ReactElement } from "react";
-import { AnyAccount, SavedAccount, InvestedAccount, ESPPAccount, RSUAccount, PropertyAccount, DebtAccount, ACCOUNT_COLORS_BACKGROUND, TaxTypeEnum, ESPPLot, ESPPWithdrawalPreference, ESPP_WITHDRAWAL_PREFERENCE_OPTIONS, RSULot, RSUWithdrawalPreference, RSU_WITHDRAWAL_PREFERENCE_OPTIONS } from "./models.js";
-import { AccountDispatchContext, AllAccountKeys } from "./AccountContext.js";
-import { ExpenseContext, ExpenseDispatchContext, AllExpenseKeys } from "../Expense/ExpenseContext.js";
+import { memo, useContext, useState, type ReactElement } from "react";
+import { type AnyAccount, SavedAccount, InvestedAccount, ESPPAccount, RSUAccount, PropertyAccount, DebtAccount, ACCOUNT_COLORS_BACKGROUND, TaxTypeEnum, type ESPPLot, type ESPPWithdrawalPreference, ESPP_WITHDRAWAL_PREFERENCE_OPTIONS, type RSULot, type RSUWithdrawalPreference, RSU_WITHDRAWAL_PREFERENCE_OPTIONS } from "./models.js";
+import { AccountDispatchContext, type AllAccountKeys } from "./AccountContext.js";
+import { ExpenseContext, ExpenseDispatchContext, type AllExpenseKeys } from "../Expense/ExpenseContext.js";
 import { StyledSelect, StyledDisplay } from "../../Layout/InputFields/StyleUI.js";
 import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput.js";
 import { PercentageInput } from "../../Layout/InputFields/PercentageInput.js";

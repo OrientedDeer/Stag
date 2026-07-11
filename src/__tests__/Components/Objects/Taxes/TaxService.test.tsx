@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { TaxState } from '../../../../components/Objects/Taxes/TaxContext';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 import {
     getTaxParameters,
     getGrossIncome,

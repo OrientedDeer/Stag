@@ -50,17 +50,17 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-    AssumptionsState, defaultAssumptions, createBuiltinMilestones,
+    type AssumptionsState, defaultAssumptions, createBuiltinMilestones,
 } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
-import { AnyAccount, InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type AnyAccount, InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
 import { FutureSocialSecurityIncome } from '../../components/Objects/Income/models';
 import { FoodExpense } from '../../components/Objects/Expense/models';
-import { EarningsRecord } from '../../services/SocialSecurityCalculator';
+import { type EarningsRecord } from '../../services/SocialSecurityCalculator';
 import { runSimulation, runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
 import * as TaxService from '../../components/Objects/Taxes/TaxService';
 import {
-    Scenario, ConversionPlan, scorePlan, stdDedOnlyPlan, feasibilityFloor, flatGapYearPlan,
+    type Scenario, type ConversionPlan, scorePlan, stdDedOnlyPlan, feasibilityFloor, flatGapYearPlan,
     executedConversionsByYear, realYears, makeSSHeavyScenario,
 } from '../roth-cookbook/harness';
 

@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import TrendsTab from '../../../tabs/Budget/TrendsTab';
 import { BudgetContext } from '../../../components/Objects/Budget/BudgetContext';
 import type { MonthlySnapshot } from '../../../components/Objects/Budget/BudgetTypes';
 import { ExpenseContext } from '../../../components/Objects/Expense/ExpenseContext';
-import { OtherExpense, AnyExpense } from '../../../components/Objects/Expense/models';
+import { OtherExpense, type AnyExpense } from '../../../components/Objects/Expense/models';
 
 // Mock the Nivo line chart — we only need the `data` prop it received,
 // serialized so the window (x values) and points (y values) can be asserted.

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useContext, ReactNode } from 'react';
+import { useContext, type ReactNode } from 'react';
 
 // Cloud backup must look configured/enabled so the provider runs its auth path.
 vi.mock('../../../../services/cloud/cloudConfig', () => ({

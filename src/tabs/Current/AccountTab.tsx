@@ -10,12 +10,12 @@ import {
     PropertyAccount,
     DebtAccount,
     ACCOUNT_CATEGORIES,
-    AnyAccount,
+    type AnyAccount,
     CLASS_TO_CATEGORY,
     CATEGORY_PALETTES,
 } from "../../components/Objects/Accounts/models";
 import AccountCard from "../../components/Objects/Accounts/AccountCard";
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import AddAccountModal from "../../components/Objects/Accounts/AddAccountModal";
 import ImportBalancesModal from "./ImportBalancesModal";
 import { ObjectsIcicleChart } from "../../components/Charts/ObjectsIcicleChart";

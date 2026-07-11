@@ -24,25 +24,25 @@ import { describe, it, expect } from 'vitest';
 import {
     InvestedAccount,
     SavedAccount,
-    AnyAccount,
+    type AnyAccount,
 } from '../../components/Objects/Accounts/models';
 import { WorkIncome } from '../../components/Objects/Income/models';
 import { OtherExpense } from '../../components/Objects/Expense/models';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
-import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { runSimulation } from '../../components/Objects/Assumptions/useSimulation';
 import {
     solveWorkingYear,
-    YearSolverInput,
+    type YearSolverInput,
     getTotalTraditionalBalance,
     getTotalRothBalance,
 } from '../../services/simulation/YearSolver';
-import { DPPolicy, lookupConversionPolicy } from '../../services/simulation/RothConversionDP';
+import { type DPPolicy, lookupConversionPolicy } from '../../services/simulation/RothConversionDP';
 import * as TaxService from '../../components/Objects/Taxes/TaxService';
 
 const NOW = new Date().getFullYear();

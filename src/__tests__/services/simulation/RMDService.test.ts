@@ -15,8 +15,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { processRMDs } from '../../../services/simulation/RMDService';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
-import { AssumptionsState, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { SimulationYear, WithdrawalState } from '../../../services/simulation/types';
+import { type AssumptionsState, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type SimulationYear, type WithdrawalState } from '../../../services/simulation/types';
 import * as TaxService from '../../../components/Objects/Taxes/TaxService';
 
 // =============================================================================

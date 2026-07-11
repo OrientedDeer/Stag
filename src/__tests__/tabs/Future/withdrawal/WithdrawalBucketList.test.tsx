@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { WithdrawalBucketList, BucketDetail } from '../../../../tabs/Future/withdrawal/WithdrawalBucketList';
+import { WithdrawalBucketList, type BucketDetail } from '../../../../tabs/Future/withdrawal/WithdrawalBucketList';
 
 const noop = () => {};
 const fmt = (n: number) => `$${Math.round(n).toLocaleString()}`;

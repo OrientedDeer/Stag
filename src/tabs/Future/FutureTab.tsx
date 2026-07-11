@@ -2,16 +2,16 @@ import React, { useState, useContext, useMemo, useEffect, useCallback, useRef, l
 import { useSubTabKeyboardNav } from '../../hooks/useKeyboardShortcuts';
 import { AssumptionsContext, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { getSimulationInputHash } from '../../services/simulationHash';
-import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
+import { type SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { ESPPAccount, RSUAccount, InvestedAccount, PropertyAccount, SavedAccount } from '../../components/Objects/Accounts/models';
-import { getIncomeNonVestingRSUReason, NonVestingRSUReason } from '../../components/Objects/Income/incomeCardUtils';
+import { getIncomeNonVestingRSUReason, type NonVestingRSUReason } from '../../components/Objects/Income/incomeCardUtils';
 import { SimulationContext } from '../../components/Objects/Assumptions/SimulationContext';
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
 import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
-import { calculateMilestones, formatAge, MilestonesSummary } from '../../services/MilestoneCalculator';
+import { calculateMilestones, formatAge, type MilestonesSummary } from '../../services/MilestoneCalculator';
 import { LoadingSpinner, LoadingOverlay } from '../../components/Layout/LoadingSpinner';
 import { AlertBanner } from '../../components/Layout/AlertBanner';
 

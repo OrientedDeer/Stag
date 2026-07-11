@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones, getLifeExpectancy, getBirthYear } from '../../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones, getLifeExpectancy, getBirthYear } from '../../../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../../../components/Objects/Taxes/TaxContext';
 import { runSimulation } from '../../../../components/Objects/Assumptions/useSimulation';
-import { AnyAccount, DebtAccount, InvestedAccount, PropertyAccount, SavedAccount } from '../../../../components/Objects/Accounts/models';
+import { type AnyAccount, DebtAccount, InvestedAccount, PropertyAccount, SavedAccount } from '../../../../components/Objects/Accounts/models';
 import { WorkIncome } from '../../../../components/Objects/Income/models';
 import { OtherExpense } from '../../../../components/Objects/Expense/models';
 

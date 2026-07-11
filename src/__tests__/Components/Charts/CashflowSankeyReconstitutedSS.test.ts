@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { buildCashflowDetail } from '../../../services/simulation/CashflowDetailBuilder';
 import {
     BaseIncome,
-    AnyIncome,
+    type AnyIncome,
     SocialSecurityIncome,
     CurrentSocialSecurityIncome,
     FutureSocialSecurityIncome,

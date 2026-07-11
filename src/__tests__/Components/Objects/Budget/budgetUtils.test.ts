@@ -19,10 +19,10 @@ import {
   calculateCategoryTotalsFromTransactions,
   formatCurrency,
 } from '../../../../components/Objects/Budget/budgetUtils';
-import { Transaction, MonthlySnapshot } from '../../../../components/Objects/Budget/BudgetContext';
+import { type Transaction, type MonthlySnapshot } from '../../../../components/Objects/Budget/BudgetContext';
 import { OtherExpense } from '../../../../components/Objects/Expense/models';
 import { SavedAccount } from '../../../../components/Objects/Accounts/models';
-import { SimulationYear } from '../../../../services/simulation/types';
+import { type SimulationYear } from '../../../../services/simulation/types';
 
 describe('budgetUtils', () => {
   describe('getTransactionMonthlyAmount', () => {

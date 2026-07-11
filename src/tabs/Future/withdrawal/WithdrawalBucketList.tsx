@@ -1,6 +1,6 @@
 import { memo } from 'react';
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { AnyAccount } from '../../../components/Objects/Accounts/models';
+import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
+import { type AnyAccount } from '../../../components/Objects/Accounts/models';
 import { Panel } from "../../../components/Layout/Primitives";
 import { Tooltip } from '../../../components/Layout/InputFields/Tooltip';
 

@@ -1,5 +1,5 @@
-import { WithdrawalBucket } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { AnyAccount } from '../../../components/Objects/Accounts/models';
+import { type WithdrawalBucket } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type AnyAccount } from '../../../components/Objects/Accounts/models';
 import { taxOptimalWithdrawalOrder } from '../../../services/simulation/WithdrawalPlanner';
 
 /**

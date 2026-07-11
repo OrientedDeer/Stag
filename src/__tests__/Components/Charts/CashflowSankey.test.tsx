@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { CashflowSankey } from '../../../components/Charts/CashflowSankey';
-import { buildCashflowSankeyData, SankeyNode, SankeyLink } from '../../../components/Charts/cashflowSankeyData';
+import { buildCashflowSankeyData, type SankeyNode, type SankeyLink } from '../../../components/Charts/cashflowSankeyData';
 import { PassiveIncome, CurrentSocialSecurityIncome } from '../../../components/Objects/Income/models';
 import { FoodExpense } from '../../../components/Objects/Expense/models';
 import { SavedAccount, InvestedAccount, DebtAccount } from '../../../components/Objects/Accounts/models';

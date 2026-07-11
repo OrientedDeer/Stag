@@ -1,20 +1,20 @@
-import { MonteCarloConfig, ScenarioResult, MonteCarloSummary } from './MonteCarloTypes';
+import { type MonteCarloConfig, type ScenarioResult, type MonteCarloSummary } from './MonteCarloTypes';
 import { SeededRandom } from './RandomGenerator';
 import {
     analyzeScenario,
     summarizeScenarios,
-    BaselinePathResult,
-    TradValuationRuler,
+    type BaselinePathResult,
+    type TradValuationRuler,
 } from './MonteCarloAggregator';
 import { buildTradValuation, terminalAfterTaxNetWorth } from '../tabs/Future/tabs/FutureUtils';
 import { runSimulation, buildMcConversionPolicy } from '../components/Objects/Assumptions/useSimulation';
-import { AnyAccount } from '../components/Objects/Accounts/models';
-import { DPPolicy } from './simulation/RothConversionDP';
-import { AnyIncome } from '../components/Objects/Income/models';
-import { AnyExpense } from '../components/Objects/Expense/models';
-import { AssumptionsState, getLifeExpectancy, getBirthYear, BUILTIN_MILESTONE_IDS } from '../components/Objects/Assumptions/AssumptionsContext';
-import { CustomMilestone } from './simulation/types';
-import { TaxState } from '../components/Objects/Taxes/TaxContext';
+import { type AnyAccount } from '../components/Objects/Accounts/models';
+import { type DPPolicy } from './simulation/RothConversionDP';
+import { type AnyIncome } from '../components/Objects/Income/models';
+import { type AnyExpense } from '../components/Objects/Expense/models';
+import { type AssumptionsState, getLifeExpectancy, getBirthYear, BUILTIN_MILESTONE_IDS } from '../components/Objects/Assumptions/AssumptionsContext';
+import { type CustomMilestone } from './simulation/types';
+import { type TaxState } from '../components/Objects/Taxes/TaxContext';
 
 /**
  * Run a single Monte Carlo scenario

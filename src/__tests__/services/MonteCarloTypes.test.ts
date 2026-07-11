@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
     getPresetReturnMean,
     RETURN_PRESETS,
-    ReturnPresetKey
+    type ReturnPresetKey
 } from '../../services/MonteCarloTypes';
 
 describe('getPresetReturnMean', () => {

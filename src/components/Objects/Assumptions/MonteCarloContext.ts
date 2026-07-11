@@ -1,15 +1,15 @@
 import { createContext, useContext } from 'react';
 import {
-    MonteCarloConfig,
-    MonteCarloState,
-    MonteCarloAction,
+    type MonteCarloConfig,
+    type MonteCarloState,
+    type MonteCarloAction,
     initialMonteCarloState,
 } from '../../../services/MonteCarloTypes';
-import { AnyAccount } from '../Accounts/models';
-import { AnyIncome } from '../Income/models';
-import { AnyExpense } from '../Expense/models';
-import { AssumptionsState } from './AssumptionsContext';
-import { TaxState } from '../Taxes/TaxContext';
+import { type AnyAccount } from '../Accounts/models';
+import { type AnyIncome } from '../Income/models';
+import { type AnyExpense } from '../Expense/models';
+import { type AssumptionsState } from './AssumptionsContext';
+import { type TaxState } from '../Taxes/TaxContext';
 
 interface MonteCarloContextProps {
     state: MonteCarloState;

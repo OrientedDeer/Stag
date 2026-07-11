@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi, Mock } from 'vitest';
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { render, act } from '@testing-library/react';
 import { useContext } from 'react';
 
@@ -10,14 +10,14 @@ import {
 } from '../../../../components/Objects/Scenarios/ScenarioContext';
 import { ScenarioProvider } from '../../../../components/Objects/Scenarios/ScenarioProvider';
 import {
-    SavedScenario,
-    LoadedScenario,
-    ScenarioComparison,
-    MilestonesSummary,
-    ScenarioAction,
+    type SavedScenario,
+    type LoadedScenario,
+    type ScenarioComparison,
+    type MilestonesSummary,
+    type ScenarioAction,
 } from '../../../../services/ScenarioTypes';
 import { defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../../../components/Objects/Taxes/TaxContext';
 
 // Mock ScenarioService
 vi.mock('../../../../services/ScenarioService', () => ({

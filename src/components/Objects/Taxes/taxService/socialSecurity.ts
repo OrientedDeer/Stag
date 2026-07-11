@@ -1,4 +1,4 @@
-import { FilingStatus } from "../../../../data/TaxData";
+import { type FilingStatus } from "../../../../data/TaxData";
 
 /** Social Security combined income thresholds for benefit taxation */
 const SS_THRESHOLDS_SINGLE = { first: 25000, second: 34000 };

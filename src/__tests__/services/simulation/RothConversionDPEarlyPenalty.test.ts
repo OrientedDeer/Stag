@@ -17,7 +17,7 @@ import { describe, it, expect } from 'vitest';
 import {
     evaluateCell,
     computeYearTax,
-    DPYearContext,
+    type DPYearContext,
 } from '../../../services/simulation/RothConversionDP';
 import { makeDPContext } from './dpFixtures';
 

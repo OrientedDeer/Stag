@@ -21,18 +21,18 @@ import { describe, it, expect } from 'vitest';
 import {
     buildDPYearContexts,
     computeYearTax,
-    DPYearContext,
+    type DPYearContext,
 } from '../../../services/simulation/RothConversionDP';
 import { makeDPContext } from './dpFixtures';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome } from '../../../components/Objects/Income/models';
-import { SimulationYear } from '../../../services/simulation/types';
+import { type SimulationYear } from '../../../services/simulation/types';
 import * as TaxService from '../../../components/Objects/Taxes/TaxService';
 
 const START_YEAR = new Date().getFullYear();

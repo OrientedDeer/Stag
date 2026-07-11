@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { AnyExpense } from '../../../components/Objects/Expense/models';
+import { type AnyExpense } from '../../../components/Objects/Expense/models';
 
 // The fixed sections plus every expense category — the id universe used both
 // for the older-month auto-collapse default and the explicit "collapse all".

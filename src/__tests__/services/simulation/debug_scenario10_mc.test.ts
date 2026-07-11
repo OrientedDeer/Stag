@@ -3,12 +3,12 @@
  */
 import { describe, it, expect } from 'vitest';
 import { runMonteCarloSimulationSync } from '../../../services/MonteCarloEngine';
-import { MonteCarloConfig } from '../../../services/MonteCarloTypes';
+import { type MonteCarloConfig } from '../../../services/MonteCarloTypes';
 import { InvestedAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
 import { SocialSecurityIncome, PassiveIncome } from '../../../components/Objects/Income/models';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 
 const BIRTH_YEAR = 1960;
 

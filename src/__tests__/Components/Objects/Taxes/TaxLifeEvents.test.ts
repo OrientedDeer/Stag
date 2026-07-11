@@ -4,7 +4,7 @@
  * latest-firing wins per kind).
  */
 import { describe, it, expect } from 'vitest';
-import { TaxState, resolveTaxEventsForYear } from '../../../../components/Objects/Taxes/TaxContext';
+import { type TaxState, resolveTaxEventsForYear } from '../../../../components/Objects/Taxes/TaxContext';
 
 const base = (events: TaxState['taxEvents']): TaxState => ({
     filingStatus: 'Single',

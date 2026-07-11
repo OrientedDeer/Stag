@@ -1,4 +1,4 @@
-import { ConversionMcStats, McBaselineComparison } from '../../../services/MonteCarloTypes';
+import { type ConversionMcStats, type McBaselineComparison } from '../../../services/MonteCarloTypes';
 
 /**
  * Pure copy builders for the Monte Carlo tab's interpreted report lines

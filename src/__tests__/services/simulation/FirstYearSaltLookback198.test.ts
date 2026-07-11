@@ -30,15 +30,15 @@ import * as TaxService from '../../../components/Objects/Taxes/TaxService';
 import { getItemizedDeductions } from '../../../components/Objects/Taxes/taxService/deductions';
 import { runSimulation } from '../../../components/Objects/Assumptions/useSimulation';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount, PropertyAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome } from '../../../components/Objects/Income/models';
 import { MortgageExpense, FoodExpense } from '../../../components/Objects/Expense/models';
-import { SimulationYear } from '../../../services/simulation/types';
+import { type SimulationYear } from '../../../services/simulation/types';
 
 // Mid-September of the current year ⇒ currentMonth = 8 ⇒ remainingFraction = 0.25.
 const NOW = new Date(new Date().getFullYear(), 8, 15, 12, 0, 0);

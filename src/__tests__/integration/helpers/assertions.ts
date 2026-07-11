@@ -6,7 +6,7 @@
  */
 
 import { expect } from 'vitest';
-import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
+import { type SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { DeficitDebtAccount, InvestedAccount, PropertyAccount, DebtAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
 import { MortgageExpense, LoanExpense } from '../../../components/Objects/Expense/models';
 import { PassiveIncome } from '../../../components/Objects/Income/models';

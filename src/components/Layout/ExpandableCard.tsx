@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, ReactNode, ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactNode, type ReactElement } from "react";
 import { ChevronIcon } from "./Icons/ChevronIcon.js";
 
 interface ExpandableCardProps {

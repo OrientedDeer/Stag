@@ -4,7 +4,7 @@
  * bracket math without creating a circular dependency back to the
  * federal-from-incomes orchestrator.
  */
-import { FilingStatus, TaxParameters } from "../../../../data/TaxData";
+import { type FilingStatus, type TaxParameters } from "../../../../data/TaxData";
 import { getTaxableSocialSecurityFromComponents } from "./socialSecurity";
 
 /** Result of the unified federal tax calculation */

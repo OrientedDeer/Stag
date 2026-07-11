@@ -1,5 +1,5 @@
-import { AnyAccount, InvestedAccount, SavedAccount, ESPPAccount } from "../../components/Objects/Accounts/models";
-import { FilingStatus, TaxParameters } from "../../data/TaxData";
+import { type AnyAccount, InvestedAccount, SavedAccount, ESPPAccount } from "../../components/Objects/Accounts/models";
+import { type FilingStatus, type TaxParameters } from "../../data/TaxData";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
 import { computeIrmaaMAGI } from "../../data/IRMAAData";
 

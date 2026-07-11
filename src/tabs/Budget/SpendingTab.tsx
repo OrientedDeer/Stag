@@ -4,12 +4,12 @@ import {
     keyColumn,
 } from 'react-datasheet-grid';
 import 'react-datasheet-grid/dist/style.css';
-import { BudgetContext, Transaction } from '../../components/Objects/Budget/BudgetContext';
+import { BudgetContext, type Transaction } from '../../components/Objects/Budget/BudgetContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
 import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { WorkIncome } from '../../components/Objects/Income/models';
-import { InvestedAccount, SavedAccount, AnyAccount } from '../../components/Objects/Accounts/models';
+import { InvestedAccount, SavedAccount, type AnyAccount } from '../../components/Objects/Accounts/models';
 import { isLongTermGoal, getGoalFundAnnualSetAside, mergeGoalFundBuckets } from '../../components/Objects/Expense/models';
 import { useAssumptions, getBirthYear, isBalanceTargetCap, getBucketTargetBalance } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';

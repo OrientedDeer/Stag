@@ -1,11 +1,11 @@
 import {
-    ContributionGrowthStrategy,
-    AutoMax401kOption,
-    ESPPContributionType,
-    PensionSystem,
-    IncomeFrequency,
-    RSUVestingSchedule,
-    RSUVestFrequency
+    type ContributionGrowthStrategy,
+    type AutoMax401kOption,
+    type ESPPContributionType,
+    type PensionSystem,
+    type IncomeFrequency,
+    type RSUVestingSchedule,
+    type RSUVestFrequency
 } from './models';
 
 export type PassiveSourceType = 'Dividend' | 'Rental' | 'Royalty' | 'Other';

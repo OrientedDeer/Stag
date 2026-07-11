@@ -7,7 +7,7 @@
  * via payroll (processInflows), not surplus allocation.
  */
 import { describe, it, expect } from 'vitest';
-import { allocateSurplus, SurplusAllocationSettings } from '../../services/simulation/SurplusAllocator';
+import { allocateSurplus, type SurplusAllocationSettings } from '../../services/simulation/SurplusAllocator';
 import { InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
 
 function defaultSettings(overrides: Partial<SurplusAllocationSettings> = {}): SurplusAllocationSettings {

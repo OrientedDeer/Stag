@@ -63,7 +63,7 @@ import {
     calculateRMD,
     isAccountSubjectToRMD,
     isRMDRequired,
-    RMDCalculation
+    type RMDCalculation
 } from '../../data/RMDData';
 import {
     getFERSMRA,
@@ -79,9 +79,9 @@ import {
 } from '../../data/PensionData';
 import { getFicaTaxableBase } from '../../components/Objects/Taxes/taxService/ficaTax';
 import { isSSCoveredForFica } from '../../components/Objects/Taxes/taxService/incomeAggregation';
-import { SavedAccount, InvestedAccount, DebtAccount, DeficitDebtAccount, PropertyAccount, ESPPAccount, RSUAccount, AnyAccount } from '../../components/Objects/Accounts/models';
+import { SavedAccount, InvestedAccount, DebtAccount, DeficitDebtAccount, PropertyAccount, ESPPAccount, RSUAccount, type AnyAccount } from '../../components/Objects/Accounts/models';
 import { formatCompactCurrency } from '../Future/tabs/FutureUtils';
-import { SimulationYear } from '../../services/simulation/types';
+import { type SimulationYear } from '../../services/simulation/types';
 import { totalTaxesOf } from '../../components/Charts/taxTotals';
 import RothConversionDebugTab from './RothConversionDebug';
 import { Panel, Button } from "../../components/Layout/Primitives";

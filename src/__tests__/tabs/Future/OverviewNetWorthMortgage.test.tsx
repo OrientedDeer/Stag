@@ -8,9 +8,9 @@ import {
     DebtAccount,
     ESPPAccount,
     RSUAccount,
-    AnyAccount,
+    type AnyAccount,
 } from '../../../components/Objects/Accounts/models';
-import { MortgageExpense, AnyExpense } from '../../../components/Objects/Expense/models';
+import { MortgageExpense, type AnyExpense } from '../../../components/Objects/Expense/models';
 
 /**
  * Regression: the Overview net-worth chart/tooltip used to subtract mortgage

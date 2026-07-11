@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { ReactNode } from 'react';
+import { type ReactNode } from 'react';
 
 import { useFileManager } from '../../../../components/Objects/Accounts/useFileManager';
 import { AccountProvider } from '../../../../components/Objects/Accounts/AccountProvider';

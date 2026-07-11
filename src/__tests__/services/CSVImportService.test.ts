@@ -18,13 +18,13 @@ import {
     applyCategories,
     createSuggestedMapping,
     generateMappingId,
-    ParsedCSV,
-    CSVMapping,
-    CSVImportOptions,
-    SavedCSVMapping,
-    ColumnDetection,
+    type ParsedCSV,
+    type CSVMapping,
+    type CSVImportOptions,
+    type SavedCSVMapping,
+    type ColumnDetection,
 } from '../../services/CSVImportService';
-import { Transaction, CategoryMapping } from '../../components/Objects/Budget/BudgetContext';
+import { type Transaction, type CategoryMapping } from '../../components/Objects/Budget/BudgetContext';
 
 // =============================================================================
 // detectIncomeCategory tests

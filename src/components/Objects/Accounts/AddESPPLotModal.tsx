@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { ESPPLot } from "./models";
+import { type ESPPLot } from "./models";
 import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput";
 import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { StyledInput, StyledDisplay } from "../../Layout/InputFields/StyleUI";

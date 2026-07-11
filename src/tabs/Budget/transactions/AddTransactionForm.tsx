@@ -1,14 +1,14 @@
-import { Dispatch, SetStateAction } from 'react';
+import { type Dispatch, type SetStateAction } from 'react';
 import {
     INCOME_CATEGORIES,
-    IncomeCategory,
+    type IncomeCategory,
     TRANSFER_CATEGORY_ID,
 } from '../../../components/Objects/Budget/BudgetContext';
-import { AnyExpense } from '../../../components/Objects/Expense/models';
-import { AnyAccount } from '../../../components/Objects/Accounts/models';
-import { PriorityBucket } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type AnyExpense } from '../../../components/Objects/Expense/models';
+import { type AnyAccount } from '../../../components/Objects/Accounts/models';
+import { type PriorityBucket } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { CONTRIBUTION_PREFIX } from './utils';
-import { NewTransactionForm } from './useTransactionEditor';
+import { type NewTransactionForm } from './useTransactionEditor';
 
 import { Button } from "../../../components/Layout/Primitives";
 interface AddTransactionFormProps {

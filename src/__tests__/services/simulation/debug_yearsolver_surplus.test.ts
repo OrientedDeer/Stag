@@ -2,12 +2,12 @@
  * Debug YearSolver surplus calculation
  */
 import { describe, it, expect } from 'vitest';
-import { solveRetirementYear, YearSolverInput } from '../../../services/simulation/YearSolver';
+import { solveRetirementYear, type YearSolverInput } from '../../../services/simulation/YearSolver';
 import { InvestedAccount, SavedAccount, DeficitDebtAccount } from '../../../components/Objects/Accounts/models';
 import { SocialSecurityIncome, PassiveIncome } from '../../../components/Objects/Income/models';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 
 const BIRTH_YEAR = 1960; // Age 75 in 2035
 

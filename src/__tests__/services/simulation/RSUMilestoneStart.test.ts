@@ -30,13 +30,13 @@ import { WorkIncome } from '../../../components/Objects/Income/models';
 import { processRSUVesting } from '../../../services/simulation/RSUVesting';
 import { simulateOneYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
-import { CustomMilestone } from '../../../services/simulation/types';
+import { type CustomMilestone } from '../../../services/simulation/types';
 
 const BIRTH_YEAR = 1985; // age 40 in 2025 — well before retirement, so working years.
 

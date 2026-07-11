@@ -4,8 +4,8 @@
  * Calculates key financial health ratios with benchmarks and ratings.
  */
 
-import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
-import { AnyAccount, SavedAccount, InvestedAccount, DebtAccount, DeficitDebtAccount } from '../components/Objects/Accounts/models';
+import { type SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
+import { type AnyAccount, SavedAccount, InvestedAccount, DebtAccount, DeficitDebtAccount } from '../components/Objects/Accounts/models';
 
 // ============================================================================
 // Constants - Rating Thresholds

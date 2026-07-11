@@ -22,7 +22,7 @@ import {
     generateTaxProjections,
     analyzeConversionPlan,
     analyzeRothPreTaxAllocation,
-    TaxAnalysis,
+    type TaxAnalysis,
     // Helper functions
     get401kContributions,
     getHSAContributions,
@@ -31,13 +31,13 @@ import {
     generateBracketRecommendation,
     generateRothConversionRecommendation,
     hasTraditionalRetirementBalance,
-    RothConversionOpportunity,
+    type RothConversionOpportunity,
 } from '../../services/TaxOptimizationService';
 import { calculateContributionTaxSavings } from '../../data/ContributionLimits';
 import { InvestedAccount } from '../../components/Objects/Accounts/models';
-import { SimulationYear } from '../../services/simulation/types';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type SimulationYear } from '../../services/simulation/types';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { WorkIncome, PassiveIncome, CurrentSocialSecurityIncome } from '../../components/Objects/Income/models';
 import { getTaxParameters, getEffectiveDeduction } from '../../components/Objects/Taxes/TaxService';
 

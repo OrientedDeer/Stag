@@ -11,7 +11,7 @@ import { calculateFicaTax } from '../../../../components/Objects/Taxes/taxServic
 import { getCombinedMarginalRate } from '../../../../components/Objects/Taxes/taxService/marginalRates';
 import { getTaxParameters } from '../../../../components/Objects/Taxes/taxService/parameters';
 import { WorkIncome } from '../../../../components/Objects/Income/models';
-import { TaxState } from '../../../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../../../components/Objects/Taxes/TaxContext';
 import { defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 
 const YEAR = 2025;

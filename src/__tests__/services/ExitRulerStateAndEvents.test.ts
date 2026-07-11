@@ -21,11 +21,11 @@ import { runSimulation } from '../../components/Objects/Assumptions/useSimulatio
 import { buildTradValuation } from '../../tabs/Future/tabs/FutureUtils';
 import { getProjectedRMDMarginalRate } from '../../services/TaxOptimizationService';
 import { bracketAwareTradExitValue } from '../../services/simulation/RothConversionDP';
-import { TaxState, TaxLifeEvent } from '../../components/Objects/Taxes/TaxContext';
+import { type TaxState, type TaxLifeEvent } from '../../components/Objects/Taxes/TaxContext';
 import { getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import * as TaxService from '../../components/Objects/Taxes/TaxService';
-import { SimulationYear } from '../../services/simulation/types';
-import { Scenario, makeSSHeavyScenario, realYears } from '../roth-cookbook/harness';
+import { type SimulationYear } from '../../services/simulation/types';
+import { type Scenario, makeSSHeavyScenario, realYears } from '../roth-cookbook/harness';
 
 // One shared engine run: the $1.5M-Traditional MFJ fixture (TX, ~$0 SS), zero
 // conversions. Every ruler comparison below re-prices the SAME timeline under a

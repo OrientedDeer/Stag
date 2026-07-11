@@ -23,10 +23,10 @@ import { describe, it, expect, beforeEach } from 'vitest';
 // Level 1: Unit imports
 import { classifyIncome } from '../../../services/simulation/IncomeClassifier';
 import { planWithdrawals, createOrderedSnapshots } from '../../../services/simulation/WithdrawalPlanner';
-import { AccountBalanceSnapshot } from '../../../services/simulation/types';
+import { type AccountBalanceSnapshot } from '../../../services/simulation/types';
 
 // Level 2: Solver imports
-import { solveRetirementYear, YearSolverInput } from '../../../services/simulation/YearSolver';
+import { solveRetirementYear, type YearSolverInput } from '../../../services/simulation/YearSolver';
 import { getAcaCliffThreshold } from '../../../services/simulation/TaxOptimizedWithdrawal';
 
 // Level 3: Full simulation imports
@@ -35,8 +35,8 @@ import { simulateOneYear } from '../../../components/Objects/Assumptions/Simulat
 // Model imports
 import { InvestedAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 
 // =============================================================================
 // TEST FIXTURES

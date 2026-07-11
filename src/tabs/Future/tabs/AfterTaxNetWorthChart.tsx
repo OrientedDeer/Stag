@@ -7,7 +7,7 @@ import { RangeSlider } from '../../../components/Layout/InputFields/RangeSlider'
 import { useContainerWidth } from '../../../hooks/useContainerWidth';
 import { useTimelineRange } from '../../../hooks/useTimelineRange';
 import { AlertBanner } from '../../../components/Layout/AlertBanner';
-import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
+import { type SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { useAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxContext } from '../../../components/Objects/Taxes/TaxContext';
 import { getProjectedRMDMarginalRate } from '../../../services/TaxOptimizationService';

@@ -1,4 +1,4 @@
-import { PercentileData, YearlyPercentile } from '../../services/MonteCarloTypes';
+import { type PercentileData, type YearlyPercentile } from '../../services/MonteCarloTypes';
 
 /**
  * Compute the y-axis domain for the fan chart from the percentile values

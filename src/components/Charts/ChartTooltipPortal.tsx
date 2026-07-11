@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { ReactNode, useEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useRef } from 'react';
 import { placePopover } from './popoverPosition';
 
 interface ChartTooltipPortalProps {

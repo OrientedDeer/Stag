@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import {
   clearAllStorage,
   waitForLocalStorageSave,
@@ -7,7 +7,7 @@ import {
 import { testAccounts, testIncome, testExpenses } from './fixtures/test-data';
 
 // Helper to click on an account/income/expense card (not the chart)
-async function clickCard(page: any, name: string) {
+async function clickCard(page: Page, name: string) {
   // Target the clickable card button (collapsed cards are now buttons for accessibility)
   const card = page.locator('button.cursor-pointer').filter({ hasText: name }).first();
   await card.scrollIntoViewIfNeeded();

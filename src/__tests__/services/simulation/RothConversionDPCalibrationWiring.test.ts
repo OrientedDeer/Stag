@@ -16,15 +16,15 @@
  * The mock delegates to the real implementation so the simulation still runs.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AssumptionsState } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type AssumptionsState } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import type * as RothConversionDPModule from '../../../services/simulation/RothConversionDP';
+import { type TaxState as TaxStateT } from '../../../components/Objects/Taxes/TaxContext';
 
 // Capture the assumptions handed to buildDPYearContexts on each call.
 const capturedAssumptions: AssumptionsState[] = [];
 
 vi.mock('../../../services/simulation/RothConversionDP', async (importOriginal) => {
-    const actual = await importOriginal<
-        typeof import('../../../services/simulation/RothConversionDP')
-    >();
+    const actual = await importOriginal<typeof RothConversionDPModule>();
     return {
         ...actual,
         buildDPYearContexts: (
@@ -46,8 +46,6 @@ const { InvestedAccount, SavedAccount } =
 const { WorkIncome, FutureSocialSecurityIncome } =
     await import('../../../components/Objects/Income/models');
 const { FoodExpense } = await import('../../../components/Objects/Expense/models');
-
-type TaxStateT = import('../../../components/Objects/Taxes/TaxContext').TaxState;
 
 const birthYear = 1985;
 const retirementAge = 45;

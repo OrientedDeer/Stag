@@ -1,7 +1,7 @@
-import { AnyExpense } from "../../Expense/models";
-import { AnyIncome } from "../../Income/models";
-import { TaxState, DeductionMethod } from "../TaxContext";
-import { AssumptionsState, getBirthYear } from "../../Assumptions/AssumptionsContext";
+import { type AnyExpense } from "../../Expense/models";
+import { type AnyIncome } from "../../Income/models";
+import { type TaxState, type DeductionMethod } from "../TaxContext";
+import { type AssumptionsState, getBirthYear } from "../../Assumptions/AssumptionsContext";
 import { getTaxParameters, getSALTCap } from "./parameters";
 import {
     getGrossIncome,
@@ -13,7 +13,7 @@ import { calculateTotalFederalTax } from "./bracketTax";
 import { calculateStateTax, calculateUnifiedStateTax } from "./stateTax";
 import { getTaxableSocialSecurityFromComponents } from "./socialSecurity";
 import { isSeniorEligible, seniorAdditionalDeduction, seniorPerPersonMultiplier } from "./seniorDeduction";
-import { FilingStatus, TaxParameters } from "../../../../data/TaxData";
+import { type FilingStatus, type TaxParameters } from "../../../../data/TaxData";
 
 /**
  * OBBBA "senior bonus" deduction sunset window. The bonus applies for tax years

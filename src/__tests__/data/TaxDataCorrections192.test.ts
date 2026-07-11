@@ -19,7 +19,7 @@ import { getWageBase } from '../../data/SocialSecurityData';
 import { defaultData } from '../../data/defaultData';
 import { getTaxParameters } from '../../components/Objects/Taxes/taxService/parameters';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
 } from '../../components/Objects/Assumptions/AssumptionsContext';
 

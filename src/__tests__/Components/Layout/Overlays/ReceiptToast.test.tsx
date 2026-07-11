@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
-import { ReceiptToastProvider, useReceiptToast, ReceiptToastOptions } from '../../../../components/Layout/Overlays/ReceiptToast';
+import { ReceiptToastProvider, useReceiptToast, type ReceiptToastOptions } from '../../../../components/Layout/Overlays/ReceiptToast';
 
 /** Button that fires a toast with the given options when clicked. */
 const ShowToastButton = ({ options }: { options: ReceiptToastOptions }) => {

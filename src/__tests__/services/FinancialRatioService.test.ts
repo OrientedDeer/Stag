@@ -19,7 +19,7 @@ import {
   rateRetirementGrowthRate,
   ratePortfolioYears,
 } from '../../services/FinancialRatioService';
-import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
+import { type SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { SavedAccount, InvestedAccount, DebtAccount } from '../../components/Objects/Accounts/models';
 
 // Helper to create a mock SimulationYear

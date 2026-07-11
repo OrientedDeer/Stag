@@ -1,4 +1,4 @@
-import { ReactElement, useContext, useMemo, useState } from "react";
+import { type ReactElement, useContext, useMemo, useState } from "react";
 import { AssumptionsContext } from "../../../components/Objects/Assumptions/AssumptionsContext";
 import { ExpenseContext } from "../../../components/Objects/Expense/ExpenseContext";
 import { PercentageInput } from "../../../components/Layout/InputFields/PercentageInput";

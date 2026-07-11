@@ -1,6 +1,6 @@
-import { TaxParameters } from "../../../../data/TaxData";
-import { TaxState } from "../TaxContext";
-import { AssumptionsState } from "../../Assumptions/AssumptionsContext";
+import { type TaxParameters } from "../../../../data/TaxData";
+import { type TaxState } from "../TaxContext";
+import { type AssumptionsState } from "../../Assumptions/AssumptionsContext";
 import { getTaxParameters } from "./parameters";
 import { getAdditionalMedicareThreshold } from "./ficaTax";
 

@@ -29,24 +29,24 @@
 import { describe, it, expect } from 'vitest';
 
 import { runMonteCarloSimulationSync } from '../../services/MonteCarloEngine';
-import { MonteCarloConfig } from '../../services/MonteCarloTypes';
+import { type MonteCarloConfig } from '../../services/MonteCarloTypes';
 import {
     runSimulationWithOptimization,
     buildMcConversionPolicy,
 } from '../../components/Objects/Assumptions/useSimulation';
 import { lookupConversionPolicy } from '../../services/simulation/RothConversionDP';
-import { InvestedAccount, SavedAccount, AnyAccount } from '../../components/Objects/Accounts/models';
+import { InvestedAccount, SavedAccount, type AnyAccount } from '../../components/Objects/Accounts/models';
 import { SocialSecurityIncome } from '../../components/Objects/Income/models';
 import { OtherExpense } from '../../components/Objects/Expense/models';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
     getLifeExpectancy,
     getBirthYear,
 } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
-import { SimulationYear } from '../../services/simulation/types';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type SimulationYear } from '../../services/simulation/types';
 
 const ROR = 5; // % nominal; with expenseRatio 0 and inflationAdjusted off, the
                // on-track MC override return is exactly this.

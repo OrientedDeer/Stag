@@ -2,12 +2,12 @@ import React, { useState, useMemo } from 'react';
 import {
   runHistoricalBacktest,
   getBacktestDataRange,
-  BacktestConfig,
-  BacktestSummary,
+  type BacktestConfig,
+  type BacktestSummary,
 } from '../../../services/HistoricalBacktest';
 import { formatCompactCurrency, calculateNetWorth } from './FutureUtils';
 import { useAssumptions, getBirthYear, getRetirementAge, getLifeExpectancy } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
+import { type SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { CurrencyInput } from '../../../components/Layout/InputFields/CurrencyInput';
 import { DropdownInput } from '../../../components/Layout/InputFields/DropdownInput';
 import { PercentageInput } from '../../../components/Layout/InputFields/PercentageInput';

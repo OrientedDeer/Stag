@@ -1,4 +1,4 @@
-import { AnyAccount, DebtAccount, PropertyAccount } from './models';
+import { type AnyAccount, DebtAccount, PropertyAccount } from './models';
 
 /**
  * Canonical net-worth definition for the whole app.

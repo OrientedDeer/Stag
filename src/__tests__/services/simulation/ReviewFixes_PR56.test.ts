@@ -15,14 +15,14 @@ import { describe, it, expect } from 'vitest';
 import { buildDPYearContexts } from '../../../services/simulation/RothConversionDP';
 import { processInflows, growAccounts } from '../../../services/simulation/AccountGrowth';
 import { projectIncomes } from '../../../services/simulation/IncomeProjection';
-import { SimulationYear, WithdrawalState } from '../../../services/simulation/types';
+import { type SimulationYear, type WithdrawalState } from '../../../services/simulation/types';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
-import { PassiveIncome, WorkIncome, FERSPensionIncome, FutureSocialSecurityIncome, AnyIncome } from '../../../components/Objects/Income/models';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { PassiveIncome, WorkIncome, FERSPensionIncome, FutureSocialSecurityIncome, type AnyIncome } from '../../../components/Objects/Income/models';
 import { ESPPAccount, InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { get415cLimit } from '../../../data/ContributionLimits';
 import { calculateFERSSupplement, checkCSRSEligibility } from '../../../data/PensionData';

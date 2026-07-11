@@ -30,15 +30,15 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { solveWorkingYear, YearSolverInput } from '../../../services/simulation/YearSolver';
+import { solveWorkingYear, type YearSolverInput } from '../../../services/simulation/YearSolver';
 import * as TaxService from '../../../components/Objects/Taxes/TaxService';
 import { getEffectiveDeduction } from '../../../components/Objects/Taxes/taxService/federalTax';
 
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome, CurrentSocialSecurityIncome } from '../../../components/Objects/Income/models';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 
 const YEAR = 2025;
 const FILING: TaxState['filingStatus'] = 'Married Filing Jointly';

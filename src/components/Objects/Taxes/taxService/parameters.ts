@@ -1,13 +1,13 @@
 import {
-    TaxParameters,
+    type TaxParameters,
     TAX_DATABASE,
     getClosestTaxYear,
     max_year,
-    FilingStatus,
-    AuthorityData,
+    type FilingStatus,
+    type AuthorityData,
 } from "../../../../data/TaxData";
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
 } from "../../Assumptions/AssumptionsContext";
 import { getWageBase } from "../../../../data/SocialSecurityData";

@@ -1,11 +1,11 @@
-import { createContext, Dispatch } from 'react';
+import { createContext, type Dispatch } from 'react';
 import {
-    AnyExpense,
+    type AnyExpense,
     RentExpense,
     MortgageExpense,
-    LoanExpense,
-    DependentExpense,
-    TransportExpense,
+    type LoanExpense,
+    type DependentExpense,
+    type TransportExpense,
     reconstituteExpense
 } from './models';
 import { jsonDateReplacer } from '../../../utils/formatters';

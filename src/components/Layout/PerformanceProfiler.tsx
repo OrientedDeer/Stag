@@ -1,4 +1,4 @@
-import { Profiler, ProfilerOnRenderCallback, ReactNode, useCallback, useState } from 'react';
+import { Profiler, type ProfilerOnRenderCallback, type ReactNode, useCallback, useState } from 'react';
 
 /**
  * In-code React Profiler wrapper that auto-logs slow renders. No need to open

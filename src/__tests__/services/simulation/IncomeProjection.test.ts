@@ -13,15 +13,15 @@ import {
     FutureSocialSecurityIncome,
     FERSPensionIncome,
     CSRSPensionIncome,
-    AnyIncome
+    type AnyIncome
 } from '../../../components/Objects/Income/models';
-import { SavedAccount, InvestedAccount, AnyAccount } from '../../../components/Objects/Accounts/models';
+import { SavedAccount, InvestedAccount, type AnyAccount } from '../../../components/Objects/Accounts/models';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { SimulationYear } from '../../../services/simulation/types';
+import { type SimulationYear } from '../../../services/simulation/types';
 import { getIncomeActiveMultiplier } from '../../../components/Objects/Income/models';
 
 // Helper to create test assumptions with custom milestones

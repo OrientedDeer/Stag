@@ -1,6 +1,6 @@
-import { memo, useContext, useEffect, useCallback, useMemo, ReactElement } from 'react';
+import { memo, useContext, useEffect, useCallback, useMemo, type ReactElement } from 'react';
 import {
-    AnyIncome,
+    type AnyIncome,
     WorkIncome,
     SocialSecurityIncome,
     CurrentSocialSecurityIncome,
@@ -8,10 +8,10 @@ import {
     FERSPensionIncome,
     CSRSPensionIncome,
     PassiveIncome,
-    IncomeFrequency,
+    type IncomeFrequency,
     hasIncomeEnded,
 } from './models';
-import { IncomeContext, IncomeDispatchContext, AllIncomeKeys } from './IncomeContext';
+import { IncomeContext, IncomeDispatchContext, type AllIncomeKeys } from './IncomeContext';
 import { StyledSelect } from '../../Layout/InputFields/StyleUI';
 import { WarningTriangleIcon } from '../../Layout/Icons/WarningTriangleIcon';
 import { CurrencyInput } from '../../Layout/InputFields/CurrencyInput';

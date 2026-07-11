@@ -21,9 +21,9 @@ import { describe, it, expect } from 'vitest';
 import {
     getEffectiveConversionRate,
 } from '../TaxOptimizedWithdrawal';
-import { ACAOptions } from '../helpers';
-import { TaxParameters } from '../../../data/TaxData';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type ACAOptions } from '../helpers';
+import { type TaxParameters } from '../../../data/TaxData';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import * as TaxService from '../../../components/Objects/Taxes/TaxService';
 
 // =============================================================================

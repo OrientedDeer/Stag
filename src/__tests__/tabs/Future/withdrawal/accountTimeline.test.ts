@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildAccountTimeline } from '../../../../tabs/Future/withdrawal/accountTimeline';
-import { InvestedAccount, AnyAccount } from '../../../../components/Objects/Accounts/models';
-import { SimulationYear } from '../../../../services/simulation/types';
+import { InvestedAccount, type AnyAccount } from '../../../../components/Objects/Accounts/models';
+import { type SimulationYear } from '../../../../services/simulation/types';
 import { createBuiltinMilestones } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 
 // Birth in 2000 so age == year - 2000 (clean arithmetic in assertions).

@@ -1,9 +1,9 @@
 import { useCallback, useContext, useState } from 'react';
 import {
     BudgetContext,
-    Transaction,
+    type Transaction,
     TRANSFER_CATEGORY_ID,
-    IncomeCategory,
+    type IncomeCategory,
 } from '../../../components/Objects/Budget/BudgetContext';
 import { ExpenseContext } from '../../../components/Objects/Expense/ExpenseContext';
 import { useReceiptToast } from '../../../components/Layout/Overlays/ReceiptToast';

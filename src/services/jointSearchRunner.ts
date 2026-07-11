@@ -21,7 +21,7 @@
  * covers the in-flight-when-replaced case; the resolved-but-inputs-moved-on case
  * (sync fallback finishing after an edit) is the caller's hash check.
  */
-import { reconstituteAccount, InvestedAccount, BrokerageLot } from '../components/Objects/Accounts/models';
+import { reconstituteAccount, InvestedAccount, type BrokerageLot } from '../components/Objects/Accounts/models';
 import { reconstituteIncome } from '../components/Objects/Income/models';
 import { reconstituteExpense } from '../components/Objects/Expense/models';
 import type { AnyAccount } from '../components/Objects/Accounts/models';

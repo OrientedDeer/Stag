@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi, Mock } from 'vitest';
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { render, act } from '@testing-library/react';
 import { useContext } from 'react';
 
@@ -10,14 +10,14 @@ import {
 } from '../../../../components/Objects/Assumptions/MonteCarloContext';
 import { MonteCarloProvider } from '../../../../components/Objects/Assumptions/MonteCarloProvider';
 import {
-    MonteCarloConfig,
-    MonteCarloSummary,
+    type MonteCarloConfig,
+    type MonteCarloSummary,
     defaultMonteCarloConfig,
 } from '../../../../services/MonteCarloTypes';
 import { runMonteCarloSimulation } from '../../../../services/MonteCarloEngine';
 import { createRandomSeed } from '../../../../services/RandomGenerator';
-import { AssumptionsState } from '../../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState } from '../../../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../../../components/Objects/Taxes/TaxContext';
 
 // Mock the MonteCarloEngine
 vi.mock('../../../../services/MonteCarloEngine', () => ({

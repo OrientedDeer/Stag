@@ -1,8 +1,8 @@
-import { AnyAccount, RSUAccount, ESPPAccount, InvestedAccount, SavedAccount, PropertyAccount, DebtAccount } from '../components/Objects/Accounts/models';
-import { AnyIncome, WorkIncome, FERSPensionIncome, CSRSPensionIncome, FutureSocialSecurityIncome } from '../components/Objects/Income/models';
-import { AnyExpense } from '../components/Objects/Expense/models';
-import { AssumptionsState } from '../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../components/Objects/Taxes/TaxContext';
+import { type AnyAccount, RSUAccount, ESPPAccount, InvestedAccount, SavedAccount, PropertyAccount, DebtAccount } from '../components/Objects/Accounts/models';
+import { type AnyIncome, WorkIncome, FERSPensionIncome, CSRSPensionIncome, FutureSocialSecurityIncome } from '../components/Objects/Income/models';
+import { type AnyExpense } from '../components/Objects/Expense/models';
+import { type AssumptionsState } from '../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../components/Objects/Taxes/TaxContext';
 
 /**
  * Simple hash function for change detection.

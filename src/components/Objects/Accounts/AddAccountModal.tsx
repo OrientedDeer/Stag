@@ -7,11 +7,11 @@ import {
     RSUAccount,
     PropertyAccount,
     DebtAccount,
-    TaxType,
+    type TaxType,
     TaxTypeEnum,
-    ESPPWithdrawalPreference,
+    type ESPPWithdrawalPreference,
     ESPP_WITHDRAWAL_PREFERENCE_OPTIONS,
-    RSUWithdrawalPreference,
+    type RSUWithdrawalPreference,
     RSU_WITHDRAWAL_PREFERENCE_OPTIONS
 } from './models';
 import { ExpenseDispatchContext } from "../Expense/ExpenseContext";

@@ -7,7 +7,7 @@ import { classifyIncome, getTotalSSBenefits } from '../../services/simulation/In
 import {
     WorkIncome,
     BaseIncome,
-    AnyIncome,
+    type AnyIncome,
     SocialSecurityIncome,
     CurrentSocialSecurityIncome,
     FutureSocialSecurityIncome,

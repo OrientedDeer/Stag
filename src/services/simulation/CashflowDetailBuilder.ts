@@ -1,5 +1,5 @@
 import {
-    AnyIncome,
+    type AnyIncome,
     WorkIncome,
     PassiveIncome,
     FERSPensionIncome,
@@ -8,17 +8,17 @@ import {
     isSocialSecurity,
 } from "../../components/Objects/Income/models";
 import {
-    AnyExpense,
+    type AnyExpense,
     MortgageExpense,
     CLASS_TO_CATEGORY,
     isLongTermGoal,
     getGoalFundAnnualSetAside,
 } from "../../components/Objects/Expense/models";
-import { AnyAccount, InvestedAccount } from "../../components/Objects/Accounts/models";
+import { type AnyAccount, InvestedAccount } from "../../components/Objects/Accounts/models";
 import {
-    CashflowDetail,
-    CashflowIncomeKind,
-    CashflowIncomeSource,
+    type CashflowDetail,
+    type CashflowIncomeKind,
+    type CashflowIncomeSource,
 } from "./types";
 import { distributeProportional } from "../../utils/distribute";
 

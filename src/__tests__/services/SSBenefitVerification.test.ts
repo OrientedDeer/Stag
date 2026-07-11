@@ -2,10 +2,10 @@
  * Test to verify SS benefit calculation and payout timing
  */
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
-import { AnyIncome, WorkIncome, FutureSocialSecurityIncome, SocialSecurityIncome, CurrentSocialSecurityIncome } from '../../components/Objects/Income/models';
+import { type AnyIncome, WorkIncome, FutureSocialSecurityIncome, SocialSecurityIncome, CurrentSocialSecurityIncome } from '../../components/Objects/Income/models';
 import { FoodExpense } from '../../components/Objects/Expense/models';
 import { runSimulation } from '../../components/Objects/Assumptions/useSimulation';
 import { calculateAIME } from '../../services/SocialSecurityCalculator';

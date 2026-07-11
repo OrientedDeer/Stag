@@ -1,6 +1,6 @@
 import { useMemo, useContext, useRef, useState, useEffect } from 'react';
 import { ResponsiveLine } from '@nivo/line';
-import { PercentileData, YearlyPercentile, ScenarioResult } from '../../services/MonteCarloTypes';
+import { type PercentileData, type YearlyPercentile, type ScenarioResult } from '../../services/MonteCarloTypes';
 import { computeFanChartYBounds } from './fanChartBounds';
 import { useChartTheme } from './useChartTheme';
 import { ChartFrame } from "./ChartFrame";

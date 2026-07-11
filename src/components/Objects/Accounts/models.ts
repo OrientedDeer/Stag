@@ -1,4 +1,4 @@
-import { AssumptionsState } from "../Assumptions/AssumptionsContext";
+import { type AssumptionsState } from "../Assumptions/AssumptionsContext";
 import { parseDate, hasClassName, extractBaseFields } from "../modelUtils";
 
 // 1. Interface

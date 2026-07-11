@@ -1,15 +1,15 @@
 import { createContext, useContext } from 'react';
 import {
-    ScenarioState,
-    ScenarioAction,
+    type ScenarioState,
+    type ScenarioAction,
 } from '../../../services/ScenarioTypes';
-import { SimulationYear } from '../Assumptions/SimulationEngine';
-import { AnyAccount } from '../Accounts/models';
-import { AnyIncome } from '../Income/models';
-import { AnyExpense } from '../Expense/models';
-import { AssumptionsState } from '../Assumptions/AssumptionsContext';
-import { TaxState } from '../Taxes/TaxContext';
-import { AmountHistoryEntry } from '../Accounts/AccountContext';
+import { type SimulationYear } from '../Assumptions/SimulationEngine';
+import { type AnyAccount } from '../Accounts/models';
+import { type AnyIncome } from '../Income/models';
+import { type AnyExpense } from '../Expense/models';
+import { type AssumptionsState } from '../Assumptions/AssumptionsContext';
+import { type TaxState } from '../Taxes/TaxContext';
+import { type AmountHistoryEntry } from '../Accounts/AccountContext';
 
 // ============================================================================
 // Initial State

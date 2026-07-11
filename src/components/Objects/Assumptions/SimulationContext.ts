@@ -1,8 +1,8 @@
-import { createContext, Dispatch } from 'react';
-import { SimulationYear } from './SimulationEngine';
-import { AnyAccount, reconstituteAccount } from '../Accounts/models';
-import { AnyIncome, reconstituteIncome } from '../Income/models';
-import { AnyExpense, reconstituteExpense } from '../Expense/models';
+import { createContext, type Dispatch } from 'react';
+import { type SimulationYear } from './SimulationEngine';
+import { type AnyAccount, reconstituteAccount } from '../Accounts/models';
+import { type AnyIncome, reconstituteIncome } from '../Income/models';
+import { type AnyExpense, reconstituteExpense } from '../Expense/models';
 import { jsonDateReplacer } from '../../../utils/formatters';
 
 export const STORAGE_KEY = 'user_simulation_data';

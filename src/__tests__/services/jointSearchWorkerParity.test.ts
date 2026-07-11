@@ -22,13 +22,13 @@
  *   • progress messages cross the boundary.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { AnyAccount, InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
+import { type AnyAccount, InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
 import { FutureSocialSecurityIncome } from '../../components/Objects/Income/models';
 import { FoodExpense } from '../../components/Objects/Expense/models';
 import {
-    AssumptionsState, defaultAssumptions, createBuiltinMilestones,
+    type AssumptionsState, defaultAssumptions, createBuiltinMilestones,
 } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
 import {
     runSimulationWithOptimization, clearJointSearchArtifactCache,
 } from '../../components/Objects/Assumptions/useSimulation';

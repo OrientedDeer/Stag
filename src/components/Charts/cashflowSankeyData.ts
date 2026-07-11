@@ -5,11 +5,11 @@
  * (imbalances, debug data, error string). Lifted out of CashflowSankey.tsx
  * so the chart component can stay focused on rendering.
  */
-import { WorkIncome, AnyIncome, PassiveIncome } from '../Objects/Income/models';
-import { MortgageExpense, AnyExpense, CLASS_TO_CATEGORY } from '../Objects/Expense/models';
-import { AnyAccount, InvestedAccount, DebtAccount, DeficitDebtAccount } from '../Objects/Accounts/models';
-import { CashflowDetail } from '../../services/simulation/types';
-import { totalTaxesOf, TaxComponents } from './taxTotals';
+import { WorkIncome, type AnyIncome, PassiveIncome } from '../Objects/Income/models';
+import { MortgageExpense, type AnyExpense, CLASS_TO_CATEGORY } from '../Objects/Expense/models';
+import { type AnyAccount, InvestedAccount, DebtAccount, DeficitDebtAccount } from '../Objects/Accounts/models';
+import { type CashflowDetail } from '../../services/simulation/types';
+import { totalTaxesOf, type TaxComponents } from './taxTotals';
 
 // Minimum threshold for including a value in the chart (avoids $0 nodes)
 const MIN_DISPLAY_THRESHOLD = 0.005;

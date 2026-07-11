@@ -16,9 +16,9 @@ import {
     SEARCH_CONFIG,
     MAX_CONVERSION_BRACKET,
 } from '../TaxOptimizedWithdrawal';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import * as TaxService from '../../../components/Objects/Taxes/TaxService';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
 
 // =============================================================================
 // Task 4: getAcaCliffThreshold() tests

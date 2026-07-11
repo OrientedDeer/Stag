@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { TRANSFER_CATEGORY_ID } from '../../../components/Objects/Budget/BudgetContext';
-import { AnyExpense } from '../../../components/Objects/Expense/models';
+import { type AnyExpense } from '../../../components/Objects/Expense/models';
 import {
     formatCurrency,
     formatMonthYear,

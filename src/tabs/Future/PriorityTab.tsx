@@ -1,10 +1,10 @@
 import { useState, useContext, useMemo, useCallback } from 'react';
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { AssumptionsContext, PriorityBucket, CapType, getBirthYear, getBucketTargetBalance } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
+import { AssumptionsContext, type PriorityBucket, type CapType, getBirthYear, getBucketTargetBalance } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
 import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
-import { AnyAccount, InvestedAccount, DebtAccount, SavedAccount } from '../../components/Objects/Accounts/models';
+import { type AnyAccount, InvestedAccount, DebtAccount, SavedAccount } from '../../components/Objects/Accounts/models';
 import { isOfferableDebt, isSurplusPaydownDebt } from '../../services/simulation/SurplusAllocator';
 import { TaxContext } from '../../components/Objects/Taxes/TaxContext';
 import { calculateFederalTaxFromIncomes, calculateStateTax, calculateFicaTax } from '../../components/Objects/Taxes/TaxService';

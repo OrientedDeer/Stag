@@ -10,8 +10,8 @@
  * - Conversion Income: Roth conversions - taxable but NOT spendable (it's a transfer)
  */
 
-import { AnyIncome, PassiveIncome, WorkIncome, FERSPensionIncome, CSRSPensionIncome, WindfallIncome, isSocialSecurity } from "../../components/Objects/Income/models";
-import { ClassifiedIncome, IncomeClassificationResult, DecisionLogEntry } from "./types";
+import { type AnyIncome, PassiveIncome, WorkIncome, FERSPensionIncome, CSRSPensionIncome, WindfallIncome, isSocialSecurity } from "../../components/Objects/Income/models";
+import { type ClassifiedIncome, type IncomeClassificationResult, type DecisionLogEntry } from "./types";
 
 /**
  * Classifies all active incomes for a simulation year.

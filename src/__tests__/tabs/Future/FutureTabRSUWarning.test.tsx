@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import FutureTab from '../../../tabs/Future/FutureTab';
 import { SimulationContext } from '../../../components/Objects/Assumptions/SimulationContext';
-import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
+import { type SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { AccountContext } from '../../../components/Objects/Accounts/AccountContext';
 import { IncomeContext } from '../../../components/Objects/Income/IncomeContext';
 import { RSUAccount } from '../../../components/Objects/Accounts/models';

@@ -13,15 +13,15 @@
 import { describe, it, expect } from 'vitest';
 
 import { runSimulation } from '../../../components/Objects/Assumptions/useSimulation';
-import { InvestedAccount, SavedAccount, AnyAccount } from '../../../components/Objects/Accounts/models';
+import { InvestedAccount, SavedAccount, type AnyAccount } from '../../../components/Objects/Accounts/models';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
-import { SimulationYear } from '../../../services/simulation/types';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type SimulationYear } from '../../../services/simulation/types';
 
 const YEAR = new Date().getFullYear();
 

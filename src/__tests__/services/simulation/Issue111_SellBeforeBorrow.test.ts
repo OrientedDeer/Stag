@@ -11,12 +11,12 @@
 import { describe, it, expect } from 'vitest';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
-import { solveYear, YearSolverInput } from '../../../services/simulation/YearSolver';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { solveYear, type YearSolverInput } from '../../../services/simulation/YearSolver';
 
 const YEAR = 2030;
 

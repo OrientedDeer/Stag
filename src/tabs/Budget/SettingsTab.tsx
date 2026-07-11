@@ -1,8 +1,8 @@
 import { useContext, useState, useCallback } from 'react';
 import { List, type RowComponentProps } from 'react-window';
-import { BudgetContext, CategoryMapping } from '../../components/Objects/Budget/BudgetContext';
+import { BudgetContext, type CategoryMapping } from '../../components/Objects/Budget/BudgetContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
-import { AnyExpense } from '../../components/Objects/Expense/models';
+import { type AnyExpense } from '../../components/Objects/Expense/models';
 
 import { Button } from "../../components/Layout/Primitives";
 const RULE_ROW_HEIGHT = 36;

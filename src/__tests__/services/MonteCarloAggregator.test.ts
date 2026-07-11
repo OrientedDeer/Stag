@@ -12,8 +12,8 @@ import {
     analyzeScenario,
     summarizeScenarios,
 } from '../../services/MonteCarloAggregator';
-import { ScenarioResult } from '../../services/MonteCarloTypes';
-import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
+import { type ScenarioResult } from '../../services/MonteCarloTypes';
+import { type SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { InvestedAccount, DeficitDebtAccount } from '../../components/Objects/Accounts/models';
 
 // =============================================================================

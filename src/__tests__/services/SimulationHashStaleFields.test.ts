@@ -1,16 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { getSimulationInputHash } from '../../services/simulationHash';
 import {
-  AnyAccount,
+  type AnyAccount,
   InvestedAccount,
   SavedAccount,
   ESPPAccount,
   RSUAccount,
 } from '../../components/Objects/Accounts/models';
-import { AnyIncome, WorkIncome } from '../../components/Objects/Income/models';
-import { AnyExpense } from '../../components/Objects/Expense/models';
-import { AssumptionsState } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type AnyIncome, WorkIncome } from '../../components/Objects/Income/models';
+import { type AnyExpense } from '../../components/Objects/Expense/models';
+import { type AssumptionsState } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
 
 // Minimal assumptions/tax state — the hash only reads a fixed set of top-level
 // keys off each, and these tests vary ONLY account / income fields, so any

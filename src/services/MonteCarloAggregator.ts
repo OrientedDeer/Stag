@@ -1,15 +1,15 @@
 import {
-    ScenarioResult,
-    MonteCarloSummary,
-    YearlyPercentile,
-    PercentileData,
-    TerminalPercentiles,
-    ConversionMcStats,
-    McBaselineComparison,
-    McCertaintyEquivalents,
+    type ScenarioResult,
+    type MonteCarloSummary,
+    type YearlyPercentile,
+    type PercentileData,
+    type TerminalPercentiles,
+    type ConversionMcStats,
+    type McBaselineComparison,
+    type McCertaintyEquivalents,
 } from './MonteCarloTypes';
 import { calculateNetWorth, terminalAfterTaxNetWorth } from '../tabs/Future/tabs/FutureUtils';
-import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
+import { type SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
 import { DeficitDebtAccount } from '../components/Objects/Accounts/models';
 
 /**

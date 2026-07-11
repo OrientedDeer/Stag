@@ -11,10 +11,10 @@ import {
     incomeHasMilestoneGate,
     isIncomeMilestoneGateUnresolved,
     isMilestoneSimDependent,
-    MilestoneContext,
+    type MilestoneContext,
 } from '../../../services/simulation/MilestoneEvaluator';
-import { AnyIncome } from '../Income/models';
-import { CustomMilestone } from '../../../services/simulation/types';
+import { type AnyIncome } from '../Income/models';
+import { type CustomMilestone } from '../../../services/simulation/types';
 
 /** Per-income predicate: is THIS income's start/end milestone gate unresolvable right
  *  now (sim-dependent milestone + no projection cached)? See

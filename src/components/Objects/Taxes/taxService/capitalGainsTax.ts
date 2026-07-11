@@ -1,4 +1,4 @@
-import { TaxParameters } from "../../../../data/TaxData";
+import { type TaxParameters } from "../../../../data/TaxData";
 
 /**
  * Get the long-term capital gains rate that applies at a given ordinary income

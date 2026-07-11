@@ -11,13 +11,13 @@ import {
     runMonteCarloSimulationSync,
     runMonteCarloSimulation,
 } from '../../services/MonteCarloEngine';
-import { ScenarioResult, MonteCarloConfig } from '../../services/MonteCarloTypes';
-import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
+import { type ScenarioResult, type MonteCarloConfig } from '../../services/MonteCarloTypes';
+import { type SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { SavedAccount, InvestedAccount, DeficitDebtAccount } from '../../components/Objects/Accounts/models';
 import { PassiveIncome } from '../../components/Objects/Income/models';
 import { OtherExpense } from '../../components/Objects/Expense/models';
 import { defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
 
 // --- SeededRandom Tests ---
 describe('SeededRandom', () => {

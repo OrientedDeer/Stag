@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ResponsiveSunburst } from '@nivo/sunburst';
-import { AnyAccount, SavedAccount, InvestedAccount, ESPPAccount, RSUAccount, PropertyAccount, DebtAccount } from '../Objects/Accounts/models';
+import { type AnyAccount, SavedAccount, InvestedAccount, ESPPAccount, RSUAccount, PropertyAccount, DebtAccount } from '../Objects/Accounts/models';
 import { formatCompactCurrency } from '../../tabs/Future/tabs/FutureUtils';
 import { useChartTheme } from './useChartTheme';
 import { ChartFrame } from "./ChartFrame";

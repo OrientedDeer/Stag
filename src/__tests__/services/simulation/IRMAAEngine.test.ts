@@ -7,13 +7,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { solveRetirementYear, YearSolverInput } from '../../../services/simulation/YearSolver';
+import { solveRetirementYear, type YearSolverInput } from '../../../services/simulation/YearSolver';
 import { coarseToFineSearch } from '../../../services/simulation/TaxOptimizedWithdrawal';
-import { IRMAAConversionOptions } from '../../../services/simulation/helpers';
+import { type IRMAAConversionOptions } from '../../../services/simulation/helpers';
 import { InvestedAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import * as TaxService from '../../../components/Objects/Taxes/TaxService';
 import { getIRMAAAnnualSurcharge, getNextIRMAAThreshold } from '../../../data/IRMAAData';
 

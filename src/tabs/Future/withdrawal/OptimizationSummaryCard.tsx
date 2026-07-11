@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { Phase } from '../../../services/simulation/TaxOptimizedWithdrawal';
+import { type Phase } from '../../../services/simulation/TaxOptimizedWithdrawal';
 
 export interface OptimizationSummary {
     projectedBalance: number;

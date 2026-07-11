@@ -24,13 +24,13 @@ import { describe, it, expect } from 'vitest';
 import { buildDPYearContexts } from '../../../services/simulation/RothConversionDP';
 import { getIRMAASchedule } from '../../../data/IRMAAData';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
-import { SimulationYear } from '../../../services/simulation/types';
+import { type SimulationYear } from '../../../services/simulation/types';
 
 const START_YEAR = 2030;
 

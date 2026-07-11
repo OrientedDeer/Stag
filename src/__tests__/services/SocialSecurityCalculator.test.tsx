@@ -8,7 +8,7 @@ import {
   calculateEarningsTestReduction,
   shouldApplyEarningsTest,
   validateEarningsRecord,
-  EarningsRecord,
+  type EarningsRecord,
 } from '../../services/SocialSecurityCalculator';
 import {
   getWageIndexFactor,
@@ -19,7 +19,7 @@ import {
   getClaimingAdjustment,
   lookupYearlyData,
 } from '../../data/SocialSecurityData';
-import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
+import { type SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { WorkIncome } from '../../components/Objects/Income/models';
 
 /**

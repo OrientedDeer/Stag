@@ -17,16 +17,16 @@ import {
     getSocialSecurityBenefits,
     calculateTotalFederalTax,
 } from '../../components/Objects/Taxes/TaxService';
-import { TaxParameters } from '../../data/TaxData';
+import { type TaxParameters } from '../../data/TaxData';
 import {
     WorkIncome,
     PassiveIncome,
     CurrentSocialSecurityIncome,
     FutureSocialSecurityIncome,
-    AnyIncome
+    type AnyIncome
 } from '../../components/Objects/Income/models';
 import { getIncomeThresholdForRate, getMedianRetirementTaxRate } from '../../services/TaxOptimizationService';
-import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
+import { type SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 
 // =============================================================================
 // Test Data: 2026 Single Federal Tax Brackets

@@ -1,4 +1,4 @@
-import { MonteCarloSummary } from '../../../services/MonteCarloTypes';
+import { type MonteCarloSummary } from '../../../services/MonteCarloTypes';
 import { formatCompactCurrency } from './FutureUtils';
 import { ToggleInput } from '../../../components/Layout/InputFields/ToggleInput';
 import { describeBuyTheDip, buildBaselineVerdict } from './mcReportCopy';

@@ -26,15 +26,15 @@ import {
     runSimulationWithOptimization,
 } from '../../../components/Objects/Assumptions/useSimulation';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome, FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
 import { FoodExpense } from '../../../components/Objects/Expense/models';
-import { SimulationYear } from '../../../services/simulation/types';
+import { type SimulationYear } from '../../../services/simulation/types';
 
 const START_YEAR = new Date().getFullYear();
 const BIRTH_YEAR = START_YEAR - 60; // user is ~60 today

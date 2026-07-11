@@ -1,4 +1,4 @@
-import { ReactElement, ReactNode, useState } from 'react';
+import { type ReactElement, type ReactNode, useState } from 'react';
 import { ChevronIcon } from './Icons/ChevronIcon';
 
 interface CardSectionProps {

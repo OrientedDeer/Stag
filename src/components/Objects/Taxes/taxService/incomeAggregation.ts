@@ -1,5 +1,5 @@
 import {
-    AnyIncome,
+    type AnyIncome,
     WorkIncome,
     isSocialSecurity,
 } from "../../Income/models";

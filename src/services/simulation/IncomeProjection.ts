@@ -1,11 +1,11 @@
-import { AnyIncome, WorkIncome, FutureSocialSecurityIncome, FERSPensionIncome, CSRSPensionIncome, PassiveIncome } from "../../components/Objects/Income/models";
-import { AnyAccount, SavedAccount } from "../../components/Objects/Accounts/models";
-import { AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { type AnyIncome, WorkIncome, FutureSocialSecurityIncome, FERSPensionIncome, CSRSPensionIncome, PassiveIncome } from "../../components/Objects/Income/models";
+import { type AnyAccount, SavedAccount } from "../../components/Objects/Accounts/models";
+import { type AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
 import { calculateHigh3, checkFERSEligibility, checkCSRSEligibility, calculateFERSBasicBenefit, calculateCSRSBasicBenefit, calculateFERSSupplement, getDisplayedFERSBenefit, getDisplayedCSRSBenefit } from "../../data/PensionData";
 import { calculateAIME, extractEarningsFromSimulation, calculateEarningsTestReduction, shouldApplyEarningsTest } from "../SocialSecurityCalculator";
 import { getFRA } from "../../data/SocialSecurityData";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
-import { SimulationYear } from "./types";
+import { type SimulationYear } from "./types";
 
 export interface IncomeProjectionResult {
     nextIncomes: AnyIncome[];

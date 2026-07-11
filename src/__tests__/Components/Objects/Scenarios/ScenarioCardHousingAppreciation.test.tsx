@@ -18,9 +18,9 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 import { ScenarioCard } from '../../../../components/Objects/Scenarios/ScenarioCard';
-import { SavedScenario } from '../../../../services/ScenarioTypes';
+import { type SavedScenario } from '../../../../services/ScenarioTypes';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     migrateAssumptions,
 } from '../../../../components/Objects/Assumptions/AssumptionsContext';

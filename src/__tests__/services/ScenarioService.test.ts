@@ -13,15 +13,15 @@ import {
     validateAndTransformScenarioImport
 } from '../../services/ScenarioService';
 import {
-    SavedScenario,
+    type SavedScenario,
     SCENARIOS_STORAGE_KEY,
     SCENARIO_VERSION
 } from '../../services/ScenarioTypes';
-import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
-import { defaultAssumptions, AssumptionsState, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { type SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
+import { defaultAssumptions, type AssumptionsState, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { InvestedAccount, SavedAccount, PropertyAccount } from '../../components/Objects/Accounts/models';
-import { AnyExpense, FoodExpense } from '../../components/Objects/Expense/models';
-import { AnyIncome } from '../../components/Objects/Income/models';
+import { type AnyExpense, FoodExpense } from '../../components/Objects/Expense/models';
+import { type AnyIncome } from '../../components/Objects/Income/models';
 
 // The canonical findFinancialIndependenceYear (single-sourced from
 // MilestoneCalculator) reads each year's real `expenses` array and grosses it up

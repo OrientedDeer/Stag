@@ -10,7 +10,7 @@ import {
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { PassiveIncome } from '../../../components/Objects/Income/models';
-import { CustomMilestone, SimulationYear } from '../../../services/simulation/types';
+import { type CustomMilestone, type SimulationYear } from '../../../services/simulation/types';
 
 // #145: a milestone-started income must NOT count toward "today's" take-home until
 // its start milestone has actually fired. Before the fix, an income gated only by a

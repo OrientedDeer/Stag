@@ -15,33 +15,33 @@
  * - Pure functions - no mutations during planning
  */
 
-import { AnyAccount, InvestedAccount } from "../../components/Objects/Accounts/models";
-import { AnyIncome, FERSPensionIncome, PassiveIncome, isSocialSecurity } from "../../components/Objects/Income/models";
-import { AnyExpense, LoanExpense } from "../../components/Objects/Expense/models";
+import { type AnyAccount, InvestedAccount } from "../../components/Objects/Accounts/models";
+import { type AnyIncome, FERSPensionIncome, type PassiveIncome, isSocialSecurity } from "../../components/Objects/Income/models";
+import { type AnyExpense, LoanExpense } from "../../components/Objects/Expense/models";
 import { isOfferableDebt, DEBT_PAYOFF_EPSILON } from "./SurplusAllocator";
-import { TaxParameters } from "../../data/TaxData";
-import { TaxState } from "../../components/Objects/Taxes/TaxContext";
-import { AssumptionsState, ACA_SUBSIDY_LOSS_DEFAULT } from "../../components/Objects/Assumptions/AssumptionsContext";
-import { RothConversionStrategy, resolveRothConversionStrategy } from "../../components/Objects/Assumptions/rothConversionStrategy";
+import { type TaxParameters } from "../../data/TaxData";
+import { type TaxState } from "../../components/Objects/Taxes/TaxContext";
+import { type AssumptionsState, ACA_SUBSIDY_LOSS_DEFAULT } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { type RothConversionStrategy, resolveRothConversionStrategy } from "../../components/Objects/Assumptions/rothConversionStrategy";
 import {
-    YearPlan,
-    PlannedWithdrawal,
-    PlannedConversion,
-    DecisionLogEntry,
-    YearPlanTax,
-    ConversionTaxSource,
-    TaxOptimizationTarget,
-    ConversionConstraints,
-    ConversionLimitingFactor,
-    BaselineProjections,
+    type YearPlan,
+    type PlannedWithdrawal,
+    type PlannedConversion,
+    type DecisionLogEntry,
+    type YearPlanTax,
+    type ConversionTaxSource,
+    type TaxOptimizationTarget,
+    type ConversionConstraints,
+    type ConversionLimitingFactor,
+    type BaselineProjections,
 } from "./types";
-import { WithdrawalResult } from "../WithdrawalStrategies";
-import { DPPolicy, lookupConversionPolicy } from "./RothConversionDP";
+import { type WithdrawalResult } from "../WithdrawalStrategies";
+import { type DPPolicy, lookupConversionPolicy } from "./RothConversionDP";
 import { classifyIncome, getTotalSSBenefits } from "./IncomeClassifier";
 import { planWithdrawals, createOrderedSnapshots, grossUpBrokerage } from "./WithdrawalPlanner";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
 import { getLTCGRate } from "../../components/Objects/Taxes/taxService/capitalGainsTax";
-import { calculateEffectiveConversionTax, ACAOptions, IRMAAConversionOptions } from "./helpers";
+import { calculateEffectiveConversionTax, type ACAOptions, type IRMAAConversionOptions } from "./helpers";
 import { getRMDStartAge } from "../../data/RMDData";
 import { getIRMAAAnnualSurcharge, getIRMAASchedule, resolveIrmaaLookbackMAGI, MEDICARE_ELIGIBILITY_AGE } from "../../data/IRMAAData";
 import {
@@ -50,7 +50,7 @@ import {
     getAcaCliffThreshold,
 } from "./TaxOptimizedWithdrawal";
 import { estimateFixedIncomeAtRMD } from "./helpers";
-import { allocateSurplus, SurplusAllocationSettings } from "./SurplusAllocator";
+import { allocateSurplus, type SurplusAllocationSettings } from "./SurplusAllocator";
 import { getIRALimit } from "../../data/ContributionLimits";
 
 // =============================================================================

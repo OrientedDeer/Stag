@@ -1,4 +1,4 @@
-import { ReactElement } from "react";
+import { type ReactElement } from "react";
 
 /**
  * "How this works" expandable help block for the Assumptions tab. Purely

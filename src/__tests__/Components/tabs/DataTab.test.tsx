@@ -20,7 +20,7 @@ import { DataTab } from '../../../tabs/Future/tabs/DataTab';
 import { LoanExpense, FoodExpense, MortgageExpense } from '../../../components/Objects/Expense/models';
 import { InvestedAccount, PropertyAccount, DebtAccount } from '../../../components/Objects/Accounts/models';
 import { WorkIncome } from '../../../components/Objects/Income/models';
-import { SimulationYear } from '../../../services/simulation/types';
+import { type SimulationYear } from '../../../services/simulation/types';
 
 // The hidden PDF-capture chart is irrelevant here and nivo needs ResizeObserver
 // plumbing — stub it out.

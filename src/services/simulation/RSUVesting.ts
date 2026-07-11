@@ -1,5 +1,5 @@
-import { AnyAccount, RSUAccount, RSULot } from "../../components/Objects/Accounts/models";
-import { AnyIncome, WorkIncome, PassiveIncome, getIncomeActiveMultiplier } from "../../components/Objects/Income/models";
+import { type AnyAccount, RSUAccount, type RSULot } from "../../components/Objects/Accounts/models";
+import { type AnyIncome, WorkIncome, PassiveIncome, getIncomeActiveMultiplier } from "../../components/Objects/Income/models";
 import { isActiveRSUGrant } from "../../components/Objects/Income/rsuGrant";
 
 export interface RSUVestingResult {

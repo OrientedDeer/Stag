@@ -4,7 +4,7 @@ import { CashflowTab } from '../../../tabs/Future/tabs/CashflowTabs';
 import {
     AssumptionsContext,
     defaultAssumptions,
-    AssumptionsState,
+    type AssumptionsState,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import type { SimulationYear } from '../../../services/simulation/types';
 

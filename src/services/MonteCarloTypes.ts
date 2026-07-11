@@ -1,4 +1,4 @@
-import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
+import { type SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
 import { HISTORICAL_STATS } from '../data/HistoricalReturns';
 
 /**

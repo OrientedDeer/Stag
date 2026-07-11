@@ -4,7 +4,7 @@ import { useContext } from 'react';
 
 import {
   TaxContext,
-  TaxState,
+  type TaxState,
 } from '../../../../components/Objects/Taxes/TaxContext';
 import { TaxProvider } from '../../../../components/Objects/Taxes/TaxProvider';
 

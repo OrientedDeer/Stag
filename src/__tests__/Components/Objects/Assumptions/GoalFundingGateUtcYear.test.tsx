@@ -12,8 +12,8 @@
  * boundary and exercise the real engine through a Jan-1 target date.
  */
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../../../components/Objects/Taxes/TaxContext';
 import { SavedAccount } from '../../../../components/Objects/Accounts/models';
 import { WorkIncome } from '../../../../components/Objects/Income/models';
 import { FoodExpense, OtherExpense, isGoalDueInYear } from '../../../../components/Objects/Expense/models';

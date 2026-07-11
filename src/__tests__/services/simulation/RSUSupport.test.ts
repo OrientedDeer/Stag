@@ -14,20 +14,20 @@ import { describe, it, expect } from 'vitest';
 
 import {
     RSUAccount,
-    RSULot,
+    type RSULot,
     SavedAccount,
 } from '../../../components/Objects/Accounts/models';
 import { WorkIncome, PassiveIncome } from '../../../components/Objects/Income/models';
 import { processRSUVesting } from '../../../services/simulation/RSUVesting';
 import { simulateOneYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
-import { SimulationYear } from '../../../services/simulation/types';
+import { type SimulationYear } from '../../../services/simulation/types';
 
 // ---------------------------------------------------------------------------
 // Helpers

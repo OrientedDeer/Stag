@@ -1,6 +1,6 @@
-import { ReactElement, useState } from 'react';
-import { TaxLifeEvent } from './TaxContext';
-import { CustomMilestone } from '../../../services/simulation/types';
+import { type ReactElement, useState } from 'react';
+import { type TaxLifeEvent } from './TaxContext';
+import { type CustomMilestone } from '../../../services/simulation/types';
 import { DropdownInput } from '../../Layout/InputFields/DropdownInput';
 import { TriggerSelector } from '../../Layout/InputFields/TriggerSelector';
 import { Button } from '../../Layout/Primitives';

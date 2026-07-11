@@ -32,7 +32,7 @@ import { TriggerSelector } from "../../Layout/InputFields/TriggerSelector";
 import { CardSection } from "../../Layout/CardSection";
 import { useModalAccessibility } from "../../../hooks/useModalAccessibility";
 import { AssumptionsContext, BUILTIN_MILESTONE_IDS, getBirthYear } from "../Assumptions/AssumptionsContext";
-import { CustomMilestone } from "../../../services/simulation/types";
+import { type CustomMilestone } from "../../../services/simulation/types";
 
 import { Button } from "../../Layout/Primitives";
 // Resolve a milestone to a concrete calendar date so a goal's target can be

@@ -12,11 +12,11 @@ import {
     buildSummarySheet,
     buildAccountsSheet,
     buildTaxSheet,
-    ExportData,
+    type ExportData,
 } from '../../services/ExcelExportService';
 import { PropertyAccount } from '../../components/Objects/Accounts/models';
 import { getAccountTotals } from '../../components/Objects/Accounts/accountTotals';
-import { SimulationYear } from '../../services/simulation/types';
+import { type SimulationYear } from '../../services/simulation/types';
 
 // =============================================================================
 // Note on Testing Approach

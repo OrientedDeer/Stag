@@ -1,4 +1,4 @@
-import { AnyAccount, DeficitDebtAccount } from "../../components/Objects/Accounts/models";
+import { type AnyAccount, DeficitDebtAccount } from "../../components/Objects/Accounts/models";
 
 export interface DeficitDebtResult {
     existingDeficitDebt: DeficitDebtAccount | undefined;

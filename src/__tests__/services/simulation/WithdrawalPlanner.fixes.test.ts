@@ -20,9 +20,9 @@ import {
     createAccountSnapshot,
     grossUpDivisor,
 } from '../../../services/simulation/WithdrawalPlanner';
-import { AccountBalanceSnapshot } from '../../../services/simulation/types';
-import { InvestedAccount, RSUAccount, ESPPAccount, ESPPLot } from '../../../components/Objects/Accounts/models';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type AccountBalanceSnapshot } from '../../../services/simulation/types';
+import { InvestedAccount, RSUAccount, ESPPAccount, type ESPPLot } from '../../../components/Objects/Accounts/models';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 
 const YEAR = 2025;
 

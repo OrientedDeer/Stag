@@ -16,7 +16,7 @@ import {
   calculateSocialSecurityStartYear,
   calculateSocialSecurityStartDate,
 } from '../../../../components/Objects/Income/models';
-import { defaultAssumptions, AssumptionsState } from '../../../../components/Objects/Assumptions/AssumptionsContext';
+import { defaultAssumptions, type AssumptionsState } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 
 // Mock Assumptions for testing 'increment' methods
 const mockAssumptions: AssumptionsState = {

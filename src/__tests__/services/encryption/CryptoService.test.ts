@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { encrypt, decrypt, EncryptedBackup } from '../../../services/encryption/CryptoService';
+import { encrypt, decrypt, type EncryptedBackup } from '../../../services/encryption/CryptoService';
 
 describe('CryptoService', () => {
     const sampleData = JSON.stringify({

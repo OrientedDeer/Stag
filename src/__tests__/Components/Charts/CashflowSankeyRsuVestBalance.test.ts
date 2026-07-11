@@ -7,11 +7,11 @@ import { buildCashflowDetail } from '../../../services/simulation/CashflowDetail
 import { runSimulation } from '../../../components/Objects/Assumptions/useSimulation';
 import { buildCashflowSankeyData } from '../../../components/Charts/cashflowSankeyData';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 
 /**
  * #153 — Cashflow Sankey: the "Net Pay" node must balance on the first year an

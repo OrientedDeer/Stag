@@ -1,4 +1,4 @@
-import { AssumptionsState } from "../Assumptions/AssumptionsContext";
+import { type AssumptionsState } from "../Assumptions/AssumptionsContext";
 import { parseDate, hasClassName, extractBaseFields, getActiveWindowMultiplier, isWindowActiveInCurrentMonth } from "../modelUtils";
 
 export type ExpenseFrequency = 'Weekly' | 'Monthly' | 'Annually';

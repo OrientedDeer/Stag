@@ -1,5 +1,5 @@
 /* @refresh reset - the provider holds reducer state, so full remount on HMR is needed */
-import { useReducer, ReactNode, useMemo } from 'react';
+import { useReducer, type ReactNode, useMemo } from 'react';
 import { useDebouncedLocalStorage } from '../../../hooks/useDebouncedLocalStorage';
 import {
   AssumptionsContext,

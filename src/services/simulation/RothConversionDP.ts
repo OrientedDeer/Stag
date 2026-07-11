@@ -59,12 +59,12 @@
  *   transition byte-for-byte unchanged.
  */
 
-import { TaxParameters, FilingStatus } from "../../data/TaxData";
-import { TaxState, resolveTaxEventsForYear } from "../../components/Objects/Taxes/TaxContext";
-import { AssumptionsState, getBirthYear, ACA_SUBSIDY_LOSS_DEFAULT } from "../../components/Objects/Assumptions/AssumptionsContext";
-import { SimulationYear, DPYearTrace } from "./types";
+import { type TaxParameters, type FilingStatus } from "../../data/TaxData";
+import { type TaxState, resolveTaxEventsForYear } from "../../components/Objects/Taxes/TaxContext";
+import { type AssumptionsState, getBirthYear, ACA_SUBSIDY_LOSS_DEFAULT } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { type SimulationYear, type DPYearTrace } from "./types";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
-import { ACAOptions } from "./helpers";
+import { type ACAOptions } from "./helpers";
 import { getDistributionPeriod, getRMDStartAge } from "../../data/RMDData";
 import { getAcaCliffThreshold } from "./TaxOptimizedWithdrawal";
 import { getIRMAASchedule, computeIrmaaMAGI, MEDICARE_ELIGIBILITY_AGE, IRMAA_LOOKBACK_YEARS } from "../../data/IRMAAData";

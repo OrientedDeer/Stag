@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { SavedScenario } from '../../../services/ScenarioTypes';
+import { type SavedScenario } from '../../../services/ScenarioTypes';
 import { ConfirmDialog } from '../../Layout/ConfirmDialog';
-import { getRetirementAge, getLifeExpectancy, BUILTIN_MILESTONE_IDS, AssumptionsState } from '../Assumptions/AssumptionsContext';
-import { CustomMilestone } from '../../../services/simulation/types';
+import { getRetirementAge, getLifeExpectancy, BUILTIN_MILESTONE_IDS, type AssumptionsState } from '../Assumptions/AssumptionsContext';
+import { type CustomMilestone } from '../../../services/simulation/types';
 import { Button } from "../../Layout/Primitives";
 
 /**

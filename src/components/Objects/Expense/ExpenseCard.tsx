@@ -1,6 +1,6 @@
-import { memo, useContext, ReactElement } from "react";
+import { memo, useContext, type ReactElement } from "react";
 import {
-    AnyExpense,
+    type AnyExpense,
     RentExpense,
     MortgageExpense,
     LoanExpense,
@@ -17,7 +17,7 @@ import {
     isLongTermGoal,
     getGoalMonthlySetAside
 } from './models.js';
-import { ExpenseDispatchContext, AllExpenseKeys } from "./ExpenseContext.js";
+import { ExpenseDispatchContext, type AllExpenseKeys } from "./ExpenseContext.js";
 import { AccountContext, AccountDispatchContext } from "../Accounts/AccountContext.js";
 import { StyledDisplay, StyledSelect } from "../../Layout/InputFields/StyleUI.js";
 import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput.js";

@@ -1,10 +1,10 @@
-import { AnyAccount, InvestedAccount, SavedAccount, ESPPAccount, RSUAccount, PropertyAccount, DebtAccount, DeficitDebtAccount, ESPPLot, RSULot } from "../../components/Objects/Accounts/models";
+import { type AnyAccount, InvestedAccount, SavedAccount, ESPPAccount, RSUAccount, PropertyAccount, DebtAccount, DeficitDebtAccount, type ESPPLot, type RSULot } from "../../components/Objects/Accounts/models";
 import { postInterestDebtBalance } from "./SurplusAllocator";
-import { AnyExpense, MortgageExpense, LoanExpense } from "../../components/Objects/Expense/models";
-import { AnyIncome, WorkIncome, getIncomeActiveMultiplier } from "../../components/Objects/Income/models";
-import { AssumptionsState } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { type AnyExpense, MortgageExpense, LoanExpense } from "../../components/Objects/Expense/models";
+import { type AnyIncome, WorkIncome, getIncomeActiveMultiplier } from "../../components/Objects/Income/models";
+import { type AssumptionsState } from "../../components/Objects/Assumptions/AssumptionsContext";
 import { getESPPLimit, get415cLimit } from "../../data/ContributionLimits";
-import { WithdrawalState } from "./types";
+import { type WithdrawalState } from "./types";
 import { midYearSaleDate } from "./dates";
 
 export interface InflowResult {

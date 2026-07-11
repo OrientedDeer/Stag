@@ -15,14 +15,14 @@
 import { describe, it, expect } from 'vitest';
 
 import { createOrderedSnapshots, planWithdrawals } from '../../../services/simulation/WithdrawalPlanner';
-import { AccountBalanceSnapshot } from '../../../services/simulation/types';
+import { type AccountBalanceSnapshot } from '../../../services/simulation/types';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 
 const YEAR = 2030;
 const AGE = 50; // < 59.5 → the split is active

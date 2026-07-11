@@ -30,16 +30,16 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { createAccountSnapshot, createOrderedSnapshots } from '../../../services/simulation/WithdrawalPlanner';
 
 // Level 2: Solver imports
-import { solveRetirementYear, YearSolverInput } from '../../../services/simulation/YearSolver';
+import { solveRetirementYear, type YearSolverInput } from '../../../services/simulation/YearSolver';
 
 // Level 3: Full simulation imports
 import { simulateOneYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 
 // Model imports
-import { ESPPAccount, InvestedAccount, SavedAccount, ESPPLot } from '../../../components/Objects/Accounts/models';
+import { ESPPAccount, InvestedAccount, SavedAccount, type ESPPLot } from '../../../components/Objects/Accounts/models';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 
 // =============================================================================
 // TEST FIXTURES

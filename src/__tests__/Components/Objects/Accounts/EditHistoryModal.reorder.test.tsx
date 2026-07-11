@@ -5,7 +5,7 @@ import { useContext, useEffect, useRef } from 'react';
 import {
   AccountContext,
   AccountDispatchContext,
-  AmountHistoryEntry,
+  type AmountHistoryEntry,
 } from '../../../../components/Objects/Accounts/AccountContext';
 import { AccountProvider } from '../../../../components/Objects/Accounts/AccountProvider';
 import { EditHistoryModal } from '../../../../components/Objects/Accounts/EditHistoryModal';

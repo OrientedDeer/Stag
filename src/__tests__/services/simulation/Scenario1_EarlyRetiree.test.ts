@@ -26,15 +26,15 @@ import { classifyIncome } from '../../../services/simulation/IncomeClassifier';
 import { planWithdrawals, createAccountSnapshot, createOrderedSnapshots } from '../../../services/simulation/WithdrawalPlanner';
 
 // Level 2: Solver imports
-import { solveRetirementYear, YearSolverInput } from '../../../services/simulation/YearSolver';
+import { solveRetirementYear, type YearSolverInput } from '../../../services/simulation/YearSolver';
 
 // Level 3: Full simulation imports
 import { simulateOneYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 
 // Model imports
 import { InvestedAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
 
 // =============================================================================

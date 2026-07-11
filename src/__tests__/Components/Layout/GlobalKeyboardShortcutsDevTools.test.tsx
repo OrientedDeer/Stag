@@ -5,7 +5,7 @@ import GlobalKeyboardShortcuts from '../../../components/Layout/Overlays/GlobalK
 import {
     AssumptionsContext,
     defaultAssumptions,
-    AssumptionsState,
+    type AssumptionsState,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
 
 function LocationProbe() {

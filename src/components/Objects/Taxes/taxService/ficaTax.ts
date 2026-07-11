@@ -1,6 +1,6 @@
-import { AnyIncome } from "../../Income/models";
-import { TaxState } from "../TaxContext";
-import { AssumptionsState } from "../../Assumptions/AssumptionsContext";
+import { type AnyIncome } from "../../Income/models";
+import { type TaxState } from "../TaxContext";
+import { type AssumptionsState } from "../../Assumptions/AssumptionsContext";
 import { getTaxParameters } from "./parameters";
 import { getEarnedIncome, getFicaExemptions, isSSCoveredForFica } from "./incomeAggregation";
 

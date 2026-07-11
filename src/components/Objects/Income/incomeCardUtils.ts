@@ -1,5 +1,5 @@
 import {
-    AnyIncome,
+    type AnyIncome,
     WorkIncome,
     FutureSocialSecurityIncome,
     FERSPensionIncome,
@@ -7,8 +7,8 @@ import {
     PassiveIncome,
     WindfallIncome,
     INCOME_COLORS_BACKGROUND,
-    IncomeFrequency,
-    AutoMax401kOption,
+    type IncomeFrequency,
+    type AutoMax401kOption,
     isSocialSecurity,
 } from './models';
 import { hasWindowEnded } from '../modelUtils';

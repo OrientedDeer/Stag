@@ -1,4 +1,4 @@
-import { ReactNode, useMemo, useCallback } from 'react';
+import { type ReactNode, useMemo, useCallback } from 'react';
 import { usePersistedReducer } from '../../../hooks/usePersistedReducer';
 import { generateId } from '../../../utils/id';
 import type { MonthlySnapshot } from './BudgetTypes';

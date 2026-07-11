@@ -3,7 +3,7 @@ import { SavedAccount } from '../../components/Objects/Accounts/models';
 import { PassiveIncome } from '../../components/Objects/Income/models';
 import { simulateOneYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { defaultAssumptions } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { max_year } from '../../data/TaxData';
 import * as TaxService from '../../components/Objects/Taxes/TaxService';
 

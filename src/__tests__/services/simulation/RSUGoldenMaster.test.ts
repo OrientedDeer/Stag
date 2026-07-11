@@ -14,19 +14,19 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { RSUAccount, RSULot, AnyAccount, SavedAccount, InvestedAccount, DeficitDebtAccount } from '../../../components/Objects/Accounts/models';
-import { AnyIncome, WorkIncome, SocialSecurityIncome } from '../../../components/Objects/Income/models';
+import { RSUAccount, type RSULot, type AnyAccount, SavedAccount, InvestedAccount, DeficitDebtAccount } from '../../../components/Objects/Accounts/models';
+import { type AnyIncome, WorkIncome, SocialSecurityIncome } from '../../../components/Objects/Income/models';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
-import { solveYear, YearSolverInput } from '../../../services/simulation/YearSolver';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { solveYear, type YearSolverInput } from '../../../services/simulation/YearSolver';
 import { simulateOneYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import * as TaxService from '../../../components/Objects/Taxes/TaxService';
-import { PlannedWithdrawal } from '../../../services/simulation/types';
+import { type PlannedWithdrawal } from '../../../services/simulation/types';
 
 const YEAR = 2026;
 

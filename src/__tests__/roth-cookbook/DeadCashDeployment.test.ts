@@ -34,7 +34,7 @@ import {
     stdDedOnlyPlan,
     scorePlan,
     realYears,
-    ConversionPlan,
+    type ConversionPlan,
 } from './harness';
 import { runSimulation } from '../../components/Objects/Assumptions/useSimulation';
 import { SavedAccount } from '../../components/Objects/Accounts/models';

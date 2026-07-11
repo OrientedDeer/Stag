@@ -7,12 +7,12 @@
  * (decrypt → merge → re-encrypt) so the headless path matches the in-app path.
  */
 
-import { decrypt, encrypt, EncryptedBackup } from '../src/services/encryption/CryptoService';
+import { decrypt, encrypt, type EncryptedBackup } from '../src/services/encryption/CryptoService';
 import {
     applyTransactions,
     applyBalances,
     makeTransaction,
-    MergeBlob,
+    type MergeBlob,
 } from '../src/services/backupMerge';
 import { MAX_BACKUP_SIZE, serializeBlob } from './importShared';
 

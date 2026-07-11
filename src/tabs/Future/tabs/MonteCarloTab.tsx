@@ -6,10 +6,10 @@ import { IncomeContext } from '../../../components/Objects/Income/IncomeContext'
 import { ExpenseContext } from '../../../components/Objects/Expense/ExpenseContext';
 import { useAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxContext } from '../../../components/Objects/Taxes/TaxContext';
-import { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
+import { type SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { applyChosenWithdrawalOrder } from '../../../services/simulation/EngineDirectConversionSearch';
 import { calculateNetWorth, formatCompactCurrency } from './FutureUtils';
-import { YearlyPercentile, RETURN_PRESETS, ReturnPresetKey, getPresetReturnMean } from '../../../services/MonteCarloTypes';
+import { type YearlyPercentile, RETURN_PRESETS, type ReturnPresetKey, getPresetReturnMean } from '../../../services/MonteCarloTypes';
 import { HISTORICAL_STATS } from '../../../data/HistoricalReturns';
 import { HistoricalBacktestPanel } from './HistoricalBacktestPanel';
 import { DropdownInput } from '../../../components/Layout/InputFields/DropdownInput';

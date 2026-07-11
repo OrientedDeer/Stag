@@ -3,9 +3,9 @@ import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput";
 import { DropdownInput } from "../../Layout/InputFields/DropdownInput";
 import { NumberInput } from "../../Layout/InputFields/NumberInput";
 import { ToggleInput } from "../../Layout/InputFields/ToggleInput";
-import { WorkIncome } from './models';
+import { type WorkIncome } from './models';
 import { checkCSRSEligibility, getDisplayedCSRSBenefit } from "../../../data/PensionData";
-import { IncomeFormState, UpdateForm } from './incomeFormTypes';
+import { type IncomeFormState, type UpdateForm } from './incomeFormTypes';
 
 interface CSRSPensionFieldsProps {
     form: IncomeFormState;

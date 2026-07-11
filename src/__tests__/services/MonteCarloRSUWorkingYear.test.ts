@@ -20,16 +20,16 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { RSUAccount, SavedAccount, AnyAccount } from '../../components/Objects/Accounts/models';
+import { RSUAccount, SavedAccount, type AnyAccount } from '../../components/Objects/Accounts/models';
 import { WorkIncome } from '../../components/Objects/Income/models';
 import { OtherExpense } from '../../components/Objects/Expense/models';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
-import { SimulationYear } from '../../services/simulation/types';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type SimulationYear } from '../../services/simulation/types';
 import { simulateOneYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { analyzeScenario } from '../../services/MonteCarloAggregator';
 

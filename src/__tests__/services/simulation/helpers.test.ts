@@ -8,10 +8,10 @@ import { describe, it, expect } from 'vitest';
 import {
     classifyAccountTaxCategory,
     calculateEffectiveConversionTax,
-    ACAOptions,
+    type ACAOptions,
 } from '../../../services/simulation/helpers';
 import { InvestedAccount, SavedAccount, ESPPAccount } from '../../../components/Objects/Accounts/models';
-import { FilingStatus, TaxParameters, TAX_DATABASE } from '../../../data/TaxData';
+import { type FilingStatus, type TaxParameters, TAX_DATABASE } from '../../../data/TaxData';
 
 // Helper to create a minimal InvestedAccount for testing
 function createInvestedAccount(

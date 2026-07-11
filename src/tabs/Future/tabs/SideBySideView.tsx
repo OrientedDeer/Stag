@@ -1,5 +1,5 @@
 import React, { useContext } from 'react';
-import { ScenarioComparison, MilestonesSummary, YearComparison } from '../../../services/ScenarioTypes';
+import { type ScenarioComparison, type MilestonesSummary, type YearComparison } from '../../../services/ScenarioTypes';
 import { formatCompactCurrency } from './FutureUtils';
 import { AssumptionsContext } from '../../../components/Objects/Assumptions/AssumptionsContext';
 

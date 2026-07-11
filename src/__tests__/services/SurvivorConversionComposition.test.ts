@@ -13,15 +13,15 @@
  * fill-to-bracket-top, so "more" can land on the same grid point.
  */
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
-import { SurvivorScenario } from '../../services/simulation/SurvivorScenario';
-import { AnyAccount, InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type SurvivorScenario } from '../../services/simulation/SurvivorScenario';
+import { type AnyAccount, InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
 import { CurrentSocialSecurityIncome, FutureSocialSecurityIncome } from '../../components/Objects/Income/models';
 import { FoodExpense } from '../../components/Objects/Expense/models';
-import { EarningsRecord } from '../../services/SocialSecurityCalculator';
+import { type EarningsRecord } from '../../services/SocialSecurityCalculator';
 import { runSimulationWithOptimization } from '../../components/Objects/Assumptions/useSimulation';
-import { SimulationYear } from '../../services/simulation/types';
+import { type SimulationYear } from '../../services/simulation/types';
 import { executedConversionsByYear } from '../roth-cookbook/harness';
 
 const TIMEOUT = { timeout: 300_000 };

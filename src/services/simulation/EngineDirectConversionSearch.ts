@@ -28,11 +28,11 @@
  * FutureUtils import cycle; production passes a closure over runSimulation +
  * terminalAfterTaxNetWorth (the same after-tax ruler the baseline + floor use).
  */
-import { DPYearContext } from './RothConversionDP';
-import { SimulationYear } from './types';
-import { FilingStatus } from '../../data/TaxData';
+import { type DPYearContext } from './RothConversionDP';
+import { type SimulationYear } from './types';
+import { type FilingStatus } from '../../data/TaxData';
 import type { ResolvedIRMAASchedule } from '../../data/IRMAAData';
-import { AnyAccount, SavedAccount, InvestedAccount, ESPPAccount, RSUAccount } from '../../components/Objects/Accounts/models';
+import { type AnyAccount, SavedAccount, InvestedAccount, ESPPAccount, RSUAccount } from '../../components/Objects/Accounts/models';
 // Single source of truth for "can the drawdown liquidate this?" — defined alongside the
 // #111 fallback tier so the tax-opt optimizer and the manual-order safety net can't diverge.
 // taxableTierRank is likewise shared (#156) so the candidate-order generator and the manual

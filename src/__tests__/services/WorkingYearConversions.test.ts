@@ -25,17 +25,17 @@ import {
     InvestedAccount,
     SavedAccount,
     DeficitDebtAccount,
-    AnyAccount,
+    type AnyAccount,
 } from '../../components/Objects/Accounts/models';
 import { WorkIncome } from '../../components/Objects/Income/models';
 import { OtherExpense } from '../../components/Objects/Expense/models';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     createBuiltinMilestones,
 } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
-import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import {
     runSimulation,
     runSimulationWithOptimization,
@@ -44,7 +44,7 @@ import {
 import {
     solveWorkingYear,
     solveYear,
-    YearSolverInput,
+    type YearSolverInput,
     getTotalTraditionalBalance,
     getTotalRothBalance,
 } from '../../services/simulation/YearSolver';

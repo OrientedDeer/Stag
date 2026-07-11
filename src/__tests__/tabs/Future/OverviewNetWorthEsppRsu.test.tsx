@@ -8,7 +8,7 @@ import {
     DebtAccount,
     ESPPAccount,
     RSUAccount,
-    AnyAccount,
+    type AnyAccount,
 } from '../../../components/Objects/Accounts/models';
 
 /**

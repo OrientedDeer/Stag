@@ -6,7 +6,7 @@ import {
   calculateStrategyWithdrawal,
   evaluateGuytonKlingerGuardrail,
   computeGKDiscretionaryAdjustment,
-  WithdrawalResult,
+  type WithdrawalResult,
 } from '../../services/WithdrawalStrategies';
 
 describe('Withdrawal Strategies', () => {

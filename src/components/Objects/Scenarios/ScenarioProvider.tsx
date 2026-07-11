@@ -1,10 +1,10 @@
 /* @refresh reset */
-import { useReducer, ReactNode, useMemo, useCallback, useEffect } from 'react';
+import { useReducer, type ReactNode, useMemo, useCallback, useEffect } from 'react';
 import {
-    ScenarioState,
-    ScenarioAction,
-    SavedScenario,
-    LoadedScenario
+    type ScenarioState,
+    type ScenarioAction,
+    type SavedScenario,
+    type LoadedScenario
 } from '../../../services/ScenarioTypes';
 import {
     loadScenariosFromStorage,
@@ -18,22 +18,22 @@ import {
     compareScenarios,
     createLoadedScenarioFromSimulation
 } from '../../../services/ScenarioService';
-import { SimulationYear } from '../Assumptions/SimulationEngine';
+import { type SimulationYear } from '../Assumptions/SimulationEngine';
 import { runSimulationWithOptimization } from '../Assumptions/useSimulation';
-import { AnyAccount, reconstituteAccount } from '../Accounts/models';
-import { AnyIncome, reconstituteIncome } from '../Income/models';
-import { AnyExpense, reconstituteExpense } from '../Expense/models';
+import { type AnyAccount, reconstituteAccount } from '../Accounts/models';
+import { type AnyIncome, reconstituteIncome } from '../Income/models';
+import { type AnyExpense, reconstituteExpense } from '../Expense/models';
 import { linkOrphanLoanExpenses } from '../../../services/simulation/linkOrphanLoanExpenses';
 import { runJointSearchEphemeral } from '../../../services/jointSearchRunner';
 import {
-    AssumptionsState,
+    type AssumptionsState,
     defaultAssumptions,
     migrateAssumptions,
     getBirthYear,
     planHorizonYears,
 } from '../Assumptions/AssumptionsContext';
-import { TaxState } from '../Taxes/TaxContext';
-import { AmountHistoryEntry } from '../Accounts/AccountContext';
+import { type TaxState } from '../Taxes/TaxContext';
+import { type AmountHistoryEntry } from '../Accounts/AccountContext';
 import { ScenarioContext, initialScenarioState } from './ScenarioContext';
 
 // ============================================================================

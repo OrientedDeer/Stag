@@ -9,7 +9,7 @@ import {
   FutureSocialSecurityIncome,
   WorkIncome,
 } from '../../../../components/Objects/Income/models';
-import { TaxState } from '../../../../components/Objects/Taxes/TaxContext';
+import { type TaxState } from '../../../../components/Objects/Taxes/TaxContext';
 import { defaultAssumptions, createBuiltinMilestones } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 import { runSimulation } from '../../../../components/Objects/Assumptions/useSimulation';
 import { max_year } from '../../../../data/TaxData';

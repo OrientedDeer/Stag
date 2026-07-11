@@ -21,8 +21,8 @@ import {
     planConversionsViaDP,
     lookupConversionPolicy,
     buildShockQuadrature,
-    DPYearContext,
-    DPObjectiveOptions,
+    type DPYearContext,
+    type DPObjectiveOptions,
 } from '../../services/simulation/RothConversionDP';
 import { makeDPContext } from './simulation/dpFixtures';
 

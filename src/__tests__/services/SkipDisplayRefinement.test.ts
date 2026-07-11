@@ -24,7 +24,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { solveRetirementYear, YearSolverInput } from '../../services/simulation/YearSolver';
+import { solveRetirementYear, type YearSolverInput } from '../../services/simulation/YearSolver';
 import {
     searchConversionPlanByEngine,
     extractConversionPlan,
@@ -35,14 +35,14 @@ import {
     runSimulationWithOptimization,
     buildDpSolveInputs,
 } from '../../components/Objects/Assumptions/useSimulation';
-import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
+import { type SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { buildTradValuation, terminalAfterTaxNetWorth } from '../../tabs/Future/tabs/FutureUtils';
 
-import { InvestedAccount, SavedAccount, BrokerageLot, AnyAccount } from '../../components/Objects/Accounts/models';
-import { WorkIncome, FutureSocialSecurityIncome, AnyIncome } from '../../components/Objects/Income/models';
+import { InvestedAccount, SavedAccount, type BrokerageLot, type AnyAccount } from '../../components/Objects/Accounts/models';
+import { WorkIncome, FutureSocialSecurityIncome, type AnyIncome } from '../../components/Objects/Income/models';
 import { OtherExpense, FoodExpense } from '../../components/Objects/Expense/models';
-import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../components/Objects/Taxes/TaxContext';
 
 const NOW = new Date().getFullYear();
 // Fixed mid-year reference date so paired runs prorate year 0 identically.

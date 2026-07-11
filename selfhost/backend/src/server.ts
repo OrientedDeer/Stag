@@ -15,7 +15,7 @@
  * Concurrency: `rev` IS CouchDB's `_rev`, passed straight through. A stale rev
  * makes CouchDB return 409, which we relay verbatim. No blind overwrites.
  */
-import express, { Request, Response, NextFunction } from "express";
+import express, { type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
 import { OAuth2Client } from "google-auth-library";
 
@@ -62,11 +62,23 @@ const couchAuth = "Basic " + Buffer.from(`${COUCHDB_USER}:${COUCHDB_PASSWORD}`).
 const googleClient = new OAuth2Client();
 
 // ---- tiny CouchDB helper ----
+
+/** The subset of CouchDB's JSON responses this server reads. Bodies are only
+ *  dereferenced after a success-status check, which is what guarantees a JSON
+ *  doc rather than the string/null arms of the return union. */
+interface CouchDoc {
+  _rev?: string;
+  rev?: string;
+  blob?: string;
+  timestamp?: string;
+  size?: number;
+}
+
 async function couch(
   method: string,
   path: string,
   body?: unknown
-): Promise<{ status: number; json: any }> {
+): Promise<{ status: number; json: CouchDoc | string | null }> {
   const res = await fetch(`${COUCHDB_URL}${path}`, {
     method,
     headers: {
@@ -76,7 +88,7 @@ async function couch(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
-  let json: any = null;
+  let json: CouchDoc | string | null = null;
   if (text) {
     try {
       json = JSON.parse(text);
@@ -120,7 +132,7 @@ async function ensureBackupDbOnce(): Promise<void> {
   const dbPath = `/${dbSegment}`;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     let status: number;
-    let json: any;
+    let json: unknown;
     try {
       ({ status, json } = await couch("PUT", dbPath));
     } catch (err) {
@@ -272,10 +284,11 @@ app.get(
     const { status, json } = await couch("GET", docPath(req.sub!));
     if (status === 404) return res.status(404).json({ error: "no backup" });
     if (status !== 200) return res.status(502).json({ error: "store error" });
+    const doc = json as CouchDoc;
     if (metaOnly) {
-      return res.json({ rev: json._rev, timestamp: json.timestamp, size: json.size });
+      return res.json({ rev: doc._rev, timestamp: doc.timestamp, size: doc.size });
     }
-    return res.json({ blob: json.blob, rev: json._rev, timestamp: json.timestamp, size: json.size });
+    return res.json({ blob: doc.blob, rev: doc._rev, timestamp: doc.timestamp, size: doc.size });
   })
 );
 
@@ -309,7 +322,7 @@ app.post(
     if (rev) doc._rev = rev;
 
     const { status, json } = await couch("PUT", docPath(req.sub!), doc);
-    if (status === 201 || status === 200) return res.json({ rev: json.rev, timestamp: doc.timestamp });
+    if (status === 201 || status === 200) return res.json({ rev: (json as CouchDoc).rev, timestamp: doc.timestamp });
     if (status === 409) return res.status(409).json({ error: "stale rev" });
     // A 404 here means the backup DB itself is missing (it should have been
     // created at startup) — surface it as a config error, not a generic store
@@ -331,7 +344,7 @@ app.delete(
     if (get.status === 404) return res.status(200).json({ ok: true });
     if (get.status !== 200) return res.status(502).json({ error: "store error" });
 
-    const rev = get.json._rev;
+    const rev = (get.json as CouchDoc)._rev ?? "";
     const del = await couch("DELETE", `${docPath(req.sub!)}?rev=${encodeURIComponent(rev)}`);
     if (del.status === 200 || del.status === 202 || del.status === 404) {
       return res.status(200).json({ ok: true });

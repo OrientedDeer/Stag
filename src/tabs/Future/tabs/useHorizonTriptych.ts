@@ -1,11 +1,11 @@
 import { useMemo } from 'react';
-import { computeHorizonTriptych, HorizonScore } from '../../../services/MonteCarloEngine';
+import { computeHorizonTriptych, type HorizonScore } from '../../../services/MonteCarloEngine';
 import { applyChosenWithdrawalOrder } from '../../../services/simulation/EngineDirectConversionSearch';
-import { AnyAccount } from '../../../components/Objects/Accounts/models';
-import { AnyIncome } from '../../../components/Objects/Income/models';
-import { AnyExpense } from '../../../components/Objects/Expense/models';
-import { AssumptionsState } from '../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
+import { type AnyAccount } from '../../../components/Objects/Accounts/models';
+import { type AnyIncome } from '../../../components/Objects/Income/models';
+import { type AnyExpense } from '../../../components/Objects/Expense/models';
+import { type AssumptionsState } from '../../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../../components/Objects/Taxes/TaxContext';
 
 /**
  * Horizon triptych (fp-review F13 / #160): three deterministic re-scores of

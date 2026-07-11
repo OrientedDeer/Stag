@@ -2,7 +2,7 @@ import React, { useMemo, useContext } from 'react';
 import { useChartTheme } from '../../../components/Charts/useChartTheme';
 import { ChartFrame } from "../../../components/Charts/ChartFrame";
 import { ResponsiveLine } from '@nivo/line';
-import { ScenarioComparison } from '../../../services/ScenarioTypes';
+import { type ScenarioComparison } from '../../../services/ScenarioTypes';
 import { formatCompactCurrency } from './FutureUtils';
 import { AssumptionsContext } from '../../../components/Objects/Assumptions/AssumptionsContext';
 

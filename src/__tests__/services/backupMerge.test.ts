@@ -3,7 +3,7 @@ import {
     applyTransactions,
     applyBalances,
     makeTransaction,
-    MergeBlob,
+    type MergeBlob,
 } from '../../services/backupMerge';
 import type { Transaction, MonthlySnapshot } from '../../components/Objects/Budget/BudgetTypes';
 

@@ -5,12 +5,12 @@
  * lifetime tax burden through contributions, conversions, and timing.
  */
 
-import { SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
-import { AssumptionsState, getRetirementAge, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState, resolveTaxEventsForYear } from '../components/Objects/Taxes/TaxContext';
+import { type SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
+import { type AssumptionsState, getRetirementAge, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState, resolveTaxEventsForYear } from '../components/Objects/Taxes/TaxContext';
 import { buildMilestoneReachYears } from './simulation/MilestoneEvaluator';
-import { TaxParameters } from '../data/TaxData';
-import { AnyIncome, WorkIncome } from '../components/Objects/Income/models';
+import { type TaxParameters } from '../data/TaxData';
+import { type AnyIncome, WorkIncome } from '../components/Objects/Income/models';
 import { InvestedAccount } from '../components/Objects/Accounts/models';
 import * as TaxService from '../components/Objects/Taxes/TaxService';
 import { getFicaTaxableBase } from '../components/Objects/Taxes/taxService/ficaTax';

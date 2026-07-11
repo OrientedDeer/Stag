@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { calculateTotalFederalTax } from '../../../../components/Objects/Taxes/taxService/bracketTax';
-import { TaxParameters } from '../../../../data/TaxData';
+import { type TaxParameters } from '../../../../data/TaxData';
 
 /**
  * Regression tests for the "unused standard deduction offsets LTCG" bug.

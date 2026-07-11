@@ -16,8 +16,8 @@ import {
     withEffectiveDeduction,
     getEffectiveDeduction,
 } from '../../components/Objects/Taxes/TaxService';
-import { TaxParameters } from '../../data/TaxData';
-import { DeductionMethod } from '../../components/Objects/Taxes/TaxContext';
+import { type TaxParameters } from '../../data/TaxData';
+import { type DeductionMethod } from '../../components/Objects/Taxes/TaxContext';
 
 const fed2026Single: TaxParameters = {
     standardDeduction: 16100,

@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     planConversionsViaDP,
-    DPYearContext,
+    type DPYearContext,
     DP_BACKLOAD_DELTA,
 } from '../../../services/simulation/RothConversionDP';
 import { TAX_DATABASE } from '../../../data/TaxData';

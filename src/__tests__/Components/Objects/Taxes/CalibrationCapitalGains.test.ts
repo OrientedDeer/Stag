@@ -10,8 +10,8 @@
  * that getTaxParameters scales the LTCG brackets + NIIT rate under calibration.
  */
 import { describe, it, expect } from 'vitest';
-import { AssumptionsState, defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
-import { TaxState } from '../../../../components/Objects/Taxes/TaxContext';
+import { type AssumptionsState, defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
+import { type TaxState } from '../../../../components/Objects/Taxes/TaxContext';
 import { WorkIncome } from '../../../../components/Objects/Income/models';
 import { calculateFederalTaxFromIncomes, getTaxParameters } from '../../../../components/Objects/Taxes/TaxService';
 

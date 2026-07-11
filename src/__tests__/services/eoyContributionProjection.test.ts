@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { computeEOYBudgetContributions } from '../../services/eoyContributionProjection';
-import { defaultAssumptions, PriorityBucket } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { defaultAssumptions, type PriorityBucket } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { defaultTaxState } from '../../components/Objects/Taxes/TaxContext';
 import { SavedAccount } from '../../components/Objects/Accounts/models';
 import { OtherExpense } from '../../components/Objects/Expense/models';

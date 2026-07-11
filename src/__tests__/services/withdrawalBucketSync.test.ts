@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { syncWithdrawalBuckets } from '../../services/withdrawalBucketSync';
-import { WithdrawalBucket } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { type WithdrawalBucket } from '../../components/Objects/Assumptions/AssumptionsContext';
 
 const acc = (id: string, name: string) => ({ id, name });
 const bucket = (accountId: string, name: string): WithdrawalBucket => ({
