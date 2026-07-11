@@ -38,11 +38,14 @@ describe('ExpenseContext', () => {
   });
 
   it('should provide initial empty state', () => {
-    let expenses!: any[];
+    const captured = {} as React.ContextType<typeof ExpenseContext>;
 
     const TestComponent = () => {
-      ({ expenses } = useContext(ExpenseContext));
-      return null;
+
+        Object.assign(captured, useContext(ExpenseContext));
+
+        return null;
+
     };
 
     render(
@@ -51,7 +54,7 @@ describe('ExpenseContext', () => {
       </ExpenseProvider>
     );
 
-    expect(expenses).toEqual([]);
+    expect(captured.expenses).toEqual([]);
   });
 
   it('should load state from localStorage on initialization', () => {
@@ -62,11 +65,14 @@ describe('ExpenseContext', () => {
 
     localStorageMock.setItem('user_expenses_data', JSON.stringify(savedData));
 
-    let expenses!: any[];
+    const captured = {} as React.ContextType<typeof ExpenseContext>;
 
     const TestComponent = () => {
-      ({ expenses } = useContext(ExpenseContext));
-      return null;
+
+        Object.assign(captured, useContext(ExpenseContext));
+
+        return null;
+
     };
 
     render(
@@ -76,21 +82,24 @@ describe('ExpenseContext', () => {
     );
 
     expect(localStorageMock.getItem).toHaveBeenCalledWith('user_expenses_data');
-    expect(expenses).toHaveLength(1);
-    expect(expenses[0].id).toBe('1');
-    expect(expenses[0].name).toBe('Apartment Rent');
-    expect(expenses[0].payment).toBe(1500);
+    expect(captured.expenses).toHaveLength(1);
+    expect(captured.expenses[0].id).toBe('1');
+    expect(captured.expenses[0].name).toBe('Apartment Rent');
+    expect((captured.expenses[0] as RentExpense).payment).toBe(1500);
   });
 
   it('should handle corrupted localStorage data gracefully', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     localStorageMock.setItem('user_expenses_data', 'invalid json');
 
-    let expenses!: any[];
+    const captured = {} as React.ContextType<typeof ExpenseContext>;
 
     const TestComponent = () => {
-      ({ expenses } = useContext(ExpenseContext));
-      return null;
+
+        Object.assign(captured, useContext(ExpenseContext));
+
+        return null;
+
     };
 
     render(
@@ -99,17 +108,20 @@ describe('ExpenseContext', () => {
       </ExpenseProvider>
     );
 
-    expect(expenses).toEqual([]);
+    expect(captured.expenses).toEqual([]);
     consoleSpy.mockRestore();
   });
 
   it('should save state to localStorage when state changes (debounced)', async () => {
     vi.useFakeTimers();
-    let dispatch!: any;
+    const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof ExpenseDispatchContext> };
 
     const TestComponent = () => {
-      dispatch = useContext(ExpenseDispatchContext);
-      return null;
+
+        Object.assign(capturedDispatch, { dispatch: useContext(ExpenseDispatchContext) });
+
+        return null;
+
     };
 
     render(
@@ -121,7 +133,7 @@ describe('ExpenseContext', () => {
     const newExpense = new FoodExpense('1', 'Groceries', 500, 'Monthly');
 
     act(() => {
-      dispatch({ type: 'ADD_EXPENSE', payload: newExpense });
+      capturedDispatch.dispatch({ type: 'ADD_EXPENSE', payload: newExpense });
     });
 
     // Wait for debounce (500ms)
@@ -140,12 +152,17 @@ describe('ExpenseContext', () => {
   describe('Reducer Actions', () => {
     describe('ADD_EXPENSE', () => {
       it('should add an expense to state', () => {
-        let expenses!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof ExpenseContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof ExpenseDispatchContext> };
 
         const TestComponent = () => {
-          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(ExpenseContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(ExpenseDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -157,11 +174,11 @@ describe('ExpenseContext', () => {
         const newExpense = new FoodExpense('1', 'Groceries', 500, 'Monthly');
 
         act(() => {
-          dispatch({ type: 'ADD_EXPENSE', payload: newExpense });
+          capturedDispatch.dispatch({ type: 'ADD_EXPENSE', payload: newExpense });
         });
 
-        expect(expenses).toHaveLength(1);
-        expect(expenses[0]).toMatchObject({
+        expect(captured.expenses).toHaveLength(1);
+        expect(captured.expenses[0]).toMatchObject({
           id: '1',
           name: 'Groceries',
           amount: 500,
@@ -170,12 +187,17 @@ describe('ExpenseContext', () => {
       });
 
       it('should add multiple expenses', () => {
-        let expenses!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof ExpenseContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof ExpenseDispatchContext> };
 
         const TestComponent = () => {
-          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(ExpenseContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(ExpenseDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -188,22 +210,27 @@ describe('ExpenseContext', () => {
         const expense2 = new RentExpense('2', 'Rent', 1500, 200, 'Monthly');
 
         act(() => {
-          dispatch({ type: 'ADD_EXPENSE', payload: expense1 });
-          dispatch({ type: 'ADD_EXPENSE', payload: expense2 });
+          capturedDispatch.dispatch({ type: 'ADD_EXPENSE', payload: expense1 });
+          capturedDispatch.dispatch({ type: 'ADD_EXPENSE', payload: expense2 });
         });
 
-        expect(expenses).toHaveLength(2);
+        expect(captured.expenses).toHaveLength(2);
       });
     });
 
     describe('DELETE_EXPENSE', () => {
       it('should remove an expense from state', () => {
-        let expenses!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof ExpenseContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof ExpenseDispatchContext> };
 
         const TestComponent = () => {
-          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(ExpenseContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(ExpenseDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -216,29 +243,34 @@ describe('ExpenseContext', () => {
         const expense2 = new OtherExpense('2', 'Entertainment', 200, 'Monthly');
 
         act(() => {
-          dispatch({ type: 'ADD_EXPENSE', payload: expense1 });
-          dispatch({ type: 'ADD_EXPENSE', payload: expense2 });
+          capturedDispatch.dispatch({ type: 'ADD_EXPENSE', payload: expense1 });
+          capturedDispatch.dispatch({ type: 'ADD_EXPENSE', payload: expense2 });
         });
 
-        expect(expenses).toHaveLength(2);
+        expect(captured.expenses).toHaveLength(2);
 
         act(() => {
-          dispatch({ type: 'DELETE_EXPENSE', payload: { id: '1' } });
+          capturedDispatch.dispatch({ type: 'DELETE_EXPENSE', payload: { id: '1' } });
         });
 
-        expect(expenses).toHaveLength(1);
-        expect(expenses[0].id).toBe('2');
+        expect(captured.expenses).toHaveLength(1);
+        expect(captured.expenses[0].id).toBe('2');
       });
     });
 
     describe('UPDATE_EXPENSE_FIELD', () => {
       it('should update a specific field of an expense', () => {
-        let expenses!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof ExpenseContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof ExpenseDispatchContext> };
 
         const TestComponent = () => {
-          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(ExpenseContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(ExpenseDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -250,27 +282,32 @@ describe('ExpenseContext', () => {
         const expense = new FoodExpense('1', 'Groceries', 500, 'Monthly');
 
         act(() => {
-          dispatch({ type: 'ADD_EXPENSE', payload: expense });
+          capturedDispatch.dispatch({ type: 'ADD_EXPENSE', payload: expense });
         });
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'UPDATE_EXPENSE_FIELD',
             payload: { id: '1', field: 'name', value: 'Whole Foods' },
           });
         });
 
-        expect(expenses[0].name).toBe('Whole Foods');
-        expect(expenses[0].amount).toBe(500);
+        expect(captured.expenses[0].name).toBe('Whole Foods');
+        expect(captured.expenses[0].amount).toBe(500);
       });
 
       it('should update amount field', () => {
-        let expenses!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof ExpenseContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof ExpenseDispatchContext> };
 
         const TestComponent = () => {
-          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(ExpenseContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(ExpenseDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -282,26 +319,31 @@ describe('ExpenseContext', () => {
         const expense = new FoodExpense('1', 'Groceries', 500, 'Monthly');
 
         act(() => {
-          dispatch({ type: 'ADD_EXPENSE', payload: expense });
+          capturedDispatch.dispatch({ type: 'ADD_EXPENSE', payload: expense });
         });
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'UPDATE_EXPENSE_FIELD',
             payload: { id: '1', field: 'amount', value: 600 },
           });
         });
 
-        expect(expenses[0].amount).toBe(600);
+        expect(captured.expenses[0].amount).toBe(600);
       });
 
       it('should recalculate RentExpense amount when payment or utilities change', () => {
-        let expenses!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof ExpenseContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof ExpenseDispatchContext> };
 
         const TestComponent = () => {
-          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(ExpenseContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(ExpenseDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -313,29 +355,34 @@ describe('ExpenseContext', () => {
         const rentExpense = new RentExpense('1', 'Apartment', 1500, 200, 'Monthly');
 
         act(() => {
-          dispatch({ type: 'ADD_EXPENSE', payload: rentExpense });
+          capturedDispatch.dispatch({ type: 'ADD_EXPENSE', payload: rentExpense });
         });
 
-        expect(expenses[0].amount).toBe(1700);
+        expect(captured.expenses[0].amount).toBe(1700);
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'UPDATE_EXPENSE_FIELD',
             payload: { id: '1', field: 'payment', value: 1600 },
           });
         });
 
-        expect(expenses[0].payment).toBe(1600);
-        expect(expenses[0].amount).toBe(1800); // 1600 + 200
+        expect((captured.expenses[0] as RentExpense).payment).toBe(1600);
+        expect(captured.expenses[0].amount).toBe(1800); // 1600 + 200
       });
 
       it('should recalculate RentExpense amount when utilities change', () => {
-        let expenses!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof ExpenseContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof ExpenseDispatchContext> };
 
         const TestComponent = () => {
-          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(ExpenseContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(ExpenseDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -347,27 +394,32 @@ describe('ExpenseContext', () => {
         const rentExpense = new RentExpense('1', 'Apartment', 1500, 200, 'Monthly');
 
         act(() => {
-          dispatch({ type: 'ADD_EXPENSE', payload: rentExpense });
+          capturedDispatch.dispatch({ type: 'ADD_EXPENSE', payload: rentExpense });
         });
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'UPDATE_EXPENSE_FIELD',
             payload: { id: '1', field: 'utilities', value: 250 },
           });
         });
 
-        expect(expenses[0].utilities).toBe(250);
-        expect(expenses[0].amount).toBe(1750); // 1500 + 250
+        expect((captured.expenses[0] as RentExpense).utilities).toBe(250);
+        expect(captured.expenses[0].amount).toBe(1750); // 1500 + 250
       });
 
       it('should preserve expense class type when updating', () => {
-        let expenses!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof ExpenseContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof ExpenseDispatchContext> };
 
         const TestComponent = () => {
-          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(ExpenseContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(ExpenseDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -379,28 +431,33 @@ describe('ExpenseContext', () => {
         const rentExpense = new RentExpense('1', 'Apartment', 1500, 200, 'Monthly');
 
         act(() => {
-          dispatch({ type: 'ADD_EXPENSE', payload: rentExpense });
+          capturedDispatch.dispatch({ type: 'ADD_EXPENSE', payload: rentExpense });
         });
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'UPDATE_EXPENSE_FIELD',
             payload: { id: '1', field: 'name', value: 'Downtown Apartment' },
           });
         });
 
-        expect(expenses[0].constructor.name).toBe('RentExpense');
+        expect(captured.expenses[0].constructor.name).toBe('RentExpense');
       });
     });
 
     describe('REORDER_EXPENSES', () => {
       it('should reorder expenses correctly', () => {
-        let expenses!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof ExpenseContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof ExpenseDispatchContext> };
 
         const TestComponent = () => {
-          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(ExpenseContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(ExpenseDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -414,30 +471,35 @@ describe('ExpenseContext', () => {
         const expense3 = new FoodExpense('3', 'Third', 300, 'Monthly');
 
         act(() => {
-          dispatch({ type: 'ADD_EXPENSE', payload: expense1 });
-          dispatch({ type: 'ADD_EXPENSE', payload: expense2 });
-          dispatch({ type: 'ADD_EXPENSE', payload: expense3 });
+          capturedDispatch.dispatch({ type: 'ADD_EXPENSE', payload: expense1 });
+          capturedDispatch.dispatch({ type: 'ADD_EXPENSE', payload: expense2 });
+          capturedDispatch.dispatch({ type: 'ADD_EXPENSE', payload: expense3 });
         });
 
-        expect(expenses.map((e) => e.id)).toEqual(['1', '2', '3']);
+        expect(captured.expenses.map((e) => e.id)).toEqual(['1', '2', '3']);
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'REORDER_EXPENSES',
             payload: { startIndex: 0, endIndex: 2 },
           });
         });
 
-        expect(expenses.map((e) => e.id)).toEqual(['2', '3', '1']);
+        expect(captured.expenses.map((e) => e.id)).toEqual(['2', '3', '1']);
       });
 
       it('should move expense from end to beginning', () => {
-        let expenses!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof ExpenseContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof ExpenseDispatchContext> };
 
         const TestComponent = () => {
-          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(ExpenseContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(ExpenseDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -451,30 +513,35 @@ describe('ExpenseContext', () => {
         const expense3 = new FoodExpense('3', 'Third', 300, 'Monthly');
 
         act(() => {
-          dispatch({ type: 'ADD_EXPENSE', payload: expense1 });
-          dispatch({ type: 'ADD_EXPENSE', payload: expense2 });
-          dispatch({ type: 'ADD_EXPENSE', payload: expense3 });
+          capturedDispatch.dispatch({ type: 'ADD_EXPENSE', payload: expense1 });
+          capturedDispatch.dispatch({ type: 'ADD_EXPENSE', payload: expense2 });
+          capturedDispatch.dispatch({ type: 'ADD_EXPENSE', payload: expense3 });
         });
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'REORDER_EXPENSES',
             payload: { startIndex: 2, endIndex: 0 },
           });
         });
 
-        expect(expenses.map((e) => e.id)).toEqual(['3', '1', '2']);
+        expect(captured.expenses.map((e) => e.id)).toEqual(['3', '1', '2']);
       });
     });
 
     describe('SET_BULK_DATA', () => {
       it('should replace all expenses', () => {
-        let expenses!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof ExpenseContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof ExpenseDispatchContext> };
 
         const TestComponent = () => {
-          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(ExpenseContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(ExpenseDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -485,10 +552,10 @@ describe('ExpenseContext', () => {
 
         const expense1 = new FoodExpense('1', 'Old Expense', 100, 'Monthly');
         act(() => {
-          dispatch({ type: 'ADD_EXPENSE', payload: expense1 });
+          capturedDispatch.dispatch({ type: 'ADD_EXPENSE', payload: expense1 });
         });
 
-        expect(expenses).toHaveLength(1);
+        expect(captured.expenses).toHaveLength(1);
 
         const newExpenses = [
           new FoodExpense('2', 'New Groceries', 500, 'Monthly'),
@@ -496,24 +563,29 @@ describe('ExpenseContext', () => {
         ];
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'SET_BULK_DATA',
             payload: { expenses: newExpenses },
           });
         });
 
-        expect(expenses).toHaveLength(2);
-        expect(expenses[0].id).toBe('2');
-        expect(expenses[1].id).toBe('3');
+        expect(captured.expenses).toHaveLength(2);
+        expect(captured.expenses[0].id).toBe('2');
+        expect(captured.expenses[1].id).toBe('3');
       });
 
       it('should clear all expenses when bulk data is empty', () => {
-        let expenses!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof ExpenseContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof ExpenseDispatchContext> };
 
         const TestComponent = () => {
-          ({ expenses } = useContext(ExpenseContext)); dispatch = useContext(ExpenseDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(ExpenseContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(ExpenseDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -524,19 +596,19 @@ describe('ExpenseContext', () => {
 
         const expense1 = new FoodExpense('1', 'Groceries', 500, 'Monthly');
         act(() => {
-          dispatch({ type: 'ADD_EXPENSE', payload: expense1 });
+          capturedDispatch.dispatch({ type: 'ADD_EXPENSE', payload: expense1 });
         });
 
-        expect(expenses).toHaveLength(1);
+        expect(captured.expenses).toHaveLength(1);
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'SET_BULK_DATA',
             payload: { expenses: [] },
           });
         });
 
-        expect(expenses).toEqual([]);
+        expect(captured.expenses).toEqual([]);
       });
     });
   });
@@ -566,11 +638,14 @@ describe('ExpenseContext', () => {
 
       localStorageMock.setItem('user_expenses_data', JSON.stringify(expenseData));
 
-      let expenses!: any[];
+      const captured = {} as React.ContextType<typeof ExpenseContext>;
 
       const TestComponent = () => {
-        ({ expenses } = useContext(ExpenseContext));
-        return null;
+
+          Object.assign(captured, useContext(ExpenseContext));
+
+          return null;
+
       };
 
       render(
@@ -579,9 +654,9 @@ describe('ExpenseContext', () => {
         </ExpenseProvider>
       );
 
-      expect(expenses).toHaveLength(2);
-      expect(expenses[0].constructor.name).toBe('RentExpense');
-      expect(expenses[1].constructor.name).toBe('FoodExpense');
+      expect(captured.expenses).toHaveLength(2);
+      expect(captured.expenses[0].constructor.name).toBe('RentExpense');
+      expect(captured.expenses[1].constructor.name).toBe('FoodExpense');
     });
 
     it('should filter out null expenses from reconstitution', () => {
@@ -606,11 +681,14 @@ describe('ExpenseContext', () => {
 
       localStorageMock.setItem('user_expenses_data', JSON.stringify(expenseData));
 
-      let expenses!: any[];
+      const captured = {} as React.ContextType<typeof ExpenseContext>;
 
       const TestComponent = () => {
-        ({ expenses } = useContext(ExpenseContext));
-        return null;
+
+          Object.assign(captured, useContext(ExpenseContext));
+
+          return null;
+
       };
 
       render(
@@ -620,8 +698,8 @@ describe('ExpenseContext', () => {
       );
 
       // Should only have valid expense
-      expect(expenses).toHaveLength(1);
-      expect(expenses[0].id).toBe('1');
+      expect(captured.expenses).toHaveLength(1);
+      expect(captured.expenses[0].id).toBe('1');
     });
   });
 });

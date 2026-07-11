@@ -44,11 +44,14 @@ describe('IncomeContext', () => {
   });
 
   it('should provide initial empty state', () => {
-    let incomes!: any[];
+    const captured = {} as React.ContextType<typeof IncomeContext>;
 
     const TestComponent = () => {
-      ({ incomes } = useContext(IncomeContext));
-      return null;
+
+        Object.assign(captured, useContext(IncomeContext));
+
+        return null;
+
     };
 
     render(
@@ -57,7 +60,7 @@ describe('IncomeContext', () => {
       </IncomeProvider>
     );
 
-    expect(incomes).toEqual([]);
+    expect(captured.incomes).toEqual([]);
   });
 
   it('should load state from localStorage on initialization', () => {
@@ -81,11 +84,14 @@ describe('IncomeContext', () => {
 
     localStorageMock.setItem('user_incomes_data', JSON.stringify(savedData));
 
-    let incomes!: any[];
+    const captured = {} as React.ContextType<typeof IncomeContext>;
 
     const TestComponent = () => {
-      ({ incomes } = useContext(IncomeContext));
-      return null;
+
+        Object.assign(captured, useContext(IncomeContext));
+
+        return null;
+
     };
 
     render(
@@ -95,21 +101,24 @@ describe('IncomeContext', () => {
     );
 
     expect(localStorageMock.getItem).toHaveBeenCalledWith('user_incomes_data');
-    expect(incomes).toHaveLength(1);
-    expect(incomes[0].id).toBe('1');
-    expect(incomes[0].name).toBe('Software Engineer');
-    expect(incomes[0].amount).toBe(100000);
+    expect(captured.incomes).toHaveLength(1);
+    expect(captured.incomes[0].id).toBe('1');
+    expect(captured.incomes[0].name).toBe('Software Engineer');
+    expect(captured.incomes[0].amount).toBe(100000);
   });
 
   it('should handle corrupted localStorage data gracefully', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     localStorageMock.setItem('user_incomes_data', 'invalid json');
 
-    let incomes!: any[];
+    const captured = {} as React.ContextType<typeof IncomeContext>;
 
     const TestComponent = () => {
-      ({ incomes } = useContext(IncomeContext));
-      return null;
+
+        Object.assign(captured, useContext(IncomeContext));
+
+        return null;
+
     };
 
     render(
@@ -118,17 +127,20 @@ describe('IncomeContext', () => {
       </IncomeProvider>
     );
 
-    expect(incomes).toEqual([]);
+    expect(captured.incomes).toEqual([]);
     consoleSpy.mockRestore();
   });
 
   it('should save state to localStorage when state changes (debounced)', async () => {
     vi.useFakeTimers();
-    let dispatch!: any;
+    const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof IncomeDispatchContext> };
 
     const TestComponent = () => {
-      dispatch = useContext(IncomeDispatchContext);
-      return null;
+
+        Object.assign(capturedDispatch, { dispatch: useContext(IncomeDispatchContext) });
+
+        return null;
+
     };
 
     render(
@@ -140,7 +152,7 @@ describe('IncomeContext', () => {
     const newIncome = new PassiveIncome('1', 'Rental Income', 2000, 'Monthly', 'No', 'Rental');
 
     act(() => {
-      dispatch({ type: 'ADD_INCOME', payload: newIncome });
+      capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: newIncome });
     });
 
     // Wait for debounce (500ms)
@@ -159,12 +171,17 @@ describe('IncomeContext', () => {
   describe('Reducer Actions', () => {
     describe('ADD_INCOME', () => {
       it('should add an income to state', () => {
-        let incomes!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof IncomeContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof IncomeDispatchContext> };
 
         const TestComponent = () => {
-          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(IncomeContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(IncomeDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -176,11 +193,11 @@ describe('IncomeContext', () => {
         const newIncome = new PassiveIncome('1', 'Rental Income', 2000, 'Monthly', 'No', 'Rental');
 
         act(() => {
-          dispatch({ type: 'ADD_INCOME', payload: newIncome });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: newIncome });
         });
 
-        expect(incomes).toHaveLength(1);
-        expect(incomes[0]).toMatchObject({
+        expect(captured.incomes).toHaveLength(1);
+        expect(captured.incomes[0]).toMatchObject({
           id: '1',
           name: 'Rental Income',
           amount: 2000,
@@ -189,12 +206,17 @@ describe('IncomeContext', () => {
       });
 
       it('should add multiple incomes', () => {
-        let incomes!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof IncomeContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof IncomeDispatchContext> };
 
         const TestComponent = () => {
-          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(IncomeContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(IncomeDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -207,22 +229,27 @@ describe('IncomeContext', () => {
         const income2 = new WorkIncome('2', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc-1', null, 'FIXED');
 
         act(() => {
-          dispatch({ type: 'ADD_INCOME', payload: income1 });
-          dispatch({ type: 'ADD_INCOME', payload: income2 });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: income1 });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: income2 });
         });
 
-        expect(incomes).toHaveLength(2);
+        expect(captured.incomes).toHaveLength(2);
       });
     });
 
     describe('DELETE_INCOME', () => {
       it('should remove an income from state', () => {
-        let incomes!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof IncomeContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof IncomeDispatchContext> };
 
         const TestComponent = () => {
-          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(IncomeContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(IncomeDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -235,29 +262,34 @@ describe('IncomeContext', () => {
         const income2 = new WindfallIncome('2', 'Bonus', 10000, 'Annually', 'Yes');
 
         act(() => {
-          dispatch({ type: 'ADD_INCOME', payload: income1 });
-          dispatch({ type: 'ADD_INCOME', payload: income2 });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: income1 });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: income2 });
         });
 
-        expect(incomes).toHaveLength(2);
+        expect(captured.incomes).toHaveLength(2);
 
         act(() => {
-          dispatch({ type: 'DELETE_INCOME', payload: { id: '1' } });
+          capturedDispatch.dispatch({ type: 'DELETE_INCOME', payload: { id: '1' } });
         });
 
-        expect(incomes).toHaveLength(1);
-        expect(incomes[0].id).toBe('2');
+        expect(captured.incomes).toHaveLength(1);
+        expect(captured.incomes[0].id).toBe('2');
       });
     });
 
     describe('UPDATE_INCOME_FIELD', () => {
       it('should update a specific field of an income', () => {
-        let incomes!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof IncomeContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof IncomeDispatchContext> };
 
         const TestComponent = () => {
-          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(IncomeContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(IncomeDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -269,27 +301,32 @@ describe('IncomeContext', () => {
         const income = new PassiveIncome('1', 'Rental', 2000, 'Monthly', 'No', 'Rental');
 
         act(() => {
-          dispatch({ type: 'ADD_INCOME', payload: income });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: income });
         });
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'UPDATE_INCOME_FIELD',
             payload: { id: '1', field: 'name', value: 'Updated Rental' },
           });
         });
 
-        expect(incomes[0].name).toBe('Updated Rental');
-        expect(incomes[0].amount).toBe(2000);
+        expect(captured.incomes[0].name).toBe('Updated Rental');
+        expect(captured.incomes[0].amount).toBe(2000);
       });
 
       it('should update amount field', () => {
-        let incomes!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof IncomeContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof IncomeDispatchContext> };
 
         const TestComponent = () => {
-          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(IncomeContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(IncomeDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -301,26 +338,31 @@ describe('IncomeContext', () => {
         const income = new PassiveIncome('1', 'Rental', 2000, 'Monthly', 'No', 'Rental');
 
         act(() => {
-          dispatch({ type: 'ADD_INCOME', payload: income });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: income });
         });
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'UPDATE_INCOME_FIELD',
             payload: { id: '1', field: 'amount', value: 2500 },
           });
         });
 
-        expect(incomes[0].amount).toBe(2500);
+        expect(captured.incomes[0].amount).toBe(2500);
       });
 
       it('should preserve className when updating', () => {
-        let incomes!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof IncomeContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof IncomeDispatchContext> };
 
         const TestComponent = () => {
-          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(IncomeContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(IncomeDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -332,26 +374,31 @@ describe('IncomeContext', () => {
         const income = new WorkIncome('1', 'Job', 100000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc-1', null, 'FIXED');
 
         act(() => {
-          dispatch({ type: 'ADD_INCOME', payload: income });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: income });
         });
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'UPDATE_INCOME_FIELD',
             payload: { id: '1', field: 'amount', value: 110000 },
           });
         });
 
-        expect(incomes[0].constructor.name).toBe('WorkIncome');
+        expect(captured.incomes[0].constructor.name).toBe('WorkIncome');
       });
 
       it('should update WorkIncome specific fields', () => {
-        let incomes!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof IncomeContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof IncomeDispatchContext> };
 
         const TestComponent = () => {
-          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(IncomeContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(IncomeDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -363,28 +410,33 @@ describe('IncomeContext', () => {
         const income = new WorkIncome('1', 'Job', 100000, 'Annually', 'Yes', 5000, 500, 0, 0, 'acc-1', null, 'FIXED');
 
         act(() => {
-          dispatch({ type: 'ADD_INCOME', payload: income });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: income });
         });
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'UPDATE_INCOME_FIELD',
             payload: { id: '1', field: 'preTax401k', value: 6000 },
           });
         });
 
-        expect(incomes[0].preTax401k).toBe(6000);
+        expect((captured.incomes[0] as WorkIncome).preTax401k).toBe(6000);
       });
     });
 
     describe('REORDER_INCOMES', () => {
       it('should reorder incomes correctly', () => {
-        let incomes!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof IncomeContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof IncomeDispatchContext> };
 
         const TestComponent = () => {
-          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(IncomeContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(IncomeDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -398,30 +450,35 @@ describe('IncomeContext', () => {
         const income3 = new PassiveIncome('3', 'Third', 300, 'Monthly', 'No', 'Other');
 
         act(() => {
-          dispatch({ type: 'ADD_INCOME', payload: income1 });
-          dispatch({ type: 'ADD_INCOME', payload: income2 });
-          dispatch({ type: 'ADD_INCOME', payload: income3 });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: income1 });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: income2 });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: income3 });
         });
 
-        expect(incomes.map((i) => i.id)).toEqual(['1', '2', '3']);
+        expect(captured.incomes.map((i) => i.id)).toEqual(['1', '2', '3']);
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'REORDER_INCOMES',
             payload: { startIndex: 0, endIndex: 2 },
           });
         });
 
-        expect(incomes.map((i) => i.id)).toEqual(['2', '3', '1']);
+        expect(captured.incomes.map((i) => i.id)).toEqual(['2', '3', '1']);
       });
 
       it('should move income from end to beginning', () => {
-        let incomes!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof IncomeContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof IncomeDispatchContext> };
 
         const TestComponent = () => {
-          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(IncomeContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(IncomeDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -435,30 +492,35 @@ describe('IncomeContext', () => {
         const income3 = new PassiveIncome('3', 'Third', 300, 'Monthly', 'No', 'Other');
 
         act(() => {
-          dispatch({ type: 'ADD_INCOME', payload: income1 });
-          dispatch({ type: 'ADD_INCOME', payload: income2 });
-          dispatch({ type: 'ADD_INCOME', payload: income3 });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: income1 });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: income2 });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: income3 });
         });
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'REORDER_INCOMES',
             payload: { startIndex: 2, endIndex: 0 },
           });
         });
 
-        expect(incomes.map((i) => i.id)).toEqual(['3', '1', '2']);
+        expect(captured.incomes.map((i) => i.id)).toEqual(['3', '1', '2']);
       });
     });
 
     describe('SET_BULK_DATA', () => {
       it('should replace all incomes', () => {
-        let incomes!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof IncomeContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof IncomeDispatchContext> };
 
         const TestComponent = () => {
-          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(IncomeContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(IncomeDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -469,10 +531,10 @@ describe('IncomeContext', () => {
 
         const income1 = new PassiveIncome('1', 'Old Income', 100, 'Monthly', 'No', 'Other');
         act(() => {
-          dispatch({ type: 'ADD_INCOME', payload: income1 });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: income1 });
         });
 
-        expect(incomes).toHaveLength(1);
+        expect(captured.incomes).toHaveLength(1);
 
         const newIncomes = [
           new PassiveIncome('2', 'New Rental', 2000, 'Monthly', 'No', 'Rental'),
@@ -480,24 +542,29 @@ describe('IncomeContext', () => {
         ];
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'SET_BULK_DATA',
             payload: { incomes: newIncomes },
           });
         });
 
-        expect(incomes).toHaveLength(2);
-        expect(incomes[0].id).toBe('2');
-        expect(incomes[1].id).toBe('3');
+        expect(captured.incomes).toHaveLength(2);
+        expect(captured.incomes[0].id).toBe('2');
+        expect(captured.incomes[1].id).toBe('3');
       });
 
       it('should clear all incomes when bulk data is empty', () => {
-        let incomes!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof IncomeContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof IncomeDispatchContext> };
 
         const TestComponent = () => {
-          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(IncomeContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(IncomeDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -508,19 +575,19 @@ describe('IncomeContext', () => {
 
         const income1 = new PassiveIncome('1', 'Rental', 2000, 'Monthly', 'No', 'Rental');
         act(() => {
-          dispatch({ type: 'ADD_INCOME', payload: income1 });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: income1 });
         });
 
-        expect(incomes).toHaveLength(1);
+        expect(captured.incomes).toHaveLength(1);
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'SET_BULK_DATA',
             payload: { incomes: [] },
           });
         });
 
-        expect(incomes).toEqual([]);
+        expect(captured.incomes).toEqual([]);
       });
     });
   });
@@ -555,11 +622,14 @@ describe('IncomeContext', () => {
 
       localStorageMock.setItem('user_incomes_data', JSON.stringify(incomeData));
 
-      let incomes!: any[];
+      const captured = {} as React.ContextType<typeof IncomeContext>;
 
       const TestComponent = () => {
-        ({ incomes } = useContext(IncomeContext));
-        return null;
+
+          Object.assign(captured, useContext(IncomeContext));
+
+          return null;
+
       };
 
       render(
@@ -568,9 +638,9 @@ describe('IncomeContext', () => {
         </IncomeProvider>
       );
 
-      expect(incomes).toHaveLength(2);
-      expect(incomes[0].constructor.name).toBe('WorkIncome');
-      expect(incomes[1].constructor.name).toBe('PassiveIncome');
+      expect(captured.incomes).toHaveLength(2);
+      expect(captured.incomes[0].constructor.name).toBe('WorkIncome');
+      expect(captured.incomes[1].constructor.name).toBe('PassiveIncome');
     });
 
     it('should filter out null incomes from reconstitution', () => {
@@ -595,11 +665,14 @@ describe('IncomeContext', () => {
 
       localStorageMock.setItem('user_incomes_data', JSON.stringify(incomeData));
 
-      let incomes!: any[];
+      const captured = {} as React.ContextType<typeof IncomeContext>;
 
       const TestComponent = () => {
-        ({ incomes } = useContext(IncomeContext));
-        return null;
+
+          Object.assign(captured, useContext(IncomeContext));
+
+          return null;
+
       };
 
       render(
@@ -609,8 +682,8 @@ describe('IncomeContext', () => {
       );
 
       // Should only have valid income
-      expect(incomes).toHaveLength(1);
-      expect(incomes[0].id).toBe('1');
+      expect(captured.incomes).toHaveLength(1);
+      expect(captured.incomes[0].id).toBe('1');
     });
 
     it('should reconstitute CurrentSocialSecurityIncome from localStorage', () => {
@@ -630,11 +703,14 @@ describe('IncomeContext', () => {
 
       localStorageMock.setItem('user_incomes_data', JSON.stringify(incomeData));
 
-      let incomes!: any[];
+      const captured = {} as React.ContextType<typeof IncomeContext>;
 
       const TestComponent = () => {
-        ({ incomes } = useContext(IncomeContext));
-        return null;
+
+          Object.assign(captured, useContext(IncomeContext));
+
+          return null;
+
       };
 
       render(
@@ -643,10 +719,10 @@ describe('IncomeContext', () => {
         </IncomeProvider>
       );
 
-      expect(incomes).toHaveLength(1);
-      expect(incomes[0].constructor.name).toBe('CurrentSocialSecurityIncome');
-      expect(incomes[0].name).toBe('SSDI Benefits');
-      expect(incomes[0].amount).toBe(1500);
+      expect(captured.incomes).toHaveLength(1);
+      expect(captured.incomes[0].constructor.name).toBe('CurrentSocialSecurityIncome');
+      expect(captured.incomes[0].name).toBe('SSDI Benefits');
+      expect(captured.incomes[0].amount).toBe(1500);
     });
 
     it('should reconstitute FutureSocialSecurityIncome from localStorage', () => {
@@ -668,11 +744,14 @@ describe('IncomeContext', () => {
 
       localStorageMock.setItem('user_incomes_data', JSON.stringify(incomeData));
 
-      let incomes!: any[];
+      const captured = {} as React.ContextType<typeof IncomeContext>;
 
       const TestComponent = () => {
-        ({ incomes } = useContext(IncomeContext));
-        return null;
+
+          Object.assign(captured, useContext(IncomeContext));
+
+          return null;
+
       };
 
       render(
@@ -681,24 +760,29 @@ describe('IncomeContext', () => {
         </IncomeProvider>
       );
 
-      expect(incomes).toHaveLength(1);
-      expect(incomes[0].constructor.name).toBe('FutureSocialSecurityIncome');
-      expect(incomes[0].name).toBe('Future SS Benefits');
-      expect(incomes[0].claimingAge).toBe(67);
-      expect(incomes[0].calculatedPIA).toBe(2500);
-      expect(incomes[0].calculationYear).toBe(2045);
+      expect(captured.incomes).toHaveLength(1);
+      expect(captured.incomes[0].constructor.name).toBe('FutureSocialSecurityIncome');
+      expect(captured.incomes[0].name).toBe('Future SS Benefits');
+      expect((captured.incomes[0] as FutureSocialSecurityIncome).claimingAge).toBe(67);
+      expect((captured.incomes[0] as FutureSocialSecurityIncome).calculatedPIA).toBe(2500);
+      expect((captured.incomes[0] as FutureSocialSecurityIncome).calculationYear).toBe(2045);
     });
   });
 
   describe('Social Security Income Types', () => {
     describe('CurrentSocialSecurityIncome', () => {
       it('should add CurrentSocialSecurityIncome to state', () => {
-        let incomes!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof IncomeContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof IncomeDispatchContext> };
 
         const TestComponent = () => {
-          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(IncomeContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(IncomeDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -717,11 +801,11 @@ describe('IncomeContext', () => {
         );
 
         act(() => {
-          dispatch({ type: 'ADD_INCOME', payload: ssIncome });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: ssIncome });
         });
 
-        expect(incomes).toHaveLength(1);
-        expect(incomes[0]).toMatchObject({
+        expect(captured.incomes).toHaveLength(1);
+        expect(captured.incomes[0]).toMatchObject({
           id: '1',
           name: 'SSDI Benefits',
           amount: 1500,
@@ -731,12 +815,17 @@ describe('IncomeContext', () => {
       });
 
       it('should update CurrentSocialSecurityIncome fields', () => {
-        let incomes!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof IncomeContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof IncomeDispatchContext> };
 
         const TestComponent = () => {
-          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(IncomeContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(IncomeDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -753,28 +842,33 @@ describe('IncomeContext', () => {
         );
 
         act(() => {
-          dispatch({ type: 'ADD_INCOME', payload: ssIncome });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: ssIncome });
         });
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'UPDATE_INCOME_FIELD',
             payload: { id: '1', field: 'amount', value: 1600 },
           });
         });
 
-        expect(incomes[0].amount).toBe(1600);
+        expect(captured.incomes[0].amount).toBe(1600);
       });
     });
 
     describe('FutureSocialSecurityIncome', () => {
       it('should add FutureSocialSecurityIncome to state', () => {
-        let incomes!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof IncomeContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof IncomeDispatchContext> };
 
         const TestComponent = () => {
-          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(IncomeContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(IncomeDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -794,11 +888,11 @@ describe('IncomeContext', () => {
         );
 
         act(() => {
-          dispatch({ type: 'ADD_INCOME', payload: futureSSIncome });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: futureSSIncome });
         });
 
-        expect(incomes).toHaveLength(1);
-        expect(incomes[0]).toMatchObject({
+        expect(captured.incomes).toHaveLength(1);
+        expect(captured.incomes[0]).toMatchObject({
           id: '1',
           name: 'Future Retirement Benefits',
           claimingAge: 67,
@@ -809,12 +903,17 @@ describe('IncomeContext', () => {
       });
 
       it('should update FutureSocialSecurityIncome claiming age', () => {
-        let incomes!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof IncomeContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof IncomeDispatchContext> };
 
         const TestComponent = () => {
-          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(IncomeContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(IncomeDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -832,26 +931,31 @@ describe('IncomeContext', () => {
         );
 
         act(() => {
-          dispatch({ type: 'ADD_INCOME', payload: futureSSIncome });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: futureSSIncome });
         });
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'UPDATE_INCOME_FIELD',
             payload: { id: '1', field: 'claimingAge', value: 70 },
           });
         });
 
-        expect(incomes[0].claimingAge).toBe(70);
+        expect((captured.incomes[0] as FutureSocialSecurityIncome).claimingAge).toBe(70);
       });
 
       it('should preserve FutureSocialSecurityIncome calculated values', () => {
-        let incomes!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof IncomeContext>;
+        const capturedDispatch = { dispatch: (() => null) as React.ContextType<typeof IncomeDispatchContext> };
 
         const TestComponent = () => {
-          ({ incomes } = useContext(IncomeContext)); dispatch = useContext(IncomeDispatchContext);
-          return null;
+
+            Object.assign(captured, useContext(IncomeContext));
+
+            Object.assign(capturedDispatch, { dispatch: useContext(IncomeDispatchContext) });
+
+            return null;
+
         };
 
         render(
@@ -871,11 +975,11 @@ describe('IncomeContext', () => {
         );
 
         act(() => {
-          dispatch({ type: 'ADD_INCOME', payload: futureSSIncome });
+          capturedDispatch.dispatch({ type: 'ADD_INCOME', payload: futureSSIncome });
         });
 
-        expect(incomes[0].calculatedPIA).toBe(2500);
-        expect(incomes[0].calculationYear).toBe(2045);
+        expect((captured.incomes[0] as FutureSocialSecurityIncome).calculatedPIA).toBe(2500);
+        expect((captured.incomes[0] as FutureSocialSecurityIncome).calculationYear).toBe(2045);
       });
     });
   });

@@ -52,11 +52,11 @@ describe('SimulationContext', () => {
   });
 
   it('should provide initial empty simulation state', () => {
-    let simulation!: SimulationYear[];
+    const captured = {} as React.ContextType<typeof SimulationContext>;
 
     const TestComponent = () => {
-      ({ simulation } = useContext(SimulationContext));
-      return null;
+        Object.assign(captured, useContext(SimulationContext));
+        return null;
     };
 
     render(
@@ -65,7 +65,7 @@ describe('SimulationContext', () => {
       </SimulationProvider>
     );
 
-    expect(simulation).toEqual([]);
+    expect(captured.simulation).toEqual([]);
   });
 
   it('should load simulation from localStorage on initialization', () => {
@@ -118,11 +118,11 @@ describe('SimulationContext', () => {
 
     localStorageMock.setItem('user_simulation_data', JSON.stringify(savedData));
 
-    let simulation!: SimulationYear[];
+    const captured = {} as React.ContextType<typeof SimulationContext>;
 
     const TestComponent = () => {
-      ({ simulation } = useContext(SimulationContext));
-      return null;
+        Object.assign(captured, useContext(SimulationContext));
+        return null;
     };
 
     render(
@@ -132,22 +132,22 @@ describe('SimulationContext', () => {
     );
 
     expect(localStorageMock.getItem).toHaveBeenCalledWith('user_simulation_data');
-    expect(simulation).toHaveLength(1);
-    expect(simulation[0].year).toBe(2024);
-    expect(simulation[0].accounts).toHaveLength(1);
-    expect(simulation[0].incomes).toHaveLength(1);
-    expect(simulation[0].expenses).toHaveLength(1);
+    expect(captured.simulation).toHaveLength(1);
+    expect(captured.simulation[0].year).toBe(2024);
+    expect(captured.simulation[0].accounts).toHaveLength(1);
+    expect(captured.simulation[0].incomes).toHaveLength(1);
+    expect(captured.simulation[0].expenses).toHaveLength(1);
   });
 
   it('should handle corrupted localStorage data gracefully', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     localStorageMock.setItem('user_simulation_data', 'invalid json');
 
-    let simulation!: SimulationYear[];
+    const captured = {} as React.ContextType<typeof SimulationContext>;
 
     const TestComponent = () => {
-      ({ simulation } = useContext(SimulationContext));
-      return null;
+        Object.assign(captured, useContext(SimulationContext));
+        return null;
     };
 
     render(
@@ -156,17 +156,17 @@ describe('SimulationContext', () => {
       </SimulationProvider>
     );
 
-    expect(simulation).toEqual([]);
+    expect(captured.simulation).toEqual([]);
     consoleSpy.mockRestore();
   });
 
   it('should save simulation to localStorage when state changes (debounced)', async () => {
     vi.useFakeTimers();
-    let dispatch: any;
+    const captured = {} as React.ContextType<typeof SimulationContext>;
 
     const TestComponent = () => {
-      ({ dispatch } = useContext(SimulationContext));
-      return null;
+        Object.assign(captured, useContext(SimulationContext));
+        return null;
     };
 
     render(
@@ -211,7 +211,7 @@ describe('SimulationContext', () => {
     ];
 
     act(() => {
-      dispatch({ type: 'SET_SIMULATION', payload: mockSimulation });
+      captured.dispatch({ type: 'SET_SIMULATION', payload: mockSimulation });
     });
 
     // Wait for debounce (500ms)
@@ -230,12 +230,11 @@ describe('SimulationContext', () => {
   describe('Reducer Actions', () => {
     describe('SET_SIMULATION', () => {
       it('should set simulation data', () => {
-        let simulation!: SimulationYear[];
-        let dispatch: any;
+        const captured = {} as React.ContextType<typeof SimulationContext>;
 
         const TestComponent = () => {
-          ({ simulation, dispatch } = useContext(SimulationContext));
-          return null;
+            Object.assign(captured, useContext(SimulationContext));
+            return null;
         };
 
         render(
@@ -244,7 +243,7 @@ describe('SimulationContext', () => {
           </SimulationProvider>
         );
 
-        expect(simulation).toEqual([]);
+        expect(captured.simulation).toEqual([]);
 
         const account = new SavedAccount('1', 'Savings', 1000, 2.5);
         const mockSimulation: SimulationYear[] = [
@@ -282,21 +281,20 @@ describe('SimulationContext', () => {
         ];
 
         act(() => {
-          dispatch({ type: 'SET_SIMULATION', payload: mockSimulation });
+          captured.dispatch({ type: 'SET_SIMULATION', payload: mockSimulation });
         });
 
-        expect(simulation).toHaveLength(1);
-        expect(simulation[0].year).toBe(2024);
-        expect(calculateNetWorth(simulation[0].accounts)).toBe(1000);
+        expect(captured.simulation).toHaveLength(1);
+        expect(captured.simulation[0].year).toBe(2024);
+        expect(calculateNetWorth(captured.simulation[0].accounts)).toBe(1000);
       });
 
       it('should update simulation with multiple years', () => {
-        let simulation!: SimulationYear[];
-        let dispatch: any;
+        const captured = {} as React.ContextType<typeof SimulationContext>;
 
         const TestComponent = () => {
-          ({ simulation, dispatch } = useContext(SimulationContext));
-          return null;
+            Object.assign(captured, useContext(SimulationContext));
+            return null;
         };
 
         render(
@@ -374,22 +372,21 @@ describe('SimulationContext', () => {
         ];
 
         act(() => {
-          dispatch({ type: 'SET_SIMULATION', payload: mockSimulation });
+          captured.dispatch({ type: 'SET_SIMULATION', payload: mockSimulation });
         });
 
-        expect(simulation).toHaveLength(2);
-        expect(simulation[0].year).toBe(2024);
-        expect(simulation[1].year).toBe(2025);
-        expect(calculateNetWorth(simulation[1].accounts)).toBe(1025);
+        expect(captured.simulation).toHaveLength(2);
+        expect(captured.simulation[0].year).toBe(2024);
+        expect(captured.simulation[1].year).toBe(2025);
+        expect(calculateNetWorth(captured.simulation[1].accounts)).toBe(1025);
       });
 
       it('should clear simulation when empty array is provided', () => {
-        let simulation!: SimulationYear[];
-        let dispatch: any;
+        const captured = {} as React.ContextType<typeof SimulationContext>;
 
         const TestComponent = () => {
-          ({ simulation, dispatch } = useContext(SimulationContext));
-          return null;
+            Object.assign(captured, useContext(SimulationContext));
+            return null;
         };
 
         render(
@@ -433,16 +430,16 @@ describe('SimulationContext', () => {
         ];
 
         act(() => {
-          dispatch({ type: 'SET_SIMULATION', payload: mockSimulation });
+          captured.dispatch({ type: 'SET_SIMULATION', payload: mockSimulation });
         });
 
-        expect(simulation).toHaveLength(1);
+        expect(captured.simulation).toHaveLength(1);
 
         act(() => {
-          dispatch({ type: 'SET_SIMULATION', payload: [] });
+          captured.dispatch({ type: 'SET_SIMULATION', payload: [] });
         });
 
-        expect(simulation).toEqual([]);
+        expect(captured.simulation).toEqual([]);
       });
     });
   });
@@ -512,11 +509,11 @@ describe('SimulationContext', () => {
 
       localStorageMock.setItem('user_simulation_data', JSON.stringify(savedData));
 
-      let simulation!: SimulationYear[];
+      const captured = {} as React.ContextType<typeof SimulationContext>;
 
       const TestComponent = () => {
-        ({ simulation } = useContext(SimulationContext));
-        return null;
+          Object.assign(captured, useContext(SimulationContext));
+          return null;
       };
 
       render(
@@ -525,9 +522,9 @@ describe('SimulationContext', () => {
         </SimulationProvider>
       );
 
-      expect(simulation[0].accounts[0].constructor.name).toBe('SavedAccount');
-      expect(simulation[0].incomes[0].constructor.name).toBe('PassiveIncome');
-      expect(simulation[0].expenses[0].constructor.name).toBe('FoodExpense');
+      expect(captured.simulation[0].accounts[0].constructor.name).toBe('SavedAccount');
+      expect(captured.simulation[0].incomes[0].constructor.name).toBe('PassiveIncome');
+      expect(captured.simulation[0].expenses[0].constructor.name).toBe('FoodExpense');
     });
 
     it('should filter out invalid objects during reconstitution', () => {
@@ -584,11 +581,11 @@ describe('SimulationContext', () => {
 
       localStorageMock.setItem('user_simulation_data', JSON.stringify(savedData));
 
-      let simulation!: SimulationYear[];
+      const captured = {} as React.ContextType<typeof SimulationContext>;
 
       const TestComponent = () => {
-        ({ simulation } = useContext(SimulationContext));
-        return null;
+          Object.assign(captured, useContext(SimulationContext));
+          return null;
       };
 
       render(
@@ -598,8 +595,8 @@ describe('SimulationContext', () => {
       );
 
       // Should only have the valid SavedAccount
-      expect(simulation[0].accounts).toHaveLength(1);
-      expect(simulation[0].accounts[0].id).toBe('1');
+      expect(captured.simulation[0].accounts).toHaveLength(1);
+      expect(captured.simulation[0].accounts[0].id).toBe('1');
       consoleSpy.mockRestore();
     });
   });
@@ -607,11 +604,11 @@ describe('SimulationContext', () => {
   describe('localStorage serialization', () => {
     it('should save className metadata for all objects (debounced)', async () => {
       vi.useFakeTimers();
-      let dispatch: any;
+      const captured = {} as React.ContextType<typeof SimulationContext>;
 
       const TestComponent = () => {
-        ({ dispatch } = useContext(SimulationContext));
-        return null;
+          Object.assign(captured, useContext(SimulationContext));
+          return null;
       };
 
       render(
@@ -659,7 +656,7 @@ describe('SimulationContext', () => {
       ];
 
       act(() => {
-        dispatch({ type: 'SET_SIMULATION', payload: mockSimulation });
+        captured.dispatch({ type: 'SET_SIMULATION', payload: mockSimulation });
       });
 
       // Wait for debounce (500ms)

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { CashflowSankey } from '../../../components/Charts/CashflowSankey';
-import { buildCashflowSankeyData } from '../../../components/Charts/cashflowSankeyData';
+import { buildCashflowSankeyData, SankeyNode, SankeyLink } from '../../../components/Charts/cashflowSankeyData';
 import { PassiveIncome, CurrentSocialSecurityIncome } from '../../../components/Objects/Income/models';
 import { FoodExpense } from '../../../components/Objects/Expense/models';
 import { SavedAccount, InvestedAccount, DebtAccount } from '../../../components/Objects/Accounts/models';
@@ -13,13 +13,13 @@ class ResizeObserverMock {
     unobserve() {}
     disconnect() {}
 }
-(globalThis as any).ResizeObserver = ResizeObserverMock;
+(globalThis as unknown as { ResizeObserver: typeof ResizeObserverMock }).ResizeObserver = ResizeObserverMock;
 
 // Mock Nivo's ResponsiveSankey to capture the data it receives
-let capturedSankeyData: { nodes: any[]; links: any[] } | null = null;
+let capturedSankeyData: { nodes: SankeyNode[]; links: SankeyLink[] } | null = null;
 
 vi.mock('@nivo/sankey', () => ({
-    ResponsiveSankey: ({ data }: { data: { nodes: any[]; links: any[] } }) => {
+    ResponsiveSankey: ({ data }: { data: { nodes: SankeyNode[]; links: SankeyLink[] } }) => {
         capturedSankeyData = data;
         return <div data-testid="mock-sankey">Sankey Chart</div>;
     }
@@ -136,12 +136,12 @@ describe('CashflowSankey', () => {
 
             // Find if there's a "Deficit" node
             const deficitNode = capturedSankeyData!.nodes.find(
-                (node: any) => node.id === 'Deficit'
+                (node) => node.id === 'Deficit'
             );
 
             // Find if there's a link from Deficit to Net Pay
             const deficitLink = capturedSankeyData!.links.find(
-                (link: any) => link.source === 'Deficit'
+                (link) => link.source === 'Deficit'
             );
 
             // The chart should NOT show a deficit when withdrawals cover expenses
@@ -149,18 +149,18 @@ describe('CashflowSankey', () => {
             expect(
                 deficitNode,
                 'Sankey should NOT have a Deficit node when Traditional withdrawals cover expenses. ' +
-                `Found nodes: ${capturedSankeyData!.nodes.map((n: any) => n.id).join(', ')}`
+                `Found nodes: ${capturedSankeyData!.nodes.map((n) => n.id).join(', ')}`
             ).toBeUndefined();
 
             expect(
                 deficitLink,
                 `Sankey should NOT have a Deficit link. ` +
-                `Found links from: ${capturedSankeyData!.links.map((l: any) => `${l.source}->${l.target}`).join(', ')}`
+                `Found links from: ${capturedSankeyData!.links.map((l) => `${l.source}->${l.target}`).join(', ')}`
             ).toBeUndefined();
 
             // Verify the Traditional withdrawal IS being shown as income
             const withdrawNode = capturedSankeyData!.nodes.find(
-                (node: any) => node.id === 'Withdraw: Trad 401k'
+                (node) => node.id === 'Withdraw: Trad 401k'
             );
             expect(
                 withdrawNode,
@@ -169,13 +169,13 @@ describe('CashflowSankey', () => {
 
             // Verify the withdrawal flows to Gross Pay
             const withdrawToGrossLink = capturedSankeyData!.links.find(
-                (link: any) => link.source === 'Withdraw: Trad 401k' && link.target === 'Gross Pay'
+                (link) => link.source === 'Withdraw: Trad 401k' && link.target === 'Gross Pay'
             );
             expect(
                 withdrawToGrossLink,
                 'Traditional withdrawal should flow to Gross Pay'
             ).toBeDefined();
-            expect(withdrawToGrossLink.value).toBe(85031);
+            expect(withdrawToGrossLink!.value).toBe(85031);
         });
     });
 
@@ -208,24 +208,24 @@ describe('CashflowSankey', () => {
 
             // [2] Node id is keyed on the unique account id; [5] the visible LABEL
             // carries "Pay Down:"; the color is the debt/negative color.
-            const payDown = nodes.find((n: any) => n.id === 'Pay Down: acc-card');
-            expect(payDown, `nodes: ${nodes.map((n: any) => n.id).join(', ')}`).toBeDefined();
-            expect(payDown.label).toBe('Pay Down: Credit Card'); // [5] user sees this
-            expect(payDown.color).toBe('var(--c-negative-soft)');
+            const payDown = nodes.find((n) => n.id === 'Pay Down: acc-card');
+            expect(payDown, `nodes: ${nodes.map((n) => n.id).join(', ')}`).toBeDefined();
+            expect(payDown!.label).toBe('Pay Down: Credit Card'); // [5] user sees this
+            expect(payDown!.color).toBe('var(--c-negative-soft)');
 
             // A real investment bucket still renders as "Save:" in the money color,
             // and its visible label is the plain account name.
-            const save = nodes.find((n: any) => n.id === 'Save: acc-brok');
+            const save = nodes.find((n) => n.id === 'Save: acc-brok');
             expect(save).toBeDefined();
-            expect(save.label).toBe('Brokerage');
-            expect(save.color).toBe('var(--color-chart-money)');
+            expect(save!.label).toBe('Brokerage');
+            expect(save!.color).toBe('var(--color-chart-money)');
 
             // The link target matches the node id, so the edge resolves.
             const payDownLink = capturedSankeyData!.links.find(
-                (l: any) => l.target === 'Pay Down: acc-card'
+                (l) => l.target === 'Pay Down: acc-card'
             );
             expect(payDownLink, 'a link must target the debt node').toBeDefined();
-            expect(payDownLink.value).toBe(4000);
+            expect(payDownLink!.value).toBe(4000);
         });
 
         it('[2] two buckets sharing a display name produce DISTINCT node ids (not silently merged)', () => {
@@ -253,12 +253,12 @@ describe('CashflowSankey', () => {
             expect(capturedSankeyData).not.toBeNull(); // [6] guard before deref
             const nodes = capturedSankeyData!.nodes;
             // Distinct ids (keyed on account id), both labeled "Pay Down: Loan".
-            expect(nodes.find((n: any) => n.id === 'Pay Down: acc-a')).toBeDefined();
-            expect(nodes.find((n: any) => n.id === 'Pay Down: acc-b')).toBeDefined();
-            const payDownLabels = nodes.filter((n: any) => n.label === 'Pay Down: Loan');
+            expect(nodes.find((n) => n.id === 'Pay Down: acc-a')).toBeDefined();
+            expect(nodes.find((n) => n.id === 'Pay Down: acc-b')).toBeDefined();
+            const payDownLabels = nodes.filter((n) => n.label === 'Pay Down: Loan');
             expect(payDownLabels).toHaveLength(2);
             // No duplicate node ids in the whole graph.
-            const ids = nodes.map((n: any) => n.id);
+            const ids = nodes.map((n) => n.id);
             expect(new Set(ids).size).toBe(ids.length);
         });
 

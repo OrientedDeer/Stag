@@ -37,11 +37,11 @@ describe('TaxContext', () => {
   });
 
   it('should provide initial default state', () => {
-    let state!: TaxState;
+    const captured = {} as React.ContextType<typeof TaxContext>;
 
     const TestComponent = () => {
-      ({ state } = useContext(TaxContext));
-      return null;
+        Object.assign(captured, useContext(TaxContext));
+        return null;
     };
 
     render(
@@ -50,12 +50,12 @@ describe('TaxContext', () => {
       </TaxProvider>
     );
 
-    expect(state.filingStatus).toBe('Single');
-    expect(state.stateResidency).toBe('DC');
-    expect(state.deductionMethod).toBe('Auto');
-    expect(state.fedOverride).toBeNull();
-    expect(state.ficaOverride).toBeNull();
-    expect(state.stateOverride).toBeNull();
+    expect(captured.state.filingStatus).toBe('Single');
+    expect(captured.state.stateResidency).toBe('DC');
+    expect(captured.state.deductionMethod).toBe('Auto');
+    expect(captured.state.fedOverride).toBeNull();
+    expect(captured.state.ficaOverride).toBeNull();
+    expect(captured.state.stateOverride).toBeNull();
   });
 
   it('should load state from localStorage on initialization', () => {
@@ -71,11 +71,11 @@ describe('TaxContext', () => {
 
     localStorageMock.setItem('tax_settings', JSON.stringify(savedState));
 
-    let state!: TaxState;
+    const captured = {} as React.ContextType<typeof TaxContext>;
 
     const TestComponent = () => {
-      ({ state } = useContext(TaxContext));
-      return null;
+        Object.assign(captured, useContext(TaxContext));
+        return null;
     };
 
     render(
@@ -85,12 +85,12 @@ describe('TaxContext', () => {
     );
 
     expect(localStorageMock.getItem).toHaveBeenCalledWith('tax_settings');
-    expect(state.filingStatus).toBe('Married Filing Jointly');
-    expect(state.stateResidency).toBe('CA');
-    expect(state.deductionMethod).toBe('Itemized');
-    expect(state.fedOverride).toBe(5000);
-    expect(state.ficaOverride).toBe(1000);
-    expect(state.stateOverride).toBe(2000);
+    expect(captured.state.filingStatus).toBe('Married Filing Jointly');
+    expect(captured.state.stateResidency).toBe('CA');
+    expect(captured.state.deductionMethod).toBe('Itemized');
+    expect(captured.state.fedOverride).toBe(5000);
+    expect(captured.state.ficaOverride).toBe(1000);
+    expect(captured.state.stateOverride).toBe(2000);
   });
 
   it('should merge saved state with initial state for backwards compatibility', () => {
@@ -105,11 +105,11 @@ describe('TaxContext', () => {
 
     localStorageMock.setItem('tax_settings', JSON.stringify(oldSavedState));
 
-    let state!: TaxState;
+    const captured = {} as React.ContextType<typeof TaxContext>;
 
     const TestComponent = () => {
-      ({ state } = useContext(TaxContext));
-      return null;
+        Object.assign(captured, useContext(TaxContext));
+        return null;
     };
 
     render(
@@ -118,20 +118,20 @@ describe('TaxContext', () => {
       </TaxProvider>
     );
 
-    expect(state.filingStatus).toBe('Married Filing Jointly');
-    expect(state.fedOverride).toBeNull(); // Should have default value
-    expect(state.ficaOverride).toBeNull();
-    expect(state.stateOverride).toBeNull();
+    expect(captured.state.filingStatus).toBe('Married Filing Jointly');
+    expect(captured.state.fedOverride).toBeNull(); // Should have default value
+    expect(captured.state.ficaOverride).toBeNull();
+    expect(captured.state.stateOverride).toBeNull();
   });
 
   it('should fall back to defaults on corrupted localStorage data', () => {
     localStorageMock.setItem('tax_settings', 'invalid json');
 
-    let state!: TaxState;
+    const captured = {} as React.ContextType<typeof TaxContext>;
 
     const TestComponent = () => {
-      ({ state } = useContext(TaxContext));
-      return null;
+        Object.assign(captured, useContext(TaxContext));
+        return null;
     };
 
     // Should not throw - gracefully falls back to default state
@@ -142,18 +142,18 @@ describe('TaxContext', () => {
     );
 
     // Verify we got the default state
-    expect(state.filingStatus).toBe('Single');
-    expect(state.stateResidency).toBe('DC');
-    expect(state.deductionMethod).toBe('Auto');
+    expect(captured.state.filingStatus).toBe('Single');
+    expect(captured.state.stateResidency).toBe('DC');
+    expect(captured.state.deductionMethod).toBe('Auto');
   });
 
   it('should save state to localStorage when state changes (debounced)', async () => {
     vi.useFakeTimers();
-    let dispatch: any;
+    const captured = {} as React.ContextType<typeof TaxContext>;
 
     const TestComponent = () => {
-      ({ dispatch } = useContext(TaxContext));
-      return null;
+        Object.assign(captured, useContext(TaxContext));
+        return null;
     };
 
     render(
@@ -163,7 +163,7 @@ describe('TaxContext', () => {
     );
 
     act(() => {
-      dispatch({ type: 'SET_STATUS', payload: 'Married Filing Jointly' });
+      captured.dispatch({ type: 'SET_STATUS', payload: 'Married Filing Jointly' });
     });
 
     // Wait for debounce (500ms)
@@ -182,12 +182,11 @@ describe('TaxContext', () => {
   describe('Reducer Actions', () => {
     describe('SET_STATUS', () => {
       it('should update filing status', () => {
-        let state!: TaxState;
-        let dispatch: any;
+        const captured = {} as React.ContextType<typeof TaxContext>;
 
         const TestComponent = () => {
-          ({ state, dispatch } = useContext(TaxContext));
-          return null;
+            Object.assign(captured, useContext(TaxContext));
+            return null;
         };
 
         render(
@@ -196,24 +195,23 @@ describe('TaxContext', () => {
           </TaxProvider>
         );
 
-        expect(state.filingStatus).toBe('Single');
+        expect(captured.state.filingStatus).toBe('Single');
 
         act(() => {
-          dispatch({ type: 'SET_STATUS', payload: 'Married Filing Jointly' });
+          captured.dispatch({ type: 'SET_STATUS', payload: 'Married Filing Jointly' });
         });
 
-        expect(state.filingStatus).toBe('Married Filing Jointly');
+        expect(captured.state.filingStatus).toBe('Married Filing Jointly');
       });
     });
 
     describe('SET_STATE', () => {
       it('should update state residency', () => {
-        let state!: TaxState;
-        let dispatch: any;
+        const captured = {} as React.ContextType<typeof TaxContext>;
 
         const TestComponent = () => {
-          ({ state, dispatch } = useContext(TaxContext));
-          return null;
+            Object.assign(captured, useContext(TaxContext));
+            return null;
         };
 
         render(
@@ -222,24 +220,23 @@ describe('TaxContext', () => {
           </TaxProvider>
         );
 
-        expect(state.stateResidency).toBe('DC');
+        expect(captured.state.stateResidency).toBe('DC');
 
         act(() => {
-          dispatch({ type: 'SET_STATE', payload: 'NY' });
+          captured.dispatch({ type: 'SET_STATE', payload: 'NY' });
         });
 
-        expect(state.stateResidency).toBe('NY');
+        expect(captured.state.stateResidency).toBe('NY');
       });
     });
 
     describe('SET_DEDUCTION_METHOD', () => {
       it('should update deduction method', () => {
-        let state!: TaxState;
-        let dispatch: any;
+        const captured = {} as React.ContextType<typeof TaxContext>;
 
         const TestComponent = () => {
-          ({ state, dispatch } = useContext(TaxContext));
-          return null;
+            Object.assign(captured, useContext(TaxContext));
+            return null;
         };
 
         render(
@@ -248,24 +245,23 @@ describe('TaxContext', () => {
           </TaxProvider>
         );
 
-        expect(state.deductionMethod).toBe('Auto');
+        expect(captured.state.deductionMethod).toBe('Auto');
 
         act(() => {
-          dispatch({ type: 'SET_DEDUCTION_METHOD', payload: 'Itemized' });
+          captured.dispatch({ type: 'SET_DEDUCTION_METHOD', payload: 'Itemized' });
         });
 
-        expect(state.deductionMethod).toBe('Itemized');
+        expect(captured.state.deductionMethod).toBe('Itemized');
       });
     });
 
     describe('SET_FED_OVERRIDE', () => {
       it('should set federal override', () => {
-        let state!: TaxState;
-        let dispatch: any;
+        const captured = {} as React.ContextType<typeof TaxContext>;
 
         const TestComponent = () => {
-          ({ state, dispatch } = useContext(TaxContext));
-          return null;
+            Object.assign(captured, useContext(TaxContext));
+            return null;
         };
 
         render(
@@ -274,22 +270,21 @@ describe('TaxContext', () => {
           </TaxProvider>
         );
 
-        expect(state.fedOverride).toBeNull();
+        expect(captured.state.fedOverride).toBeNull();
 
         act(() => {
-          dispatch({ type: 'SET_FED_OVERRIDE', payload: 5000 });
+          captured.dispatch({ type: 'SET_FED_OVERRIDE', payload: 5000 });
         });
 
-        expect(state.fedOverride).toBe(5000);
+        expect(captured.state.fedOverride).toBe(5000);
       });
 
       it('should clear federal override when set to null', () => {
-        let state!: TaxState;
-        let dispatch: any;
+        const captured = {} as React.ContextType<typeof TaxContext>;
 
         const TestComponent = () => {
-          ({ state, dispatch } = useContext(TaxContext));
-          return null;
+            Object.assign(captured, useContext(TaxContext));
+            return null;
         };
 
         render(
@@ -299,27 +294,26 @@ describe('TaxContext', () => {
         );
 
         act(() => {
-          dispatch({ type: 'SET_FED_OVERRIDE', payload: 5000 });
+          captured.dispatch({ type: 'SET_FED_OVERRIDE', payload: 5000 });
         });
 
-        expect(state.fedOverride).toBe(5000);
+        expect(captured.state.fedOverride).toBe(5000);
 
         act(() => {
-          dispatch({ type: 'SET_FED_OVERRIDE', payload: null });
+          captured.dispatch({ type: 'SET_FED_OVERRIDE', payload: null });
         });
 
-        expect(state.fedOverride).toBeNull();
+        expect(captured.state.fedOverride).toBeNull();
       });
     });
 
     describe('SET_FICA_OVERRIDE', () => {
       it('should set FICA override', () => {
-        let state!: TaxState;
-        let dispatch: any;
+        const captured = {} as React.ContextType<typeof TaxContext>;
 
         const TestComponent = () => {
-          ({ state, dispatch } = useContext(TaxContext));
-          return null;
+            Object.assign(captured, useContext(TaxContext));
+            return null;
         };
 
         render(
@@ -328,24 +322,23 @@ describe('TaxContext', () => {
           </TaxProvider>
         );
 
-        expect(state.ficaOverride).toBeNull();
+        expect(captured.state.ficaOverride).toBeNull();
 
         act(() => {
-          dispatch({ type: 'SET_FICA_OVERRIDE', payload: 1000 });
+          captured.dispatch({ type: 'SET_FICA_OVERRIDE', payload: 1000 });
         });
 
-        expect(state.ficaOverride).toBe(1000);
+        expect(captured.state.ficaOverride).toBe(1000);
       });
     });
 
     describe('SET_STATE_OVERRIDE', () => {
       it('should set state override', () => {
-        let state!: TaxState;
-        let dispatch: any;
+        const captured = {} as React.ContextType<typeof TaxContext>;
 
         const TestComponent = () => {
-          ({ state, dispatch } = useContext(TaxContext));
-          return null;
+            Object.assign(captured, useContext(TaxContext));
+            return null;
         };
 
         render(
@@ -354,24 +347,23 @@ describe('TaxContext', () => {
           </TaxProvider>
         );
 
-        expect(state.stateOverride).toBeNull();
+        expect(captured.state.stateOverride).toBeNull();
 
         act(() => {
-          dispatch({ type: 'SET_STATE_OVERRIDE', payload: 2000 });
+          captured.dispatch({ type: 'SET_STATE_OVERRIDE', payload: 2000 });
         });
 
-        expect(state.stateOverride).toBe(2000);
+        expect(captured.state.stateOverride).toBe(2000);
       });
     });
 
     describe('SET_YEAR', () => {
       it('should update tax year', () => {
-        let state!: TaxState;
-        let dispatch: any;
+        const captured = {} as React.ContextType<typeof TaxContext>;
 
         const TestComponent = () => {
-          ({ state, dispatch } = useContext(TaxContext));
-          return null;
+            Object.assign(captured, useContext(TaxContext));
+            return null;
         };
 
         render(
@@ -381,21 +373,20 @@ describe('TaxContext', () => {
         );
 
         act(() => {
-          dispatch({ type: 'SET_YEAR', payload: 2025 });
+          captured.dispatch({ type: 'SET_YEAR', payload: 2025 });
         });
 
-        expect(state.year).toBe(2025);
+        expect(captured.state.year).toBe(2025);
       });
     });
 
     describe('SET_BULK_DATA', () => {
       it('should replace entire state', () => {
-        let state!: TaxState;
-        let dispatch: any;
+        const captured = {} as React.ContextType<typeof TaxContext>;
 
         const TestComponent = () => {
-          ({ state, dispatch } = useContext(TaxContext));
-          return null;
+            Object.assign(captured, useContext(TaxContext));
+            return null;
         };
 
         render(
@@ -415,22 +406,21 @@ describe('TaxContext', () => {
         };
 
         act(() => {
-          dispatch({ type: 'SET_BULK_DATA', payload: newState });
+          captured.dispatch({ type: 'SET_BULK_DATA', payload: newState });
         });
 
-        expect(state).toEqual(newState);
+        expect(captured.state).toEqual(newState);
       });
     });
   });
 
   describe('Multiple updates', () => {
     it('should handle multiple updates correctly', () => {
-      let state!: TaxState;
-      let dispatch: any;
+      const captured = {} as React.ContextType<typeof TaxContext>;
 
       const TestComponent = () => {
-        ({ state, dispatch } = useContext(TaxContext));
-        return null;
+          Object.assign(captured, useContext(TaxContext));
+          return null;
       };
 
       render(
@@ -440,16 +430,16 @@ describe('TaxContext', () => {
       );
 
       act(() => {
-        dispatch({ type: 'SET_STATUS', payload: 'Married Filing Jointly' });
-        dispatch({ type: 'SET_STATE', payload: 'CA' });
-        dispatch({ type: 'SET_DEDUCTION_METHOD', payload: 'Itemized' });
-        dispatch({ type: 'SET_FED_OVERRIDE', payload: 5000 });
+        captured.dispatch({ type: 'SET_STATUS', payload: 'Married Filing Jointly' });
+        captured.dispatch({ type: 'SET_STATE', payload: 'CA' });
+        captured.dispatch({ type: 'SET_DEDUCTION_METHOD', payload: 'Itemized' });
+        captured.dispatch({ type: 'SET_FED_OVERRIDE', payload: 5000 });
       });
 
-      expect(state.filingStatus).toBe('Married Filing Jointly');
-      expect(state.stateResidency).toBe('CA');
-      expect(state.deductionMethod).toBe('Itemized');
-      expect(state.fedOverride).toBe(5000);
+      expect(captured.state.filingStatus).toBe('Married Filing Jointly');
+      expect(captured.state.stateResidency).toBe('CA');
+      expect(captured.state.deductionMethod).toBe('Itemized');
+      expect(captured.state.fedOverride).toBe(5000);
     });
   });
 });

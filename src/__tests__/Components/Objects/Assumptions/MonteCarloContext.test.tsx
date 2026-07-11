@@ -13,10 +13,11 @@ import {
     MonteCarloConfig,
     MonteCarloSummary,
     defaultMonteCarloConfig,
-    initialMonteCarloState,
 } from '../../../../services/MonteCarloTypes';
 import { runMonteCarloSimulation } from '../../../../services/MonteCarloEngine';
 import { createRandomSeed } from '../../../../services/RandomGenerator';
+import { AssumptionsState } from '../../../../components/Objects/Assumptions/AssumptionsContext';
+import { TaxState } from '../../../../components/Objects/Taxes/TaxContext';
 
 // Mock the MonteCarloEngine
 vi.mock('../../../../services/MonteCarloEngine', () => ({
@@ -100,10 +101,10 @@ describe('MonteCarloContext', () => {
 
     describe('Initial State', () => {
         it('should provide initial state when no localStorage data exists', () => {
-            let state: typeof initialMonteCarloState;
+            const captured = {} as React.ContextType<typeof MonteCarloContext>;
 
             const TestComponent = () => {
-                ({ state } = useContext(MonteCarloContext));
+                Object.assign(captured, useContext(MonteCarloContext));
                 return null;
             };
 
@@ -113,13 +114,13 @@ describe('MonteCarloContext', () => {
                 </MonteCarloProvider>
             );
 
-            expect(state!.config.numScenarios).toBe(defaultMonteCarloConfig.numScenarios);
-            expect(state!.config.returnMean).toBe(defaultMonteCarloConfig.returnMean);
-            expect(state!.config.returnStdDev).toBe(defaultMonteCarloConfig.returnStdDev);
-            expect(state!.summary).toBeNull();
-            expect(state!.isRunning).toBe(false);
-            expect(state!.progress).toBe(0);
-            expect(state!.error).toBeNull();
+            expect(captured.state.config.numScenarios).toBe(defaultMonteCarloConfig.numScenarios);
+            expect(captured.state.config.returnMean).toBe(defaultMonteCarloConfig.returnMean);
+            expect(captured.state.config.returnStdDev).toBe(defaultMonteCarloConfig.returnStdDev);
+            expect(captured.state.summary).toBeNull();
+            expect(captured.state.isRunning).toBe(false);
+            expect(captured.state.progress).toBe(0);
+            expect(captured.state.error).toBeNull();
         });
 
         it('should load config from localStorage on initialization', () => {
@@ -132,10 +133,10 @@ describe('MonteCarloContext', () => {
 
             localStorageMock.setItem('monte_carlo_config', JSON.stringify(savedConfig));
 
-            let state: typeof initialMonteCarloState;
+            const captured = {} as React.ContextType<typeof MonteCarloContext>;
 
             const TestComponent = () => {
-                ({ state } = useContext(MonteCarloContext));
+                Object.assign(captured, useContext(MonteCarloContext));
                 return null;
             };
 
@@ -146,20 +147,20 @@ describe('MonteCarloContext', () => {
             );
 
             expect(localStorageMock.getItem).toHaveBeenCalledWith('monte_carlo_config');
-            expect(state!.config.numScenarios).toBe(500);
-            expect(state!.config.returnMean).toBe(8);
-            expect(state!.config.returnStdDev).toBe(12);
-            expect(state!.config.seed).toBe(54321);
+            expect(captured.state.config.numScenarios).toBe(500);
+            expect(captured.state.config.returnMean).toBe(8);
+            expect(captured.state.config.returnStdDev).toBe(12);
+            expect(captured.state.config.seed).toBe(54321);
         });
 
         it('should handle corrupted localStorage data gracefully', () => {
             const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
             localStorageMock.setItem('monte_carlo_config', 'invalid json');
 
-            let state: typeof initialMonteCarloState;
+            const captured = {} as React.ContextType<typeof MonteCarloContext>;
 
             const TestComponent = () => {
-                ({ state } = useContext(MonteCarloContext));
+                Object.assign(captured, useContext(MonteCarloContext));
                 return null;
             };
 
@@ -171,7 +172,7 @@ describe('MonteCarloContext', () => {
             );
 
             // Should fall back to default config
-            expect(state!.config.numScenarios).toBe(defaultMonteCarloConfig.numScenarios);
+            expect(captured.state.config.numScenarios).toBe(defaultMonteCarloConfig.numScenarios);
             consoleSpy.mockRestore();
         });
 
@@ -179,10 +180,10 @@ describe('MonteCarloContext', () => {
             const partialConfig = { numScenarios: 1000 };
             localStorageMock.setItem('monte_carlo_config', JSON.stringify(partialConfig));
 
-            let state: typeof initialMonteCarloState;
+            const captured = {} as React.ContextType<typeof MonteCarloContext>;
 
             const TestComponent = () => {
-                ({ state } = useContext(MonteCarloContext));
+                Object.assign(captured, useContext(MonteCarloContext));
                 return null;
             };
 
@@ -192,20 +193,19 @@ describe('MonteCarloContext', () => {
                 </MonteCarloProvider>
             );
 
-            expect(state!.config.numScenarios).toBe(1000);
-            expect(state!.config.returnMean).toBe(defaultMonteCarloConfig.returnMean);
-            expect(state!.config.returnStdDev).toBe(defaultMonteCarloConfig.returnStdDev);
+            expect(captured.state.config.numScenarios).toBe(1000);
+            expect(captured.state.config.returnMean).toBe(defaultMonteCarloConfig.returnMean);
+            expect(captured.state.config.returnStdDev).toBe(defaultMonteCarloConfig.returnStdDev);
         });
     });
 
     describe('Reducer Actions', () => {
         describe('UPDATE_CONFIG', () => {
             it('should update config with partial values', () => {
-                let state: typeof initialMonteCarloState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof MonteCarloContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(MonteCarloContext));
+                    Object.assign(captured, useContext(MonteCarloContext));
                     return null;
                 };
 
@@ -216,19 +216,18 @@ describe('MonteCarloContext', () => {
                 );
 
                 act(() => {
-                    dispatch({ type: 'UPDATE_CONFIG', payload: { numScenarios: 500 } });
+                    captured.dispatch({ type: 'UPDATE_CONFIG', payload: { numScenarios: 500 } });
                 });
 
-                expect(state!.config.numScenarios).toBe(500);
-                expect(state!.config.returnMean).toBe(defaultMonteCarloConfig.returnMean);
+                expect(captured.state.config.numScenarios).toBe(500);
+                expect(captured.state.config.returnMean).toBe(defaultMonteCarloConfig.returnMean);
             });
 
             it('should update multiple config values at once', () => {
-                let state: typeof initialMonteCarloState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof MonteCarloContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(MonteCarloContext));
+                    Object.assign(captured, useContext(MonteCarloContext));
                     return null;
                 };
 
@@ -239,25 +238,24 @@ describe('MonteCarloContext', () => {
                 );
 
                 act(() => {
-                    dispatch({
+                    captured.dispatch({
                         type: 'UPDATE_CONFIG',
                         payload: { numScenarios: 1000, returnMean: 10, returnStdDev: 20 },
                     });
                 });
 
-                expect(state!.config.numScenarios).toBe(1000);
-                expect(state!.config.returnMean).toBe(10);
-                expect(state!.config.returnStdDev).toBe(20);
+                expect(captured.state.config.numScenarios).toBe(1000);
+                expect(captured.state.config.returnMean).toBe(10);
+                expect(captured.state.config.returnStdDev).toBe(20);
             });
         });
 
         describe('START_SIMULATION', () => {
             it('should set isRunning to true and reset progress/error', () => {
-                let state: typeof initialMonteCarloState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof MonteCarloContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(MonteCarloContext));
+                    Object.assign(captured, useContext(MonteCarloContext));
                     return null;
                 };
 
@@ -269,28 +267,27 @@ describe('MonteCarloContext', () => {
 
                 // First set an error state
                 act(() => {
-                    dispatch({ type: 'SIMULATION_ERROR', payload: 'Previous error' });
+                    captured.dispatch({ type: 'SIMULATION_ERROR', payload: 'Previous error' });
                 });
 
-                expect(state!.error).toBe('Previous error');
+                expect(captured.state.error).toBe('Previous error');
 
                 act(() => {
-                    dispatch({ type: 'START_SIMULATION' });
+                    captured.dispatch({ type: 'START_SIMULATION' });
                 });
 
-                expect(state!.isRunning).toBe(true);
-                expect(state!.progress).toBe(0);
-                expect(state!.error).toBeNull();
+                expect(captured.state.isRunning).toBe(true);
+                expect(captured.state.progress).toBe(0);
+                expect(captured.state.error).toBeNull();
             });
         });
 
         describe('UPDATE_PROGRESS', () => {
             it('should update progress value', () => {
-                let state: typeof initialMonteCarloState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof MonteCarloContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(MonteCarloContext));
+                    Object.assign(captured, useContext(MonteCarloContext));
                     return null;
                 };
 
@@ -301,20 +298,19 @@ describe('MonteCarloContext', () => {
                 );
 
                 act(() => {
-                    dispatch({ type: 'UPDATE_PROGRESS', payload: 50 });
+                    captured.dispatch({ type: 'UPDATE_PROGRESS', payload: 50 });
                 });
 
-                expect(state!.progress).toBe(50);
+                expect(captured.state.progress).toBe(50);
             });
         });
 
         describe('COMPLETE_SIMULATION', () => {
             it('should store summary and set progress to 100', () => {
-                let state: typeof initialMonteCarloState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof MonteCarloContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(MonteCarloContext));
+                    Object.assign(captured, useContext(MonteCarloContext));
                     return null;
                 };
 
@@ -327,27 +323,26 @@ describe('MonteCarloContext', () => {
                 const mockSummary = createMockSummary();
 
                 act(() => {
-                    dispatch({ type: 'START_SIMULATION' });
+                    captured.dispatch({ type: 'START_SIMULATION' });
                 });
 
                 act(() => {
-                    dispatch({ type: 'COMPLETE_SIMULATION', payload: mockSummary });
+                    captured.dispatch({ type: 'COMPLETE_SIMULATION', payload: mockSummary });
                 });
 
-                expect(state!.isRunning).toBe(false);
-                expect(state!.progress).toBe(100);
-                expect(state!.summary).toEqual(mockSummary);
-                expect(state!.error).toBeNull();
+                expect(captured.state.isRunning).toBe(false);
+                expect(captured.state.progress).toBe(100);
+                expect(captured.state.summary).toEqual(mockSummary);
+                expect(captured.state.error).toBeNull();
             });
         });
 
         describe('SIMULATION_ERROR', () => {
             it('should set error message and stop running', () => {
-                let state: typeof initialMonteCarloState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof MonteCarloContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(MonteCarloContext));
+                    Object.assign(captured, useContext(MonteCarloContext));
                     return null;
                 };
 
@@ -358,26 +353,25 @@ describe('MonteCarloContext', () => {
                 );
 
                 act(() => {
-                    dispatch({ type: 'START_SIMULATION' });
+                    captured.dispatch({ type: 'START_SIMULATION' });
                 });
 
                 act(() => {
-                    dispatch({ type: 'SIMULATION_ERROR', payload: 'Something went wrong' });
+                    captured.dispatch({ type: 'SIMULATION_ERROR', payload: 'Something went wrong' });
                 });
 
-                expect(state!.isRunning).toBe(false);
-                expect(state!.progress).toBe(0);
-                expect(state!.error).toBe('Something went wrong');
+                expect(captured.state.isRunning).toBe(false);
+                expect(captured.state.progress).toBe(0);
+                expect(captured.state.error).toBe('Something went wrong');
             });
         });
 
         describe('RESET', () => {
             it('should reset state but keep config', () => {
-                let state: typeof initialMonteCarloState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof MonteCarloContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(MonteCarloContext));
+                    Object.assign(captured, useContext(MonteCarloContext));
                     return null;
                 };
 
@@ -391,27 +385,27 @@ describe('MonteCarloContext', () => {
 
                 // Set up some state
                 act(() => {
-                    dispatch({ type: 'UPDATE_CONFIG', payload: { numScenarios: 500 } });
+                    captured.dispatch({ type: 'UPDATE_CONFIG', payload: { numScenarios: 500 } });
                 });
 
                 act(() => {
-                    dispatch({ type: 'COMPLETE_SIMULATION', payload: mockSummary });
+                    captured.dispatch({ type: 'COMPLETE_SIMULATION', payload: mockSummary });
                 });
 
-                expect(state!.summary).not.toBeNull();
-                expect(state!.config.numScenarios).toBe(500);
+                expect(captured.state.summary).not.toBeNull();
+                expect(captured.state.config.numScenarios).toBe(500);
 
                 // Reset
                 act(() => {
-                    dispatch({ type: 'RESET' });
+                    captured.dispatch({ type: 'RESET' });
                 });
 
-                expect(state!.summary).toBeNull();
-                expect(state!.isRunning).toBe(false);
-                expect(state!.progress).toBe(0);
-                expect(state!.error).toBeNull();
+                expect(captured.state.summary).toBeNull();
+                expect(captured.state.isRunning).toBe(false);
+                expect(captured.state.progress).toBe(0);
+                expect(captured.state.error).toBeNull();
                 // Config should be preserved
-                expect(state!.config.numScenarios).toBe(500);
+                expect(captured.state.config.numScenarios).toBe(500);
             });
         });
     });
@@ -419,11 +413,10 @@ describe('MonteCarloContext', () => {
     describe('Helper Functions', () => {
         describe('updateConfig', () => {
             it('should dispatch UPDATE_CONFIG action', () => {
-                let state: typeof initialMonteCarloState;
-                let updateConfig: (config: Partial<MonteCarloConfig>) => void;
+                const captured = {} as React.ContextType<typeof MonteCarloContext>;
 
                 const TestComponent = () => {
-                    ({ state, updateConfig } = useContext(MonteCarloContext));
+                    Object.assign(captured, useContext(MonteCarloContext));
                     return null;
                 };
 
@@ -434,21 +427,19 @@ describe('MonteCarloContext', () => {
                 );
 
                 act(() => {
-                    updateConfig({ returnMean: 10 });
+                    captured.updateConfig({ returnMean: 10 });
                 });
 
-                expect(state!.config.returnMean).toBe(10);
+                expect(captured.state.config.returnMean).toBe(10);
             });
         });
 
         describe('resetResults', () => {
             it('should dispatch RESET action', () => {
-                let state: typeof initialMonteCarloState;
-                let dispatch: React.Dispatch<any>;
-                let resetResults: () => void;
+                const captured = {} as React.ContextType<typeof MonteCarloContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch, resetResults } = useContext(MonteCarloContext));
+                    Object.assign(captured, useContext(MonteCarloContext));
                     return null;
                 };
 
@@ -461,26 +452,25 @@ describe('MonteCarloContext', () => {
                 const mockSummary = createMockSummary();
 
                 act(() => {
-                    dispatch({ type: 'COMPLETE_SIMULATION', payload: mockSummary });
+                    captured.dispatch({ type: 'COMPLETE_SIMULATION', payload: mockSummary });
                 });
 
-                expect(state!.summary).not.toBeNull();
+                expect(captured.state.summary).not.toBeNull();
 
                 act(() => {
-                    resetResults();
+                    captured.resetResults();
                 });
 
-                expect(state!.summary).toBeNull();
+                expect(captured.state.summary).toBeNull();
             });
         });
 
         describe('generateNewSeed', () => {
             it('should generate and set a new random seed', () => {
-                let state: typeof initialMonteCarloState;
-                let generateNewSeed: () => void;
+                const captured = {} as React.ContextType<typeof MonteCarloContext>;
 
                 const TestComponent = () => {
-                    ({ state, generateNewSeed } = useContext(MonteCarloContext));
+                    Object.assign(captured, useContext(MonteCarloContext));
                     return null;
                 };
 
@@ -491,11 +481,11 @@ describe('MonteCarloContext', () => {
                 );
 
                 act(() => {
-                    generateNewSeed();
+                    captured.generateNewSeed();
                 });
 
                 // The mock returns 99999
-                expect(state!.config.seed).toBe(99999);
+                expect(captured.state.config.seed).toBe(99999);
                 expect(createRandomSeed).toHaveBeenCalled();
             });
         });
@@ -506,11 +496,10 @@ describe('MonteCarloContext', () => {
             const mockSummary = createMockSummary();
             (runMonteCarloSimulation as Mock).mockResolvedValue(mockSummary);
 
-            let state: typeof initialMonteCarloState;
-            let runSimulation: any;
+            const captured = {} as React.ContextType<typeof MonteCarloContext>;
 
             const TestComponent = () => {
-                ({ state, runSimulation } = useContext(MonteCarloContext));
+                Object.assign(captured, useContext(MonteCarloContext));
                 return null;
             };
 
@@ -521,7 +510,7 @@ describe('MonteCarloContext', () => {
             );
 
             await act(async () => {
-                await runSimulation([], [], [], {
+                await captured.runSimulation([], [], [], {
                     demographics: { startAge: 30, startYear: 2025, retirementAge: 65, lifeExpectancy: 90 },
                     investments: { returnRates: { ror: 7 }, withdrawalStrategy: 'Fixed Real', withdrawalRate: 4 },
                     macro: { inflationRate: 2.6, healthcareInflation: 3.9, inflationAdjusted: false },
@@ -529,23 +518,22 @@ describe('MonteCarloContext', () => {
                     expenses: { lifestyleCreep: 75, housingAppreciation: 1.4, rentInflation: 1.2 },
                     priorities: [],
                     withdrawalStrategy: [],
-                }, { filingStatus: 'single', state: 'TX', capitalGainsRate: 15, dividendTaxRate: 15, useAMT: false });
+                } as unknown as AssumptionsState, { filingStatus: 'Single', stateResidency: 'TX', capitalGainsRate: 15, dividendTaxRate: 15, useAMT: false } as unknown as TaxState);
             });
 
             expect(runMonteCarloSimulation).toHaveBeenCalled();
-            expect(state!.summary).toEqual(mockSummary);
-            expect(state!.isRunning).toBe(false);
-            expect(state!.progress).toBe(100);
+            expect(captured.state.summary).toEqual(mockSummary);
+            expect(captured.state.isRunning).toBe(false);
+            expect(captured.state.progress).toBe(100);
         });
 
         it('should handle simulation errors', async () => {
             (runMonteCarloSimulation as Mock).mockRejectedValue(new Error('Simulation failed'));
 
-            let state: typeof initialMonteCarloState;
-            let runSimulation: any;
+            const captured = {} as React.ContextType<typeof MonteCarloContext>;
 
             const TestComponent = () => {
-                ({ state, runSimulation } = useContext(MonteCarloContext));
+                Object.assign(captured, useContext(MonteCarloContext));
                 return null;
             };
 
@@ -556,7 +544,7 @@ describe('MonteCarloContext', () => {
             );
 
             await act(async () => {
-                await runSimulation([], [], [], {
+                await captured.runSimulation([], [], [], {
                     demographics: { startAge: 30, startYear: 2025, retirementAge: 65, lifeExpectancy: 90 },
                     investments: { returnRates: { ror: 7 }, withdrawalStrategy: 'Fixed Real', withdrawalRate: 4 },
                     macro: { inflationRate: 2.6, healthcareInflation: 3.9, inflationAdjusted: false },
@@ -564,22 +552,21 @@ describe('MonteCarloContext', () => {
                     expenses: { lifestyleCreep: 75, housingAppreciation: 1.4, rentInflation: 1.2 },
                     priorities: [],
                     withdrawalStrategy: [],
-                }, { filingStatus: 'single', state: 'TX', capitalGainsRate: 15, dividendTaxRate: 15, useAMT: false });
+                } as unknown as AssumptionsState, { filingStatus: 'Single', stateResidency: 'TX', capitalGainsRate: 15, dividendTaxRate: 15, useAMT: false } as unknown as TaxState);
             });
 
-            expect(state!.error).toBe('Simulation failed');
-            expect(state!.isRunning).toBe(false);
-            expect(state!.summary).toBeNull();
+            expect(captured.state.error).toBe('Simulation failed');
+            expect(captured.state.isRunning).toBe(false);
+            expect(captured.state.summary).toBeNull();
         });
 
         it('should handle non-Error thrown objects', async () => {
             (runMonteCarloSimulation as Mock).mockRejectedValue('String error');
 
-            let state: typeof initialMonteCarloState;
-            let runSimulation: any;
+            const captured = {} as React.ContextType<typeof MonteCarloContext>;
 
             const TestComponent = () => {
-                ({ state, runSimulation } = useContext(MonteCarloContext));
+                Object.assign(captured, useContext(MonteCarloContext));
                 return null;
             };
 
@@ -590,7 +577,7 @@ describe('MonteCarloContext', () => {
             );
 
             await act(async () => {
-                await runSimulation([], [], [], {
+                await captured.runSimulation([], [], [], {
                     demographics: { startAge: 30, startYear: 2025, retirementAge: 65, lifeExpectancy: 90 },
                     investments: { returnRates: { ror: 7 }, withdrawalStrategy: 'Fixed Real', withdrawalRate: 4 },
                     macro: { inflationRate: 2.6, healthcareInflation: 3.9, inflationAdjusted: false },
@@ -598,10 +585,10 @@ describe('MonteCarloContext', () => {
                     expenses: { lifestyleCreep: 75, housingAppreciation: 1.4, rentInflation: 1.2 },
                     priorities: [],
                     withdrawalStrategy: [],
-                }, { filingStatus: 'single', state: 'TX', capitalGainsRate: 15, dividendTaxRate: 15, useAMT: false });
+                } as unknown as AssumptionsState, { filingStatus: 'Single', stateResidency: 'TX', capitalGainsRate: 15, dividendTaxRate: 15, useAMT: false } as unknown as TaxState);
             });
 
-            expect(state!.error).toBe('Simulation failed');
+            expect(captured.state.error).toBe('Simulation failed');
         });
 
         it('should pass progress callback to engine', async () => {
@@ -616,10 +603,10 @@ describe('MonteCarloContext', () => {
                 }
             );
 
-            let runSimulation: any;
+            const captured = {} as React.ContextType<typeof MonteCarloContext>;
 
             const TestComponent = () => {
-                ({ runSimulation } = useContext(MonteCarloContext));
+                Object.assign(captured, useContext(MonteCarloContext));
                 return null;
             };
 
@@ -630,7 +617,7 @@ describe('MonteCarloContext', () => {
             );
 
             await act(async () => {
-                await runSimulation([], [], [], {
+                await captured.runSimulation([], [], [], {
                     demographics: { startAge: 30, startYear: 2025, retirementAge: 65, lifeExpectancy: 90 },
                     investments: { returnRates: { ror: 7 }, withdrawalStrategy: 'Fixed Real', withdrawalRate: 4 },
                     macro: { inflationRate: 2.6, healthcareInflation: 3.9, inflationAdjusted: false },
@@ -638,7 +625,7 @@ describe('MonteCarloContext', () => {
                     expenses: { lifestyleCreep: 75, housingAppreciation: 1.4, rentInflation: 1.2 },
                     priorities: [],
                     withdrawalStrategy: [],
-                }, { filingStatus: 'single', state: 'TX', capitalGainsRate: 15, dividendTaxRate: 15, useAMT: false });
+                } as unknown as AssumptionsState, { filingStatus: 'Single', stateResidency: 'TX', capitalGainsRate: 15, dividendTaxRate: 15, useAMT: false } as unknown as TaxState);
             });
 
             expect(capturedProgressCallback).toBeDefined();
@@ -648,10 +635,10 @@ describe('MonteCarloContext', () => {
     describe('localStorage Persistence', () => {
         it('should save config to localStorage when state changes (debounced)', async () => {
             vi.useFakeTimers();
-            let updateConfig: (config: Partial<MonteCarloConfig>) => void;
+            const captured = {} as React.ContextType<typeof MonteCarloContext>;
 
             const TestComponent = () => {
-                ({ updateConfig } = useContext(MonteCarloContext));
+                Object.assign(captured, useContext(MonteCarloContext));
                 return null;
             };
 
@@ -662,7 +649,7 @@ describe('MonteCarloContext', () => {
             );
 
             act(() => {
-                updateConfig({ numScenarios: 500 });
+                captured.updateConfig({ numScenarios: 500 });
             });
 
             // Wait for debounce (500ms)
@@ -685,10 +672,10 @@ describe('MonteCarloContext', () => {
     describe('Selector Hooks', () => {
         describe('useMonteCarlo', () => {
             it('should return all context values', () => {
-                let hookResult: ReturnType<typeof useMonteCarlo>;
+                const captured = {} as ReturnType<typeof useMonteCarlo>;
 
                 const TestComponent = () => {
-                    hookResult = useMonteCarlo();
+                    Object.assign(captured, useMonteCarlo());
                     return null;
                 };
 
@@ -698,12 +685,12 @@ describe('MonteCarloContext', () => {
                     </MonteCarloProvider>
                 );
 
-                expect(hookResult!.state).toBeDefined();
-                expect(hookResult!.dispatch).toBeDefined();
-                expect(hookResult!.runSimulation).toBeDefined();
-                expect(hookResult!.updateConfig).toBeDefined();
-                expect(hookResult!.resetResults).toBeDefined();
-                expect(hookResult!.generateNewSeed).toBeDefined();
+                expect(captured.state).toBeDefined();
+                expect(captured.dispatch).toBeDefined();
+                expect(captured.runSimulation).toBeDefined();
+                expect(captured.updateConfig).toBeDefined();
+                expect(captured.resetResults).toBeDefined();
+                expect(captured.generateNewSeed).toBeDefined();
             });
 
             it('should throw error when used outside provider', () => {
@@ -722,12 +709,10 @@ describe('MonteCarloContext', () => {
 
         describe('useMonteCarloConfig', () => {
             it('should return config, updateConfig, and generateNewSeed', () => {
-                let config: MonteCarloConfig;
-                let updateConfig: (config: Partial<MonteCarloConfig>) => void;
-                let generateNewSeed: () => void;
+                const captured = {} as ReturnType<typeof useMonteCarloConfig>;
 
                 const TestComponent = () => {
-                    ({ config, updateConfig, generateNewSeed } = useMonteCarloConfig());
+                    Object.assign(captured, useMonteCarloConfig());
                     return null;
                 };
 
@@ -737,23 +722,19 @@ describe('MonteCarloContext', () => {
                     </MonteCarloProvider>
                 );
 
-                expect(config!).toBeDefined();
-                expect(config!.numScenarios).toBe(defaultMonteCarloConfig.numScenarios);
-                expect(updateConfig!).toBeInstanceOf(Function);
-                expect(generateNewSeed!).toBeInstanceOf(Function);
+                expect(captured.config).toBeDefined();
+                expect(captured.config.numScenarios).toBe(defaultMonteCarloConfig.numScenarios);
+                expect(captured.updateConfig).toBeInstanceOf(Function);
+                expect(captured.generateNewSeed).toBeInstanceOf(Function);
             });
         });
 
         describe('useMonteCarloResults', () => {
             it('should return results-related state and resetResults', () => {
-                let summary: MonteCarloSummary | null;
-                let isRunning: boolean;
-                let progress: number;
-                let error: string | null;
-                let resetResults: () => void;
+                const captured = {} as ReturnType<typeof useMonteCarloResults>;
 
                 const TestComponent = () => {
-                    ({ summary, isRunning, progress, error, resetResults } = useMonteCarloResults());
+                    Object.assign(captured, useMonteCarloResults());
                     return null;
                 };
 
@@ -763,23 +744,23 @@ describe('MonteCarloContext', () => {
                     </MonteCarloProvider>
                 );
 
-                expect(summary!).toBeNull();
-                expect(isRunning!).toBe(false);
-                expect(progress!).toBe(0);
-                expect(error!).toBeNull();
-                expect(resetResults!).toBeInstanceOf(Function);
+                expect(captured.summary).toBeNull();
+                expect(captured.isRunning).toBe(false);
+                expect(captured.progress).toBe(0);
+                expect(captured.error).toBeNull();
+                expect(captured.resetResults).toBeInstanceOf(Function);
             });
 
             it('should reflect updated results state', async () => {
                 const mockSummary = createMockSummary();
                 (runMonteCarloSimulation as Mock).mockResolvedValue(mockSummary);
 
-                let summary: MonteCarloSummary | null;
-                let runSimulation: any;
+                const capturedResults = {} as ReturnType<typeof useMonteCarloResults>;
+                const capturedMc = {} as ReturnType<typeof useMonteCarlo>;
 
                 const TestComponent = () => {
-                    ({ summary } = useMonteCarloResults());
-                    ({ runSimulation } = useMonteCarlo());
+                    Object.assign(capturedResults, useMonteCarloResults());
+                    Object.assign(capturedMc, useMonteCarlo());
                     return null;
                 };
 
@@ -789,10 +770,10 @@ describe('MonteCarloContext', () => {
                     </MonteCarloProvider>
                 );
 
-                expect(summary!).toBeNull();
+                expect(capturedResults.summary).toBeNull();
 
                 await act(async () => {
-                    await runSimulation([], [], [], {
+                    await capturedMc.runSimulation([], [], [], {
                         demographics: { startAge: 30, startYear: 2025, retirementAge: 65, lifeExpectancy: 90 },
                         investments: { returnRates: { ror: 7 }, withdrawalStrategy: 'Fixed Real', withdrawalRate: 4 },
                         macro: { inflationRate: 2.6, healthcareInflation: 3.9, inflationAdjusted: false },
@@ -800,10 +781,10 @@ describe('MonteCarloContext', () => {
                         expenses: { lifestyleCreep: 75, housingAppreciation: 1.4, rentInflation: 1.2 },
                         priorities: [],
                         withdrawalStrategy: [],
-                    }, { filingStatus: 'single', state: 'TX', capitalGainsRate: 15, dividendTaxRate: 15, useAMT: false });
+                    } as unknown as AssumptionsState, { filingStatus: 'Single', stateResidency: 'TX', capitalGainsRate: 15, dividendTaxRate: 15, useAMT: false } as unknown as TaxState);
                 });
 
-                expect(summary!).toEqual(mockSummary);
+                expect(capturedResults.summary).toEqual(mockSummary);
             });
         });
     });

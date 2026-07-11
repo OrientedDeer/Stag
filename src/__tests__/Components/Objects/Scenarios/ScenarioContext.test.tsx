@@ -14,9 +14,10 @@ import {
     LoadedScenario,
     ScenarioComparison,
     MilestonesSummary,
-    ScenarioState,
+    ScenarioAction,
 } from '../../../../services/ScenarioTypes';
 import { defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
+import { TaxState } from '../../../../components/Objects/Taxes/TaxContext';
 
 // Mock ScenarioService
 vi.mock('../../../../services/ScenarioService', () => ({
@@ -149,10 +150,10 @@ describe('ScenarioContext', () => {
 
     describe('Initial State', () => {
         it('should provide initial state when no scenarios exist', () => {
-            let state: ScenarioState;
+            const captured = {} as React.ContextType<typeof ScenarioContext>;
 
             const TestComponent = () => {
-                ({ state } = useContext(ScenarioContext));
+                Object.assign(captured, useContext(ScenarioContext));
                 return null;
             };
 
@@ -162,22 +163,21 @@ describe('ScenarioContext', () => {
                 </ScenarioProvider>
             );
 
-            expect(state!.scenarios).toEqual([]);
-            expect(state!.selectedBaseline).toBeNull();
-            expect(state!.selectedComparison).toBeNull();
-            expect(state!.comparisonResult).toBeNull();
-            expect(state!.isLoading).toBe(false);
-            expect(state!.error).toBeNull();
+            expect(captured.state.scenarios).toEqual([]);
+            expect(captured.state.selectedBaseline).toBeNull();
+            expect(captured.state.selectedComparison).toBeNull();
+            expect(captured.state.comparisonResult).toBeNull();
+            expect(captured.state.isLoading).toBe(false);
+            expect(captured.state.error).toBeNull();
         });
 
         it('should load scenarios from localStorage on mount', () => {
             const mockScenarios = [createMockScenario('test-1', 'Test Scenario')];
             (loadScenariosFromStorage as Mock).mockReturnValue(mockScenarios);
-
-            let state: ScenarioState;
+            const captured = {} as React.ContextType<typeof ScenarioContext>;
 
             const TestComponent = () => {
-                ({ state } = useContext(ScenarioContext));
+                Object.assign(captured, useContext(ScenarioContext));
                 return null;
             };
 
@@ -188,8 +188,8 @@ describe('ScenarioContext', () => {
             );
 
             expect(loadScenariosFromStorage).toHaveBeenCalled();
-            expect(state!.scenarios).toHaveLength(1);
-            expect(state!.scenarios[0].metadata.name).toBe('Test Scenario');
+            expect(captured.state.scenarios).toHaveLength(1);
+            expect(captured.state.scenarios[0].metadata.name).toBe('Test Scenario');
         });
     });
 
@@ -200,11 +200,10 @@ describe('ScenarioContext', () => {
     describe('Reducer Actions', () => {
         describe('LOAD_SCENARIOS', () => {
             it('should set scenarios array', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -220,20 +219,19 @@ describe('ScenarioContext', () => {
                 ];
 
                 act(() => {
-                    dispatch({ type: 'LOAD_SCENARIOS', payload: scenarios });
+                    captured.dispatch({ type: 'LOAD_SCENARIOS', payload: scenarios });
                 });
 
-                expect(state!.scenarios).toHaveLength(2);
-                expect(state!.scenarios[0].metadata.id).toBe('1');
-                expect(state!.scenarios[1].metadata.id).toBe('2');
+                expect(captured.state.scenarios).toHaveLength(2);
+                expect(captured.state.scenarios[0].metadata.id).toBe('1');
+                expect(captured.state.scenarios[1].metadata.id).toBe('2');
             });
 
             it('should clear error when loading scenarios', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -245,27 +243,26 @@ describe('ScenarioContext', () => {
 
                 // Set an error first
                 act(() => {
-                    dispatch({ type: 'SET_ERROR', payload: 'Some error' });
+                    captured.dispatch({ type: 'SET_ERROR', payload: 'Some error' });
                 });
 
-                expect(state!.error).toBe('Some error');
+                expect(captured.state.error).toBe('Some error');
 
                 // Load scenarios should clear the error
                 act(() => {
-                    dispatch({ type: 'LOAD_SCENARIOS', payload: [] });
+                    captured.dispatch({ type: 'LOAD_SCENARIOS', payload: [] });
                 });
 
-                expect(state!.error).toBeNull();
+                expect(captured.state.error).toBeNull();
             });
         });
 
         describe('SAVE_SCENARIO', () => {
             it('should add new scenario', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -278,19 +275,18 @@ describe('ScenarioContext', () => {
                 const newScenario = createMockScenario('new-1', 'New Scenario');
 
                 act(() => {
-                    dispatch({ type: 'SAVE_SCENARIO', payload: newScenario });
+                    captured.dispatch({ type: 'SAVE_SCENARIO', payload: newScenario });
                 });
 
-                expect(state!.scenarios).toHaveLength(1);
-                expect(state!.scenarios[0].metadata.name).toBe('New Scenario');
+                expect(captured.state.scenarios).toHaveLength(1);
+                expect(captured.state.scenarios[0].metadata.name).toBe('New Scenario');
             });
 
             it('should update existing scenario by ID', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -303,10 +299,10 @@ describe('ScenarioContext', () => {
                 // Add initial scenario
                 const scenario = createMockScenario('test-1', 'Original Name');
                 act(() => {
-                    dispatch({ type: 'SAVE_SCENARIO', payload: scenario });
+                    captured.dispatch({ type: 'SAVE_SCENARIO', payload: scenario });
                 });
 
-                expect(state!.scenarios[0].metadata.name).toBe('Original Name');
+                expect(captured.state.scenarios[0].metadata.name).toBe('Original Name');
 
                 // Update the same scenario
                 const updated = {
@@ -314,22 +310,21 @@ describe('ScenarioContext', () => {
                     metadata: { ...scenario.metadata, name: 'Updated Name' },
                 };
                 act(() => {
-                    dispatch({ type: 'SAVE_SCENARIO', payload: updated });
+                    captured.dispatch({ type: 'SAVE_SCENARIO', payload: updated });
                 });
 
                 // Should still have 1 scenario with updated name
-                expect(state!.scenarios).toHaveLength(1);
-                expect(state!.scenarios[0].metadata.name).toBe('Updated Name');
+                expect(captured.state.scenarios).toHaveLength(1);
+                expect(captured.state.scenarios[0].metadata.name).toBe('Updated Name');
             });
         });
 
         describe('DELETE_SCENARIO', () => {
             it('should remove scenario by ID', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -341,7 +336,7 @@ describe('ScenarioContext', () => {
 
                 // Add two scenarios
                 act(() => {
-                    dispatch({
+                    captured.dispatch({
                         type: 'LOAD_SCENARIOS',
                         payload: [
                             createMockScenario('1', 'First'),
@@ -350,23 +345,22 @@ describe('ScenarioContext', () => {
                     });
                 });
 
-                expect(state!.scenarios).toHaveLength(2);
+                expect(captured.state.scenarios).toHaveLength(2);
 
                 // Delete the first one
                 act(() => {
-                    dispatch({ type: 'DELETE_SCENARIO', payload: '1' });
+                    captured.dispatch({ type: 'DELETE_SCENARIO', payload: '1' });
                 });
 
-                expect(state!.scenarios).toHaveLength(1);
-                expect(state!.scenarios[0].metadata.id).toBe('2');
+                expect(captured.state.scenarios).toHaveLength(1);
+                expect(captured.state.scenarios[0].metadata.id).toBe('2');
             });
 
             it('should clear selectedBaseline if deleted', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -378,32 +372,31 @@ describe('ScenarioContext', () => {
 
                 // Add scenario and select as baseline
                 act(() => {
-                    dispatch({
+                    captured.dispatch({
                         type: 'LOAD_SCENARIOS',
                         payload: [createMockScenario('baseline-1', 'Baseline')],
                     });
                 });
 
                 act(() => {
-                    dispatch({ type: 'SELECT_BASELINE', payload: 'baseline-1' });
+                    captured.dispatch({ type: 'SELECT_BASELINE', payload: 'baseline-1' });
                 });
 
-                expect(state!.selectedBaseline).toBe('baseline-1');
+                expect(captured.state.selectedBaseline).toBe('baseline-1');
 
                 // Delete the baseline scenario
                 act(() => {
-                    dispatch({ type: 'DELETE_SCENARIO', payload: 'baseline-1' });
+                    captured.dispatch({ type: 'DELETE_SCENARIO', payload: 'baseline-1' });
                 });
 
-                expect(state!.selectedBaseline).toBeNull();
+                expect(captured.state.selectedBaseline).toBeNull();
             });
 
             it('should clear selectedComparison if deleted', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -415,32 +408,31 @@ describe('ScenarioContext', () => {
 
                 // Add scenario and select as comparison
                 act(() => {
-                    dispatch({
+                    captured.dispatch({
                         type: 'LOAD_SCENARIOS',
                         payload: [createMockScenario('comp-1', 'Comparison')],
                     });
                 });
 
                 act(() => {
-                    dispatch({ type: 'SELECT_COMPARISON', payload: 'comp-1' });
+                    captured.dispatch({ type: 'SELECT_COMPARISON', payload: 'comp-1' });
                 });
 
-                expect(state!.selectedComparison).toBe('comp-1');
+                expect(captured.state.selectedComparison).toBe('comp-1');
 
                 // Delete the comparison scenario
                 act(() => {
-                    dispatch({ type: 'DELETE_SCENARIO', payload: 'comp-1' });
+                    captured.dispatch({ type: 'DELETE_SCENARIO', payload: 'comp-1' });
                 });
 
-                expect(state!.selectedComparison).toBeNull();
+                expect(captured.state.selectedComparison).toBeNull();
             });
 
             it('should clear comparisonResult if baseline or comparison deleted', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -456,7 +448,7 @@ describe('ScenarioContext', () => {
 
                 // Set up comparison result
                 act(() => {
-                    dispatch({
+                    captured.dispatch({
                         type: 'LOAD_SCENARIOS',
                         payload: [
                             createMockScenario('baseline-1', 'Baseline'),
@@ -466,27 +458,26 @@ describe('ScenarioContext', () => {
                 });
 
                 act(() => {
-                    dispatch({ type: 'SET_COMPARISON_RESULT', payload: mockResult });
+                    captured.dispatch({ type: 'SET_COMPARISON_RESULT', payload: mockResult });
                 });
 
-                expect(state!.comparisonResult).not.toBeNull();
+                expect(captured.state.comparisonResult).not.toBeNull();
 
                 // Delete the baseline scenario
                 act(() => {
-                    dispatch({ type: 'DELETE_SCENARIO', payload: 'baseline-1' });
+                    captured.dispatch({ type: 'DELETE_SCENARIO', payload: 'baseline-1' });
                 });
 
-                expect(state!.comparisonResult).toBeNull();
+                expect(captured.state.comparisonResult).toBeNull();
             });
         });
 
         describe('UPDATE_SCENARIO', () => {
             it('should update existing scenario', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -499,7 +490,7 @@ describe('ScenarioContext', () => {
                 const scenario = createMockScenario('update-1', 'Original');
 
                 act(() => {
-                    dispatch({ type: 'LOAD_SCENARIOS', payload: [scenario] });
+                    captured.dispatch({ type: 'LOAD_SCENARIOS', payload: [scenario] });
                 });
 
                 const updated = {
@@ -508,20 +499,19 @@ describe('ScenarioContext', () => {
                 };
 
                 act(() => {
-                    dispatch({ type: 'UPDATE_SCENARIO', payload: updated });
+                    captured.dispatch({ type: 'UPDATE_SCENARIO', payload: updated });
                 });
 
-                expect(state!.scenarios[0].metadata.name).toBe('Updated');
+                expect(captured.state.scenarios[0].metadata.name).toBe('Updated');
             });
         });
 
         describe('IMPORT_SCENARIO', () => {
             it('should append imported scenario', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -533,7 +523,7 @@ describe('ScenarioContext', () => {
 
                 // Start with one scenario
                 act(() => {
-                    dispatch({
+                    captured.dispatch({
                         type: 'LOAD_SCENARIOS',
                         payload: [createMockScenario('existing', 'Existing')],
                     });
@@ -542,21 +532,20 @@ describe('ScenarioContext', () => {
                 // Import a new one
                 const imported = createMockScenario('imported', 'Imported');
                 act(() => {
-                    dispatch({ type: 'IMPORT_SCENARIO', payload: imported });
+                    captured.dispatch({ type: 'IMPORT_SCENARIO', payload: imported });
                 });
 
-                expect(state!.scenarios).toHaveLength(2);
-                expect(state!.scenarios[1].metadata.name).toBe('Imported');
+                expect(captured.state.scenarios).toHaveLength(2);
+                expect(captured.state.scenarios[1].metadata.name).toBe('Imported');
             });
         });
 
         describe('SELECT_BASELINE', () => {
             it('should set baseline ID', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -567,18 +556,17 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    dispatch({ type: 'SELECT_BASELINE', payload: 'baseline-123' });
+                    captured.dispatch({ type: 'SELECT_BASELINE', payload: 'baseline-123' });
                 });
 
-                expect(state!.selectedBaseline).toBe('baseline-123');
+                expect(captured.state.selectedBaseline).toBe('baseline-123');
             });
 
             it('should clear comparison result when selection changes', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -592,30 +580,29 @@ describe('ScenarioContext', () => {
                 const baseline = createMockLoadedScenario('b', 'B');
                 const comparison = createMockLoadedScenario('c', 'C');
                 act(() => {
-                    dispatch({
+                    captured.dispatch({
                         type: 'SET_COMPARISON_RESULT',
                         payload: createMockComparison(baseline, comparison),
                     });
                 });
 
-                expect(state!.comparisonResult).not.toBeNull();
+                expect(captured.state.comparisonResult).not.toBeNull();
 
                 // Change baseline selection
                 act(() => {
-                    dispatch({ type: 'SELECT_BASELINE', payload: 'new-baseline' });
+                    captured.dispatch({ type: 'SELECT_BASELINE', payload: 'new-baseline' });
                 });
 
-                expect(state!.comparisonResult).toBeNull();
+                expect(captured.state.comparisonResult).toBeNull();
             });
         });
 
         describe('SELECT_COMPARISON', () => {
             it('should set comparison ID', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -626,18 +613,17 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    dispatch({ type: 'SELECT_COMPARISON', payload: 'comp-123' });
+                    captured.dispatch({ type: 'SELECT_COMPARISON', payload: 'comp-123' });
                 });
 
-                expect(state!.selectedComparison).toBe('comp-123');
+                expect(captured.state.selectedComparison).toBe('comp-123');
             });
 
             it('should clear comparison result when selection changes', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -651,30 +637,29 @@ describe('ScenarioContext', () => {
                 const baseline = createMockLoadedScenario('b', 'B');
                 const comparison = createMockLoadedScenario('c', 'C');
                 act(() => {
-                    dispatch({
+                    captured.dispatch({
                         type: 'SET_COMPARISON_RESULT',
                         payload: createMockComparison(baseline, comparison),
                     });
                 });
 
-                expect(state!.comparisonResult).not.toBeNull();
+                expect(captured.state.comparisonResult).not.toBeNull();
 
                 // Change comparison selection
                 act(() => {
-                    dispatch({ type: 'SELECT_COMPARISON', payload: 'new-comp' });
+                    captured.dispatch({ type: 'SELECT_COMPARISON', payload: 'new-comp' });
                 });
 
-                expect(state!.comparisonResult).toBeNull();
+                expect(captured.state.comparisonResult).toBeNull();
             });
         });
 
         describe('SET_COMPARISON_RESULT', () => {
             it('should set comparison result and clear loading', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -686,10 +671,10 @@ describe('ScenarioContext', () => {
 
                 // Set loading first
                 act(() => {
-                    dispatch({ type: 'SET_LOADING', payload: true });
+                    captured.dispatch({ type: 'SET_LOADING', payload: true });
                 });
 
-                expect(state!.isLoading).toBe(true);
+                expect(captured.state.isLoading).toBe(true);
 
                 // Set comparison result
                 const baseline = createMockLoadedScenario('b', 'B');
@@ -697,21 +682,20 @@ describe('ScenarioContext', () => {
                 const result = createMockComparison(baseline, comparison);
 
                 act(() => {
-                    dispatch({ type: 'SET_COMPARISON_RESULT', payload: result });
+                    captured.dispatch({ type: 'SET_COMPARISON_RESULT', payload: result });
                 });
 
-                expect(state!.comparisonResult).toBe(result);
-                expect(state!.isLoading).toBe(false);
+                expect(captured.state.comparisonResult).toBe(result);
+                expect(captured.state.isLoading).toBe(false);
             });
         });
 
         describe('SET_LOADING', () => {
             it('should set loading to true', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -722,18 +706,17 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    dispatch({ type: 'SET_LOADING', payload: true });
+                    captured.dispatch({ type: 'SET_LOADING', payload: true });
                 });
 
-                expect(state!.isLoading).toBe(true);
+                expect(captured.state.isLoading).toBe(true);
             });
 
             it('should set loading to false', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -744,24 +727,23 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    dispatch({ type: 'SET_LOADING', payload: true });
+                    captured.dispatch({ type: 'SET_LOADING', payload: true });
                 });
 
                 act(() => {
-                    dispatch({ type: 'SET_LOADING', payload: false });
+                    captured.dispatch({ type: 'SET_LOADING', payload: false });
                 });
 
-                expect(state!.isLoading).toBe(false);
+                expect(captured.state.isLoading).toBe(false);
             });
         });
 
         describe('SET_ERROR', () => {
             it('should set error message and clear loading', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -773,26 +755,25 @@ describe('ScenarioContext', () => {
 
                 // Set loading first
                 act(() => {
-                    dispatch({ type: 'SET_LOADING', payload: true });
+                    captured.dispatch({ type: 'SET_LOADING', payload: true });
                 });
 
                 // Set error
                 act(() => {
-                    dispatch({ type: 'SET_ERROR', payload: 'Something went wrong' });
+                    captured.dispatch({ type: 'SET_ERROR', payload: 'Something went wrong' });
                 });
 
-                expect(state!.error).toBe('Something went wrong');
-                expect(state!.isLoading).toBe(false);
+                expect(captured.state.error).toBe('Something went wrong');
+                expect(captured.state.isLoading).toBe(false);
             });
         });
 
         describe('CLEAR_COMPARISON', () => {
             it('should reset baseline, comparison, and result to null', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -804,17 +785,17 @@ describe('ScenarioContext', () => {
 
                 // Set up selections and result
                 act(() => {
-                    dispatch({ type: 'SELECT_BASELINE', payload: 'baseline-1' });
+                    captured.dispatch({ type: 'SELECT_BASELINE', payload: 'baseline-1' });
                 });
 
                 act(() => {
-                    dispatch({ type: 'SELECT_COMPARISON', payload: 'comp-1' });
+                    captured.dispatch({ type: 'SELECT_COMPARISON', payload: 'comp-1' });
                 });
 
                 const baseline = createMockLoadedScenario('baseline-1', 'B');
                 const comparison = createMockLoadedScenario('comp-1', 'C');
                 act(() => {
-                    dispatch({
+                    captured.dispatch({
                         type: 'SET_COMPARISON_RESULT',
                         payload: createMockComparison(baseline, comparison),
                     });
@@ -822,22 +803,21 @@ describe('ScenarioContext', () => {
 
                 // Clear comparison
                 act(() => {
-                    dispatch({ type: 'CLEAR_COMPARISON' });
+                    captured.dispatch({ type: 'CLEAR_COMPARISON' });
                 });
 
-                expect(state!.selectedBaseline).toBeNull();
-                expect(state!.selectedComparison).toBeNull();
-                expect(state!.comparisonResult).toBeNull();
+                expect(captured.state.selectedBaseline).toBeNull();
+                expect(captured.state.selectedComparison).toBeNull();
+                expect(captured.state.comparisonResult).toBeNull();
             });
         });
 
         describe('Unknown action type', () => {
             it('should return current state for unknown action types', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -849,19 +829,19 @@ describe('ScenarioContext', () => {
 
                 // Set up some state first
                 act(() => {
-                    dispatch({ type: 'SELECT_BASELINE', payload: 'test-baseline' });
+                    captured.dispatch({ type: 'SELECT_BASELINE', payload: 'test-baseline' });
                 });
 
-                const stateBeforeUnknown = { ...state! };
+                const stateBeforeUnknown = { ...captured.state };
 
                 // Dispatch unknown action
                 act(() => {
-                    dispatch({ type: 'UNKNOWN_ACTION' as any, payload: 'anything' });
+                    captured.dispatch({ type: 'UNKNOWN_ACTION', payload: 'anything' } as unknown as ScenarioAction);
                 });
 
                 // State should be unchanged
-                expect(state!.selectedBaseline).toBe(stateBeforeUnknown.selectedBaseline);
-                expect(state!.scenarios).toEqual(stateBeforeUnknown.scenarios);
+                expect(captured.state.selectedBaseline).toBe(stateBeforeUnknown.selectedBaseline);
+                expect(captured.state.scenarios).toEqual(stateBeforeUnknown.scenarios);
             });
         });
     });
@@ -878,12 +858,10 @@ describe('ScenarioContext', () => {
 
                 (captureCurrentState as Mock).mockReturnValue(mockInputs);
                 (createScenario as Mock).mockReturnValue(mockScenario);
-
-                let state: ScenarioState;
-                let saveCurrentAsScenario: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, saveCurrentAsScenario } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -894,14 +872,14 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    saveCurrentAsScenario(
+                    captured.saveCurrentAsScenario(
                         'Test Save',
                         'Description',
                         [], // accounts
                         {}, // amountHistory
                         [], // incomes
                         [], // expenses
-                        {}, // taxSettings
+                        {} as TaxState, // taxSettings
                         defaultAssumptions,
                         ['tag1']
                     );
@@ -910,19 +888,17 @@ describe('ScenarioContext', () => {
                 expect(captureCurrentState).toHaveBeenCalled();
                 expect(createScenario).toHaveBeenCalledWith('Test Save', 'Description', mockInputs, ['tag1']);
                 expect(saveScenarioToStorage).toHaveBeenCalledWith(mockScenario);
-                expect(state!.scenarios).toContain(mockScenario);
+                expect(captured.state.scenarios).toContain(mockScenario);
             });
 
             it('should handle errors gracefully', () => {
                 (captureCurrentState as Mock).mockImplementation(() => {
                     throw new Error('Capture failed');
                 });
-
-                let state: ScenarioState;
-                let saveCurrentAsScenario: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, saveCurrentAsScenario } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -933,22 +909,20 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    saveCurrentAsScenario('Test', undefined, [], {}, [], [], {}, defaultAssumptions);
+                    captured.saveCurrentAsScenario('Test', undefined, [], {}, [], [], {} as TaxState, defaultAssumptions);
                 });
 
-                expect(state!.error).toBe('Capture failed');
+                expect(captured.state.error).toBe('Capture failed');
             });
 
             it('should handle non-Error exceptions gracefully', () => {
                 (captureCurrentState as Mock).mockImplementation(() => {
                     throw 'String error';
                 });
-
-                let state: ScenarioState;
-                let saveCurrentAsScenario: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, saveCurrentAsScenario } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -959,10 +933,10 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    saveCurrentAsScenario('Test', undefined, [], {}, [], [], {}, defaultAssumptions);
+                    captured.saveCurrentAsScenario('Test', undefined, [], {}, [], [], {} as TaxState, defaultAssumptions);
                 });
 
-                expect(state!.error).toBe('Failed to save scenario');
+                expect(captured.state.error).toBe('Failed to save scenario');
             });
         });
 
@@ -971,12 +945,10 @@ describe('ScenarioContext', () => {
                 (loadScenariosFromStorage as Mock).mockReturnValue([
                     createMockScenario('to-delete', 'Delete Me'),
                 ]);
-
-                let state: ScenarioState;
-                let deleteScenario: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, deleteScenario } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -986,26 +958,24 @@ describe('ScenarioContext', () => {
                     </ScenarioProvider>
                 );
 
-                expect(state!.scenarios).toHaveLength(1);
+                expect(captured.state.scenarios).toHaveLength(1);
 
                 act(() => {
-                    deleteScenario('to-delete');
+                    captured.deleteScenario('to-delete');
                 });
 
                 expect(deleteScenarioFromStorage).toHaveBeenCalledWith('to-delete');
-                expect(state!.scenarios).toHaveLength(0);
+                expect(captured.state.scenarios).toHaveLength(0);
             });
 
             it('should handle errors gracefully', () => {
                 (deleteScenarioFromStorage as Mock).mockImplementation(() => {
                     throw new Error('Delete failed');
                 });
-
-                let state: ScenarioState;
-                let deleteScenario: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, deleteScenario } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1016,22 +986,20 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    deleteScenario('some-id');
+                    captured.deleteScenario('some-id');
                 });
 
-                expect(state!.error).toBe('Delete failed');
+                expect(captured.state.error).toBe('Delete failed');
             });
 
             it('should handle non-Error exceptions gracefully', () => {
                 (deleteScenarioFromStorage as Mock).mockImplementation(() => {
                     throw 'String error';
                 });
-
-                let state: ScenarioState;
-                let deleteScenario: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, deleteScenario } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1042,10 +1010,10 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    deleteScenario('some-id');
+                    captured.deleteScenario('some-id');
                 });
 
-                expect(state!.error).toBe('Failed to delete scenario');
+                expect(captured.state.error).toBe('Failed to delete scenario');
             });
         });
 
@@ -1053,12 +1021,10 @@ describe('ScenarioContext', () => {
             it('should rename an existing scenario', () => {
                 const scenario = createMockScenario('rename-me', 'Original Name');
                 (loadScenariosFromStorage as Mock).mockReturnValue([scenario]);
-
-                let state: ScenarioState;
-                let renameScenario: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, renameScenario } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1068,26 +1034,24 @@ describe('ScenarioContext', () => {
                     </ScenarioProvider>
                 );
 
-                expect(state!.scenarios[0].metadata.name).toBe('Original Name');
+                expect(captured.state.scenarios[0].metadata.name).toBe('Original Name');
 
                 act(() => {
-                    renameScenario('rename-me', 'New Name');
+                    captured.renameScenario('rename-me', 'New Name');
                 });
 
                 expect(saveScenarioToStorage).toHaveBeenCalled();
-                expect(state!.scenarios[0].metadata.name).toBe('New Name');
+                expect(captured.state.scenarios[0].metadata.name).toBe('New Name');
             });
 
             it('should stamp a fresh updatedAt on the in-memory scenario (matches the persisted copy)', () => {
                 const scenario = createMockScenario('rename-me', 'Original Name');
                 scenario.metadata.updatedAt = '2000-01-01T00:00:00.000Z';
                 (loadScenariosFromStorage as Mock).mockReturnValue([scenario]);
-
-                let state: ScenarioState;
-                let renameScenario: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, renameScenario } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1098,25 +1062,23 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    renameScenario('rename-me', 'New Name');
+                    captured.renameScenario('rename-me', 'New Name');
                 });
 
                 // The state copy must NOT carry the stale timestamp.
-                expect(state!.scenarios[0].metadata.updatedAt).not.toBe('2000-01-01T00:00:00.000Z');
+                expect(captured.state.scenarios[0].metadata.updatedAt).not.toBe('2000-01-01T00:00:00.000Z');
                 // It must equal whatever was persisted to storage (no drift).
                 const persisted = (saveScenarioToStorage as Mock).mock.calls[0][0] as SavedScenario;
-                expect(state!.scenarios[0].metadata.updatedAt).toBe(persisted.metadata.updatedAt);
+                expect(captured.state.scenarios[0].metadata.updatedAt).toBe(persisted.metadata.updatedAt);
             });
 
             it('should trim whitespace from new name', () => {
                 const scenario = createMockScenario('test', 'Test');
                 (loadScenariosFromStorage as Mock).mockReturnValue([scenario]);
-
-                let state: ScenarioState;
-                let renameScenario: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, renameScenario } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1127,20 +1089,18 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    renameScenario('test', '  Trimmed Name  ');
+                    captured.renameScenario('test', '  Trimmed Name  ');
                 });
 
-                expect(state!.scenarios[0].metadata.name).toBe('Trimmed Name');
+                expect(captured.state.scenarios[0].metadata.name).toBe('Trimmed Name');
             });
 
             it('should error when scenario not found', () => {
                 (loadScenariosFromStorage as Mock).mockReturnValue([]);
-
-                let state: ScenarioState;
-                let renameScenario: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, renameScenario } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1151,10 +1111,10 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    renameScenario('non-existent', 'New Name');
+                    captured.renameScenario('non-existent', 'New Name');
                 });
 
-                expect(state!.error).toBe('Scenario not found');
+                expect(captured.state.error).toBe('Scenario not found');
             });
 
             it('should handle non-Error exceptions gracefully', () => {
@@ -1164,12 +1124,10 @@ describe('ScenarioContext', () => {
                 (saveScenarioToStorage as Mock).mockImplementation(() => {
                     throw 'String error';
                 });
-
-                let state: ScenarioState;
-                let renameScenario: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, renameScenario } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1180,10 +1138,10 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    renameScenario('test', 'New Name');
+                    captured.renameScenario('test', 'New Name');
                 });
 
-                expect(state!.error).toBe('Failed to rename scenario');
+                expect(captured.state.error).toBe('Failed to rename scenario');
             });
         });
 
@@ -1191,12 +1149,10 @@ describe('ScenarioContext', () => {
             it('should update scenario assumptions', () => {
                 const scenario = createMockScenario('update-me', 'Test');
                 (loadScenariosFromStorage as Mock).mockReturnValue([scenario]);
-
-                let state: ScenarioState;
-                let updateScenarioAssumptions: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, updateScenarioAssumptions } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1209,11 +1165,11 @@ describe('ScenarioContext', () => {
                 const newAssumptions = { ...defaultAssumptions, demographics: { ...defaultAssumptions.demographics, currentAge: 35 } };
 
                 act(() => {
-                    updateScenarioAssumptions('update-me', newAssumptions);
+                    captured.updateScenarioAssumptions('update-me', newAssumptions);
                 });
 
                 expect(saveScenarioToStorage).toHaveBeenCalled();
-                expect(state!.scenarios[0].inputs.assumptions).toBe(newAssumptions);
+                expect(captured.state.scenarios[0].inputs.assumptions).toBe(newAssumptions);
             });
 
             it('should update the updatedAt timestamp', () => {
@@ -1221,12 +1177,10 @@ describe('ScenarioContext', () => {
                 // Set a clearly old timestamp
                 scenario.metadata.updatedAt = '2020-01-01T00:00:00.000Z';
                 (loadScenariosFromStorage as Mock).mockReturnValue([scenario]);
-
-                let state: ScenarioState;
-                let updateScenarioAssumptions: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, updateScenarioAssumptions } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1237,24 +1191,21 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    updateScenarioAssumptions('update-me', defaultAssumptions);
+                    captured.updateScenarioAssumptions('update-me', defaultAssumptions);
                 });
 
                 // The new timestamp should be more recent than the old one
-                expect(state!.scenarios[0].metadata.updatedAt).not.toBe('2020-01-01T00:00:00.000Z');
-                expect(new Date(state!.scenarios[0].metadata.updatedAt).getFullYear()).toBeGreaterThanOrEqual(2026);
+                expect(captured.state.scenarios[0].metadata.updatedAt).not.toBe('2020-01-01T00:00:00.000Z');
+                expect(new Date(captured.state.scenarios[0].metadata.updatedAt).getFullYear()).toBeGreaterThanOrEqual(2026);
             });
 
             it('should clear comparison result if updated scenario was selected as baseline', () => {
                 const scenario = createMockScenario('baseline-scenario', 'Baseline');
                 (loadScenariosFromStorage as Mock).mockReturnValue([scenario]);
-
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
-                let updateScenarioAssumptions: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch, updateScenarioAssumptions } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1268,30 +1219,27 @@ describe('ScenarioContext', () => {
                 const baseline = createMockLoadedScenario('baseline-scenario', 'Baseline');
                 const comparison = createMockLoadedScenario('other', 'Other');
                 act(() => {
-                    dispatch({ type: 'SELECT_BASELINE', payload: 'baseline-scenario' });
-                    dispatch({ type: 'SET_COMPARISON_RESULT', payload: createMockComparison(baseline, comparison) });
+                    captured.dispatch({ type: 'SELECT_BASELINE', payload: 'baseline-scenario' });
+                    captured.dispatch({ type: 'SET_COMPARISON_RESULT', payload: createMockComparison(baseline, comparison) });
                 });
 
-                expect(state!.comparisonResult).not.toBeNull();
+                expect(captured.state.comparisonResult).not.toBeNull();
 
                 // Update the baseline scenario
                 act(() => {
-                    updateScenarioAssumptions('baseline-scenario', defaultAssumptions);
+                    captured.updateScenarioAssumptions('baseline-scenario', defaultAssumptions);
                 });
 
-                expect(state!.comparisonResult).toBeNull();
+                expect(captured.state.comparisonResult).toBeNull();
             });
 
             it('should clear comparison result if updated scenario was selected as comparison', () => {
                 const scenario = createMockScenario('comp-scenario', 'Comparison');
                 (loadScenariosFromStorage as Mock).mockReturnValue([scenario]);
-
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
-                let updateScenarioAssumptions: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch, updateScenarioAssumptions } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1305,28 +1253,26 @@ describe('ScenarioContext', () => {
                 const baseline = createMockLoadedScenario('other', 'Other');
                 const comparison = createMockLoadedScenario('comp-scenario', 'Comparison');
                 act(() => {
-                    dispatch({ type: 'SELECT_COMPARISON', payload: 'comp-scenario' });
-                    dispatch({ type: 'SET_COMPARISON_RESULT', payload: createMockComparison(baseline, comparison) });
+                    captured.dispatch({ type: 'SELECT_COMPARISON', payload: 'comp-scenario' });
+                    captured.dispatch({ type: 'SET_COMPARISON_RESULT', payload: createMockComparison(baseline, comparison) });
                 });
 
-                expect(state!.comparisonResult).not.toBeNull();
+                expect(captured.state.comparisonResult).not.toBeNull();
 
                 // Update the comparison scenario
                 act(() => {
-                    updateScenarioAssumptions('comp-scenario', defaultAssumptions);
+                    captured.updateScenarioAssumptions('comp-scenario', defaultAssumptions);
                 });
 
-                expect(state!.comparisonResult).toBeNull();
+                expect(captured.state.comparisonResult).toBeNull();
             });
 
             it('should error when scenario not found', () => {
                 (loadScenariosFromStorage as Mock).mockReturnValue([]);
-
-                let state: ScenarioState;
-                let updateScenarioAssumptions: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, updateScenarioAssumptions } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1337,10 +1283,10 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    updateScenarioAssumptions('non-existent', defaultAssumptions);
+                    captured.updateScenarioAssumptions('non-existent', defaultAssumptions);
                 });
 
-                expect(state!.error).toBe('Scenario not found');
+                expect(captured.state.error).toBe('Scenario not found');
             });
 
             it('should handle non-Error exceptions gracefully', () => {
@@ -1350,12 +1296,10 @@ describe('ScenarioContext', () => {
                 (saveScenarioToStorage as Mock).mockImplementation(() => {
                     throw 'String error';
                 });
-
-                let state: ScenarioState;
-                let updateScenarioAssumptions: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, updateScenarioAssumptions } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1366,10 +1310,10 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    updateScenarioAssumptions('test', defaultAssumptions);
+                    captured.updateScenarioAssumptions('test', defaultAssumptions);
                 });
 
-                expect(state!.error).toBe('Failed to update scenario assumptions');
+                expect(captured.state.error).toBe('Failed to update scenario assumptions');
             });
         });
 
@@ -1377,11 +1321,10 @@ describe('ScenarioContext', () => {
             it('should export existing scenario', () => {
                 const scenario = createMockScenario('export-me', 'Export Test');
                 (loadScenariosFromStorage as Mock).mockReturnValue([scenario]);
-
-                let exportScenario: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ exportScenario } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1392,7 +1335,7 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    exportScenario('export-me');
+                    captured.exportScenario('export-me');
                 });
 
                 expect(exportScenarioToFile).toHaveBeenCalledWith(scenario);
@@ -1400,11 +1343,10 @@ describe('ScenarioContext', () => {
 
             it('should not call export for non-existent scenario', () => {
                 (loadScenariosFromStorage as Mock).mockReturnValue([]);
-
-                let exportScenario: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ exportScenario } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1415,7 +1357,7 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    exportScenario('non-existent');
+                    captured.exportScenario('non-existent');
                 });
 
                 expect(exportScenarioToFile).not.toHaveBeenCalled();
@@ -1426,12 +1368,10 @@ describe('ScenarioContext', () => {
             it('should import scenario from file', async () => {
                 const importedScenario = createMockScenario('imported', 'Imported');
                 (importScenarioFromFile as Mock).mockResolvedValue(importedScenario);
-
-                let state: ScenarioState;
-                let importScenario: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, importScenario } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1444,22 +1384,20 @@ describe('ScenarioContext', () => {
                 const mockFile = new File(['{}'], 'test.json', { type: 'application/json' });
 
                 await act(async () => {
-                    await importScenario(mockFile);
+                    await captured.importScenario(mockFile);
                 });
 
                 expect(importScenarioFromFile).toHaveBeenCalledWith(mockFile);
                 expect(saveScenarioToStorage).toHaveBeenCalledWith(importedScenario);
-                expect(state!.scenarios).toContain(importedScenario);
+                expect(captured.state.scenarios).toContain(importedScenario);
             });
 
             it('should handle import errors', async () => {
                 (importScenarioFromFile as Mock).mockRejectedValue(new Error('Invalid file'));
-
-                let state: ScenarioState;
-                let importScenario: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, importScenario } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1472,20 +1410,18 @@ describe('ScenarioContext', () => {
                 const mockFile = new File(['invalid'], 'test.json', { type: 'application/json' });
 
                 await act(async () => {
-                    await importScenario(mockFile);
+                    await captured.importScenario(mockFile);
                 });
 
-                expect(state!.error).toBe('Invalid file');
+                expect(captured.state.error).toBe('Invalid file');
             });
 
             it('should handle non-Error import exceptions gracefully', async () => {
                 (importScenarioFromFile as Mock).mockRejectedValue('String error');
-
-                let state: ScenarioState;
-                let importScenario: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, importScenario } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1498,20 +1434,19 @@ describe('ScenarioContext', () => {
                 const mockFile = new File(['invalid'], 'test.json', { type: 'application/json' });
 
                 await act(async () => {
-                    await importScenario(mockFile);
+                    await captured.importScenario(mockFile);
                 });
 
-                expect(state!.error).toBe('Failed to import scenario');
+                expect(captured.state.error).toBe('Failed to import scenario');
             });
         });
 
         describe('selectBaseline', () => {
             it('should dispatch SELECT_BASELINE action', () => {
-                let state: ScenarioState;
-                let selectBaseline: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, selectBaseline } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1522,20 +1457,19 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    selectBaseline('my-baseline');
+                    captured.selectBaseline('my-baseline');
                 });
 
-                expect(state!.selectedBaseline).toBe('my-baseline');
+                expect(captured.state.selectedBaseline).toBe('my-baseline');
             });
         });
 
         describe('selectComparison', () => {
             it('should dispatch SELECT_COMPARISON action', () => {
-                let state: ScenarioState;
-                let selectComparison: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, selectComparison } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1546,10 +1480,10 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    selectComparison('my-comparison');
+                    captured.selectComparison('my-comparison');
                 });
 
-                expect(state!.selectedComparison).toBe('my-comparison');
+                expect(captured.state.selectedComparison).toBe('my-comparison');
             });
         });
 
@@ -1566,12 +1500,10 @@ describe('ScenarioContext', () => {
                 (runSimulationWithOptimization as Mock).mockReturnValue([]);
                 (calculateMilestones as Mock).mockReturnValue(createMockMilestones());
                 (compareScenarios as Mock).mockReturnValue(mockResult);
-
-                let state: ScenarioState;
-                let runComparison: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, runComparison } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1582,12 +1514,12 @@ describe('ScenarioContext', () => {
                 );
 
                 await act(async () => {
-                    await runComparison(
+                    await captured.runComparison(
                         'current',
                         'saved-1',
                         [], // currentSimulation
                         defaultAssumptions,
-                        {} // currentTaxState
+                        {} as TaxState // currentTaxState
                     );
                 });
 
@@ -1597,19 +1529,17 @@ describe('ScenarioContext', () => {
                     defaultAssumptions
                 );
                 expect(compareScenarios).toHaveBeenCalled();
-                expect(state!.comparisonResult).toBe(mockResult);
+                expect(captured.state.comparisonResult).toBe(mockResult);
             });
 
             it('should handle comparison errors', async () => {
                 (createLoadedScenarioFromSimulation as Mock).mockImplementation(() => {
                     throw new Error('Comparison failed');
                 });
-
-                let state: ScenarioState;
-                let runComparison: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, runComparison } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1620,21 +1550,19 @@ describe('ScenarioContext', () => {
                 );
 
                 await act(async () => {
-                    await runComparison('current', 'saved-1', [], defaultAssumptions, {});
+                    await captured.runComparison('current', 'saved-1', [], defaultAssumptions, {} as TaxState);
                 });
 
-                expect(state!.error).toBe('Comparison failed');
-                expect(state!.isLoading).toBe(false);
+                expect(captured.state.error).toBe('Comparison failed');
+                expect(captured.state.isLoading).toBe(false);
             });
 
             it('should error when baseline scenario not found', async () => {
                 (loadScenariosFromStorage as Mock).mockReturnValue([]);
-
-                let state: ScenarioState;
-                let runComparison: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, runComparison } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1645,10 +1573,10 @@ describe('ScenarioContext', () => {
                 );
 
                 await act(async () => {
-                    await runComparison('non-existent', 'current', [], defaultAssumptions, {});
+                    await captured.runComparison('non-existent', 'current', [], defaultAssumptions, {} as TaxState);
                 });
 
-                expect(state!.error).toBe('Baseline scenario not found');
+                expect(captured.state.error).toBe('Baseline scenario not found');
             });
 
             it('should compare saved scenario as baseline vs current', async () => {
@@ -1663,12 +1591,10 @@ describe('ScenarioContext', () => {
                 (runSimulationWithOptimization as Mock).mockReturnValue([]);
                 (calculateMilestones as Mock).mockReturnValue(createMockMilestones());
                 (compareScenarios as Mock).mockReturnValue(mockResult);
-
-                let state: ScenarioState;
-                let runComparison: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, runComparison } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1679,12 +1605,12 @@ describe('ScenarioContext', () => {
                 );
 
                 await act(async () => {
-                    await runComparison(
+                    await captured.runComparison(
                         'saved-baseline',
                         'current',
                         [], // currentSimulation
                         defaultAssumptions,
-                        {} // currentTaxState
+                        {} as TaxState // currentTaxState
                     );
                 });
 
@@ -1698,7 +1624,7 @@ describe('ScenarioContext', () => {
                     defaultAssumptions
                 );
                 expect(compareScenarios).toHaveBeenCalled();
-                expect(state!.comparisonResult).toBe(mockResult);
+                expect(captured.state.comparisonResult).toBe(mockResult);
             });
 
             it('should compare two saved scenarios', async () => {
@@ -1713,12 +1639,10 @@ describe('ScenarioContext', () => {
                 (runSimulationWithOptimization as Mock).mockReturnValue([]);
                 (calculateMilestones as Mock).mockReturnValue(createMockMilestones());
                 (compareScenarios as Mock).mockReturnValue(mockResult);
-
-                let state: ScenarioState;
-                let runComparison: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, runComparison } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1729,12 +1653,12 @@ describe('ScenarioContext', () => {
                 );
 
                 await act(async () => {
-                    await runComparison(
+                    await captured.runComparison(
                         'baseline-1',
                         'comparison-1',
                         [], // currentSimulation
                         defaultAssumptions,
-                        {} // currentTaxState
+                        {} as TaxState // currentTaxState
                     );
                 });
 
@@ -1742,7 +1666,7 @@ describe('ScenarioContext', () => {
                 expect(runSimulationWithOptimization).toHaveBeenCalledTimes(2);
                 expect(calculateMilestones).toHaveBeenCalledTimes(2);
                 expect(compareScenarios).toHaveBeenCalled();
-                expect(state!.comparisonResult).toBe(mockResult);
+                expect(captured.state.comparisonResult).toBe(mockResult);
             });
 
             it('should error when comparison scenario not found', async () => {
@@ -1751,12 +1675,10 @@ describe('ScenarioContext', () => {
 
                 (runSimulationWithOptimization as Mock).mockReturnValue([]);
                 (calculateMilestones as Mock).mockReturnValue(createMockMilestones());
-
-                let state: ScenarioState;
-                let runComparison: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, runComparison } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1767,11 +1689,11 @@ describe('ScenarioContext', () => {
                 );
 
                 await act(async () => {
-                    await runComparison('baseline-1', 'non-existent', [], defaultAssumptions, {});
+                    await captured.runComparison('baseline-1', 'non-existent', [], defaultAssumptions, {} as TaxState);
                 });
 
-                expect(state!.error).toBe('Comparison scenario not found');
-                expect(state!.isLoading).toBe(false);
+                expect(captured.state.error).toBe('Comparison scenario not found');
+                expect(captured.state.isLoading).toBe(false);
             });
 
             it('should handle non-Error exceptions in comparison', async () => {
@@ -1779,12 +1701,10 @@ describe('ScenarioContext', () => {
                 (createLoadedScenarioFromSimulation as Mock).mockImplementation(() => {
                     throw 'String error';
                 });
-
-                let state: ScenarioState;
-                let runComparison: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, runComparison } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1795,11 +1715,11 @@ describe('ScenarioContext', () => {
                 );
 
                 await act(async () => {
-                    await runComparison('current', 'current', [], defaultAssumptions, {});
+                    await captured.runComparison('current', 'current', [], defaultAssumptions, {} as TaxState);
                 });
 
-                expect(state!.error).toBe('Failed to run comparison');
-                expect(state!.isLoading).toBe(false);
+                expect(captured.state.error).toBe('Failed to run comparison');
+                expect(captured.state.isLoading).toBe(false);
             });
 
             // #166: with tax optimization enabled the scenario sim goes through the
@@ -1905,12 +1825,10 @@ describe('ScenarioContext', () => {
                 (runSimulationWithOptimization as Mock).mockReturnValue([]);
                 (calculateMilestones as Mock).mockReturnValue(createMockMilestones());
                 (compareScenarios as Mock).mockReturnValue(mockResult);
-
-                let state: ScenarioState;
-                let runComparison: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, runComparison } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1922,22 +1840,20 @@ describe('ScenarioContext', () => {
 
                 // Just verify the result updates isLoading to false
                 await act(async () => {
-                    await runComparison('current', 'saved-1', [], defaultAssumptions, {});
+                    await captured.runComparison('current', 'saved-1', [], defaultAssumptions, {} as TaxState);
                 });
 
-                expect(state!.isLoading).toBe(false);
-                expect(state!.comparisonResult).not.toBeNull();
+                expect(captured.state.isLoading).toBe(false);
+                expect(captured.state.comparisonResult).not.toBeNull();
             });
         });
 
         describe('clearComparison', () => {
             it('should dispatch CLEAR_COMPARISON action', () => {
-                let state: ScenarioState;
-                let dispatch: React.Dispatch<any>;
-                let clearComparison: any;
+                const captured = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    ({ state, dispatch, clearComparison } = useContext(ScenarioContext));
+                    Object.assign(captured, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -1949,16 +1865,16 @@ describe('ScenarioContext', () => {
 
                 // Set up state
                 act(() => {
-                    dispatch({ type: 'SELECT_BASELINE', payload: 'b' });
-                    dispatch({ type: 'SELECT_COMPARISON', payload: 'c' });
+                    captured.dispatch({ type: 'SELECT_BASELINE', payload: 'b' });
+                    captured.dispatch({ type: 'SELECT_COMPARISON', payload: 'c' });
                 });
 
                 act(() => {
-                    clearComparison();
+                    captured.clearComparison();
                 });
 
-                expect(state!.selectedBaseline).toBeNull();
-                expect(state!.selectedComparison).toBeNull();
+                expect(captured.state.selectedBaseline).toBeNull();
+                expect(captured.state.selectedComparison).toBeNull();
             });
         });
     });
@@ -1970,10 +1886,10 @@ describe('ScenarioContext', () => {
     describe('Hooks', () => {
         describe('useScenarios', () => {
             it('should return full context', () => {
-                let hookResult: ReturnType<typeof useScenarios>;
+                const captured = {} as ReturnType<typeof useScenarios>;
 
                 const TestComponent = () => {
-                    hookResult = useScenarios();
+                    Object.assign(captured, useScenarios());
                     return null;
                 };
 
@@ -1983,16 +1899,16 @@ describe('ScenarioContext', () => {
                     </ScenarioProvider>
                 );
 
-                expect(hookResult!.state).toBeDefined();
-                expect(hookResult!.dispatch).toBeDefined();
-                expect(hookResult!.saveCurrentAsScenario).toBeDefined();
-                expect(hookResult!.deleteScenario).toBeDefined();
-                expect(hookResult!.exportScenario).toBeDefined();
-                expect(hookResult!.importScenario).toBeDefined();
-                expect(hookResult!.selectBaseline).toBeDefined();
-                expect(hookResult!.selectComparison).toBeDefined();
-                expect(hookResult!.runComparison).toBeDefined();
-                expect(hookResult!.clearComparison).toBeDefined();
+                expect(captured.state).toBeDefined();
+                expect(captured.dispatch).toBeDefined();
+                expect(captured.saveCurrentAsScenario).toBeDefined();
+                expect(captured.deleteScenario).toBeDefined();
+                expect(captured.exportScenario).toBeDefined();
+                expect(captured.importScenario).toBeDefined();
+                expect(captured.selectBaseline).toBeDefined();
+                expect(captured.selectComparison).toBeDefined();
+                expect(captured.runComparison).toBeDefined();
+                expect(captured.clearComparison).toBeDefined();
             });
 
             it('should throw when used outside provider', () => {
@@ -2015,10 +1931,10 @@ describe('ScenarioContext', () => {
                 const mockScenarios = [createMockScenario('1', 'Test')];
                 (loadScenariosFromStorage as Mock).mockReturnValue(mockScenarios);
 
-                let scenarios: SavedScenario[];
+                const captured: { scenarios: SavedScenario[] } = { scenarios: [] };
 
                 const TestComponent = () => {
-                    scenarios = useScenariosList();
+                    Object.assign(captured, { scenarios: useScenariosList() });
                     return null;
                 };
 
@@ -2028,17 +1944,17 @@ describe('ScenarioContext', () => {
                     </ScenarioProvider>
                 );
 
-                expect(scenarios!).toHaveLength(1);
-                expect(scenarios![0].metadata.name).toBe('Test');
+                expect(captured.scenarios).toHaveLength(1);
+                expect(captured.scenarios[0].metadata.name).toBe('Test');
             });
         });
 
         describe('useScenarioComparison', () => {
             it('should return comparison state and actions', () => {
-                let hookResult: ReturnType<typeof useScenarioComparison>;
+                const captured = {} as ReturnType<typeof useScenarioComparison>;
 
                 const TestComponent = () => {
-                    hookResult = useScenarioComparison();
+                    Object.assign(captured, useScenarioComparison());
                     return null;
                 };
 
@@ -2048,24 +1964,24 @@ describe('ScenarioContext', () => {
                     </ScenarioProvider>
                 );
 
-                expect(hookResult!.selectedBaseline).toBeNull();
-                expect(hookResult!.selectedComparison).toBeNull();
-                expect(hookResult!.comparisonResult).toBeNull();
-                expect(hookResult!.isLoading).toBe(false);
-                expect(hookResult!.error).toBeNull();
-                expect(hookResult!.selectBaseline).toBeInstanceOf(Function);
-                expect(hookResult!.selectComparison).toBeInstanceOf(Function);
-                expect(hookResult!.runComparison).toBeInstanceOf(Function);
-                expect(hookResult!.clearComparison).toBeInstanceOf(Function);
+                expect(captured.selectedBaseline).toBeNull();
+                expect(captured.selectedComparison).toBeNull();
+                expect(captured.comparisonResult).toBeNull();
+                expect(captured.isLoading).toBe(false);
+                expect(captured.error).toBeNull();
+                expect(captured.selectBaseline).toBeInstanceOf(Function);
+                expect(captured.selectComparison).toBeInstanceOf(Function);
+                expect(captured.runComparison).toBeInstanceOf(Function);
+                expect(captured.clearComparison).toBeInstanceOf(Function);
             });
 
             it('should reflect updated comparison state', () => {
-                let hookResult: ReturnType<typeof useScenarioComparison>;
-                let dispatch: React.Dispatch<any>;
+                const captured = {} as ReturnType<typeof useScenarioComparison>;
+                const capturedCtx = {} as React.ContextType<typeof ScenarioContext>;
 
                 const TestComponent = () => {
-                    hookResult = useScenarioComparison();
-                    ({ dispatch } = useContext(ScenarioContext));
+                    Object.assign(captured, useScenarioComparison());
+                    Object.assign(capturedCtx, useContext(ScenarioContext));
                     return null;
                 };
 
@@ -2076,10 +1992,10 @@ describe('ScenarioContext', () => {
                 );
 
                 act(() => {
-                    dispatch({ type: 'SELECT_BASELINE', payload: 'baseline-test' });
+                    capturedCtx.dispatch({ type: 'SELECT_BASELINE', payload: 'baseline-test' });
                 });
 
-                expect(hookResult!.selectedBaseline).toBe('baseline-test');
+                expect(captured.selectedBaseline).toBe('baseline-test');
             });
         });
     });

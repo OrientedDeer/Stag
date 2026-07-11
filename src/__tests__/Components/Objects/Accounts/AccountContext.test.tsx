@@ -57,12 +57,14 @@ describe('AccountContext', () => {
   });
 
   it('should provide initial empty state', () => {
-    let accounts!: any[];
-    let amountHistory!: any;
+    const captured = {} as React.ContextType<typeof AccountContext>;
 
     const TestComponent = () => {
-      ({ accounts, amountHistory } = useContext(AccountContext));
-      return null;
+
+        Object.assign(captured, useContext(AccountContext));
+
+        return null;
+
     };
 
     render(
@@ -71,8 +73,8 @@ describe('AccountContext', () => {
       </AccountProvider>
     );
 
-    expect(accounts).toEqual([]);
-    expect(amountHistory).toEqual({});
+    expect(captured.accounts).toEqual([]);
+    expect(captured.amountHistory).toEqual({});
   });
 
   it('should load state from localStorage on initialization', () => {
@@ -87,12 +89,14 @@ describe('AccountContext', () => {
 
     localStorageMock.setItem('user_accounts_data', JSON.stringify(savedData));
 
-    let accounts!: any[];
-    let amountHistory!: any;
+    const captured = {} as React.ContextType<typeof AccountContext>;
 
     const TestComponent = () => {
-      ({ accounts, amountHistory } = useContext(AccountContext));
-      return null;
+
+        Object.assign(captured, useContext(AccountContext));
+
+        return null;
+
     };
 
     render(
@@ -102,22 +106,25 @@ describe('AccountContext', () => {
     );
 
     expect(localStorageMock.getItem).toHaveBeenCalledWith('user_accounts_data');
-    expect(accounts).toHaveLength(1);
-    expect(accounts[0].id).toBe('1');
-    expect(accounts[0].name).toBe('Savings');
-    expect(accounts[0].amount).toBe(1000);
-    expect(amountHistory['1']).toEqual([{ date: '2024-01-01', num: 1000 }]);
+    expect(captured.accounts).toHaveLength(1);
+    expect(captured.accounts[0].id).toBe('1');
+    expect(captured.accounts[0].name).toBe('Savings');
+    expect(captured.accounts[0].amount).toBe(1000);
+    expect(captured.amountHistory['1']).toEqual([{ date: '2024-01-01', num: 1000 }]);
   });
 
   it('should handle corrupted localStorage data gracefully', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     localStorageMock.setItem('user_accounts_data', 'invalid json');
 
-    let accounts!: any[];
+    const captured = {} as React.ContextType<typeof AccountContext>;
 
     const TestComponent = () => {
-      ({ accounts } = useContext(AccountContext));
-      return null;
+
+        Object.assign(captured, useContext(AccountContext));
+
+        return null;
+
     };
 
     render(
@@ -126,17 +133,20 @@ describe('AccountContext', () => {
       </AccountProvider>
     );
 
-    expect(accounts).toEqual([]);
+    expect(captured.accounts).toEqual([]);
     consoleSpy.mockRestore();
   });
 
   it('should save state to localStorage when state changes (debounced)', async () => {
     vi.useFakeTimers();
-    let dispatch!: any;
+    const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
     const TestComponent = () => {
-      ({ dispatch } = useContext(AccountDispatchContext));
-      return null;
+
+        Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+        return null;
+
     };
 
     render(
@@ -148,7 +158,7 @@ describe('AccountContext', () => {
     const newAccount = new SavedAccount('1', 'Checking', 500);
 
     act(() => {
-      dispatch({ type: 'ADD_ACCOUNT', payload: newAccount });
+      capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: newAccount });
     });
 
     // Wait for debounce (500ms)
@@ -167,12 +177,17 @@ describe('AccountContext', () => {
   describe('Reducer Actions', () => {
     describe('ADD_ACCOUNT', () => {
       it('should add an account to state', () => {
-        let accounts!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof AccountContext>;
+        const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
         const TestComponent = () => {
-          ({ accounts } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
-          return null;
+
+            Object.assign(captured, useContext(AccountContext));
+
+            Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+            return null;
+
         };
 
         render(
@@ -184,11 +199,11 @@ describe('AccountContext', () => {
         const newAccount = new SavedAccount('1', 'Savings', 1000, 2.5);
 
         act(() => {
-          dispatch({ type: 'ADD_ACCOUNT', payload: newAccount });
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: newAccount });
         });
 
-        expect(accounts).toHaveLength(1);
-        expect(accounts[0]).toMatchObject({
+        expect(captured.accounts).toHaveLength(1);
+        expect(captured.accounts[0]).toMatchObject({
           id: '1',
           name: 'Savings',
           amount: 1000,
@@ -197,12 +212,17 @@ describe('AccountContext', () => {
       });
 
       it('should create initial amount history entry when adding account', () => {
-        let amountHistory!: any;
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof AccountContext>;
+        const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
         const TestComponent = () => {
-          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
-          return null;
+
+            Object.assign(captured, useContext(AccountContext));
+
+            Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+            return null;
+
         };
 
         render(
@@ -214,11 +234,11 @@ describe('AccountContext', () => {
         const newAccount = new SavedAccount('1', 'Savings', 1000);
 
         act(() => {
-          dispatch({ type: 'ADD_ACCOUNT', payload: newAccount });
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: newAccount });
         });
 
-        expect(amountHistory['1']).toHaveLength(1);
-        expect(amountHistory['1'][0]).toEqual({
+        expect(captured.amountHistory['1']).toHaveLength(1);
+        expect(captured.amountHistory['1'][0]).toEqual({
           date: MOCK_DATE,
           num: 1000,
         });
@@ -227,12 +247,17 @@ describe('AccountContext', () => {
 
     describe('DELETE_ACCOUNT', () => {
       it('should remove an account from state', () => {
-        let accounts!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof AccountContext>;
+        const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
         const TestComponent = () => {
-          ({ accounts } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
-          return null;
+
+            Object.assign(captured, useContext(AccountContext));
+
+            Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+            return null;
+
         };
 
         render(
@@ -245,27 +270,32 @@ describe('AccountContext', () => {
         const account2 = new SavedAccount('2', 'Checking', 500);
 
         act(() => {
-          dispatch({ type: 'ADD_ACCOUNT', payload: account1 });
-          dispatch({ type: 'ADD_ACCOUNT', payload: account2 });
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account1 });
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account2 });
         });
 
-        expect(accounts).toHaveLength(2);
+        expect(captured.accounts).toHaveLength(2);
 
         act(() => {
-          dispatch({ type: 'DELETE_ACCOUNT', payload: { id: '1' } });
+          capturedDispatch.dispatch({ type: 'DELETE_ACCOUNT', payload: { id: '1' } });
         });
 
-        expect(accounts).toHaveLength(1);
-        expect(accounts[0].id).toBe('2');
+        expect(captured.accounts).toHaveLength(1);
+        expect(captured.accounts[0].id).toBe('2');
       });
 
       it('should remove amount history when deleting account', () => {
-        let amountHistory!: any;
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof AccountContext>;
+        const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
         const TestComponent = () => {
-          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
-          return null;
+
+            Object.assign(captured, useContext(AccountContext));
+
+            Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+            return null;
+
         };
 
         render(
@@ -277,27 +307,32 @@ describe('AccountContext', () => {
         const account = new SavedAccount('1', 'Savings', 1000);
 
         act(() => {
-          dispatch({ type: 'ADD_ACCOUNT', payload: account });
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account });
         });
 
-        expect(amountHistory['1']).toBeDefined();
+        expect(captured.amountHistory['1']).toBeDefined();
 
         act(() => {
-          dispatch({ type: 'DELETE_ACCOUNT', payload: { id: '1' } });
+          capturedDispatch.dispatch({ type: 'DELETE_ACCOUNT', payload: { id: '1' } });
         });
 
-        expect(amountHistory['1']).toBeUndefined();
+        expect(captured.amountHistory['1']).toBeUndefined();
       });
     });
 
     describe('UPDATE_ACCOUNT_FIELD', () => {
       it('should update a specific field of an account', () => {
-        let accounts!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof AccountContext>;
+        const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
         const TestComponent = () => {
-          ({ accounts } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
-          return null;
+
+            Object.assign(captured, useContext(AccountContext));
+
+            Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+            return null;
+
         };
 
         render(
@@ -309,28 +344,33 @@ describe('AccountContext', () => {
         const account = new SavedAccount('1', 'Savings', 1000, 2.5);
 
         act(() => {
-          dispatch({ type: 'ADD_ACCOUNT', payload: account });
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account });
         });
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'UPDATE_ACCOUNT_FIELD',
             payload: { id: '1', field: 'name', value: 'Emergency Fund' },
           });
         });
 
-        expect(accounts[0].name).toBe('Emergency Fund');
-        expect(accounts[0].amount).toBe(1000);
-        expect(accounts[0].apr).toBe(2.5);
+        expect(captured.accounts[0].name).toBe('Emergency Fund');
+        expect(captured.accounts[0].amount).toBe(1000);
+        expect((captured.accounts[0] as SavedAccount).apr).toBe(2.5);
       });
 
       it('should update amount field', () => {
-        let accounts!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof AccountContext>;
+        const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
         const TestComponent = () => {
-          ({ accounts } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
-          return null;
+
+            Object.assign(captured, useContext(AccountContext));
+
+            Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+            return null;
+
         };
 
         render(
@@ -342,26 +382,31 @@ describe('AccountContext', () => {
         const account = new SavedAccount('1', 'Savings', 1000);
 
         act(() => {
-          dispatch({ type: 'ADD_ACCOUNT', payload: account });
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account });
         });
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'UPDATE_ACCOUNT_FIELD',
             payload: { id: '1', field: 'amount', value: 2000 },
           });
         });
 
-        expect(accounts[0].amount).toBe(2000);
+        expect(captured.accounts[0].amount).toBe(2000);
       });
 
       it('should preserve className when updating', () => {
-        let accounts!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof AccountContext>;
+        const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
         const TestComponent = () => {
-          ({ accounts } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
-          return null;
+
+            Object.assign(captured, useContext(AccountContext));
+
+            Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+            return null;
+
         };
 
         render(
@@ -373,28 +418,33 @@ describe('AccountContext', () => {
         const account = new InvestedAccount('1', 'Roth IRA', 5000);
 
         act(() => {
-          dispatch({ type: 'ADD_ACCOUNT', payload: account });
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account });
         });
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'UPDATE_ACCOUNT_FIELD',
             payload: { id: '1', field: 'amount', value: 6000 },
           });
         });
 
-        expect(accounts[0].constructor.name).toBe('InvestedAccount');
+        expect(captured.accounts[0].constructor.name).toBe('InvestedAccount');
       });
     });
 
     describe('ADD_AMOUNT_SNAPSHOT', () => {
       it('should add a new amount snapshot', () => {
-        let amountHistory!: any;
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof AccountContext>;
+        const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
         const TestComponent = () => {
-          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
-          return null;
+
+            Object.assign(captured, useContext(AccountContext));
+
+            Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+            return null;
+
         };
 
         render(
@@ -406,32 +456,37 @@ describe('AccountContext', () => {
         const account = new SavedAccount('1', 'Savings', 1000);
 
         act(() => {
-          dispatch({ type: 'ADD_ACCOUNT', payload: account });
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account });
         });
 
         vi.setSystemTime(localMidnight('2024-01-16'));
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'ADD_AMOUNT_SNAPSHOT',
             payload: { id: '1', amount: 1100 },
           });
         });
 
-        expect(amountHistory['1']).toHaveLength(2);
-        expect(amountHistory['1'][1]).toEqual({
+        expect(captured.amountHistory['1']).toHaveLength(2);
+        expect(captured.amountHistory['1'][1]).toEqual({
           date: '2024-01-16',
           num: 1100,
         });
       });
 
       it('should replace today\'s entry even when it is not the last in an unsorted history (#182)', () => {
-        let amountHistory!: any;
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof AccountContext>;
+        const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
         const TestComponent = () => {
-          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
-          return null;
+
+            Object.assign(captured, useContext(AccountContext));
+
+            Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+            return null;
+
         };
 
         render(
@@ -443,33 +498,38 @@ describe('AccountContext', () => {
         const account = new SavedAccount('1', 'Savings', 1000);
 
         act(() => {
-          dispatch({ type: 'ADD_ACCOUNT', payload: account }); // seeds today (MOCK_DATE)
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account }); // seeds today (MOCK_DATE)
         });
 
         // A later-dated entry pushes today's entry out of the last slot.
         act(() => {
-          dispatch({ type: 'ADD_HISTORY_ENTRY', payload: { id: '1', date: '2024-02-01', num: 2000 } });
+          capturedDispatch.dispatch({ type: 'ADD_HISTORY_ENTRY', payload: { id: '1', date: '2024-02-01', num: 2000 } });
         });
 
         // Snapshotting today must REPLACE today's existing entry, not append a
         // duplicate just because a last-entry check missed it.
         act(() => {
-          dispatch({ type: 'ADD_AMOUNT_SNAPSHOT', payload: { id: '1', amount: 1100 } });
+          capturedDispatch.dispatch({ type: 'ADD_AMOUNT_SNAPSHOT', payload: { id: '1', amount: 1100 } });
         });
 
-        expect(amountHistory['1']).toHaveLength(2);
+        expect(captured.amountHistory['1']).toHaveLength(2);
         // Stays date-sorted so reverse().find() reads the latest balance.
-        expect(amountHistory['1'].map((e: any) => e.date)).toEqual([MOCK_DATE, '2024-02-01']);
-        expect(amountHistory['1'][0]).toEqual({ date: MOCK_DATE, num: 1100 });
+        expect(captured.amountHistory['1'].map((e) => e.date)).toEqual([MOCK_DATE, '2024-02-01']);
+        expect(captured.amountHistory['1'][0]).toEqual({ date: MOCK_DATE, num: 1100 });
       });
 
       it('should replace snapshot if added on same day', () => {
-        let amountHistory!: any;
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof AccountContext>;
+        const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
         const TestComponent = () => {
-          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
-          return null;
+
+            Object.assign(captured, useContext(AccountContext));
+
+            Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+            return null;
+
         };
 
         render(
@@ -481,19 +541,19 @@ describe('AccountContext', () => {
         const account = new SavedAccount('1', 'Savings', 1000);
 
         act(() => {
-          dispatch({ type: 'ADD_ACCOUNT', payload: account });
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account });
         });
 
         // Same day as account creation
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'ADD_AMOUNT_SNAPSHOT',
             payload: { id: '1', amount: 1200 },
           });
         });
 
-        expect(amountHistory['1']).toHaveLength(1);
-        expect(amountHistory['1'][0]).toEqual({
+        expect(captured.amountHistory['1']).toHaveLength(1);
+        expect(captured.amountHistory['1'][0]).toEqual({
           date: MOCK_DATE,
           num: 1200,
         });
@@ -502,12 +562,17 @@ describe('AccountContext', () => {
 
     describe('REORDER_ACCOUNTS', () => {
       it('should reorder accounts correctly', () => {
-        let accounts!: any[];
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof AccountContext>;
+        const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
         const TestComponent = () => {
-          ({ accounts } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
-          return null;
+
+            Object.assign(captured, useContext(AccountContext));
+
+            Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+            return null;
+
         };
 
         render(
@@ -521,32 +586,37 @@ describe('AccountContext', () => {
         const account3 = new SavedAccount('3', 'Third', 300);
 
         act(() => {
-          dispatch({ type: 'ADD_ACCOUNT', payload: account1 });
-          dispatch({ type: 'ADD_ACCOUNT', payload: account2 });
-          dispatch({ type: 'ADD_ACCOUNT', payload: account3 });
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account1 });
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account2 });
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account3 });
         });
 
-        expect(accounts.map((a) => a.id)).toEqual(['1', '2', '3']);
+        expect(captured.accounts.map((a) => a.id)).toEqual(['1', '2', '3']);
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'REORDER_ACCOUNTS',
             payload: { startIndex: 0, endIndex: 2 },
           });
         });
 
-        expect(accounts.map((a) => a.id)).toEqual(['2', '3', '1']);
+        expect(captured.accounts.map((a) => a.id)).toEqual(['2', '3', '1']);
       });
     });
 
     describe('UPDATE_HISTORY_ENTRY', () => {
       it('should update an existing history entry', () => {
-        let amountHistory!: any;
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof AccountContext>;
+        const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
         const TestComponent = () => {
-          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
-          return null;
+
+            Object.assign(captured, useContext(AccountContext));
+
+            Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+            return null;
+
         };
 
         render(
@@ -558,29 +628,34 @@ describe('AccountContext', () => {
         const account = new SavedAccount('1', 'Savings', 1000);
 
         act(() => {
-          dispatch({ type: 'ADD_ACCOUNT', payload: account });
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account });
         });
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'UPDATE_HISTORY_ENTRY',
             payload: { id: '1', index: 0, date: '2024-01-20', num: 1500 },
           });
         });
 
-        expect(amountHistory['1'][0]).toEqual({
+        expect(captured.amountHistory['1'][0]).toEqual({
           date: '2024-01-20',
           num: 1500,
         });
       });
 
       it('should re-sort the history after a date edit moves an entry out of order (#182)', () => {
-        let amountHistory!: any;
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof AccountContext>;
+        const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
         const TestComponent = () => {
-          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
-          return null;
+
+            Object.assign(captured, useContext(AccountContext));
+
+            Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+            return null;
+
         };
 
         render(
@@ -592,30 +667,35 @@ describe('AccountContext', () => {
         const account = new SavedAccount('1', 'Savings', 1000);
 
         act(() => {
-          dispatch({ type: 'ADD_ACCOUNT', payload: account }); // seeds MOCK_DATE (2024-01-15)
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account }); // seeds MOCK_DATE (2024-01-15)
         });
         act(() => {
-          dispatch({ type: 'ADD_HISTORY_ENTRY', payload: { id: '1', date: '2024-02-01', num: 2000 } });
+          capturedDispatch.dispatch({ type: 'ADD_HISTORY_ENTRY', payload: { id: '1', date: '2024-02-01', num: 2000 } });
         });
         // history is now [2024-01-15, 2024-02-01]
 
         // Edit the LAST entry's date to be the earliest of the three days.
         act(() => {
-          dispatch({ type: 'UPDATE_HISTORY_ENTRY', payload: { id: '1', index: 1, date: '2024-01-01', num: 2000 } });
+          capturedDispatch.dispatch({ type: 'UPDATE_HISTORY_ENTRY', payload: { id: '1', index: 1, date: '2024-01-01', num: 2000 } });
         });
 
         // Must re-sort so consumers using reverse().find() don't read a stale
         // (now-misplaced) balance.
-        expect(amountHistory['1'].map((e: any) => e.date)).toEqual(['2024-01-01', MOCK_DATE]);
+        expect(captured.amountHistory['1'].map((e) => e.date)).toEqual(['2024-01-01', MOCK_DATE]);
       });
 
       it('targets the entry by its pre-edit value, not a stale index, after a re-sort (#182)', () => {
-        let amountHistory!: any;
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof AccountContext>;
+        const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
         const TestComponent = () => {
-          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
-          return null;
+
+            Object.assign(captured, useContext(AccountContext));
+
+            Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+            return null;
+
         };
 
         render(
@@ -626,19 +706,19 @@ describe('AccountContext', () => {
 
         const account = new SavedAccount('1', 'Savings', 1000);
         act(() => {
-          dispatch({ type: 'ADD_ACCOUNT', payload: account }); // seeds 2024-01-15 / 1000
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account }); // seeds 2024-01-15 / 1000
         });
         act(() => {
-          dispatch({ type: 'ADD_HISTORY_ENTRY', payload: { id: '1', date: '2024-02-01', num: 2000 } });
+          capturedDispatch.dispatch({ type: 'ADD_HISTORY_ENTRY', payload: { id: '1', date: '2024-02-01', num: 2000 } });
         });
         act(() => {
-          dispatch({ type: 'ADD_HISTORY_ENTRY', payload: { id: '1', date: '2024-03-01', num: 3000 } });
+          capturedDispatch.dispatch({ type: 'ADD_HISTORY_ENTRY', payload: { id: '1', date: '2024-03-01', num: 3000 } });
         });
         // sorted: [2024-01-15/1000, 2024-02-01/2000, 2024-03-01/3000] (indices 0,1,2)
 
         // Edit the index-2 entry's date to the earliest — this re-sorts it to index 0.
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'UPDATE_HISTORY_ENTRY',
             payload: { id: '1', index: 2, prevDate: '2024-03-01', prevNum: 3000, date: '2024-01-01', num: 3000 },
           });
@@ -649,24 +729,29 @@ describe('AccountContext', () => {
         // pre-sort render) but the entry's current identity (prevDate/prevNum). It
         // must hit the 2024-01-01 entry, not whatever now sits at index 2.
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'UPDATE_HISTORY_ENTRY',
             payload: { id: '1', index: 2, prevDate: '2024-01-01', prevNum: 3000, date: '2024-01-01', num: 9999 },
           });
         });
 
-        const byDate = Object.fromEntries(amountHistory['1'].map((e: any) => [e.date, e.num]));
+        const byDate = Object.fromEntries(captured.amountHistory['1'].map((e) => [e.date, e.num]));
         expect(byDate['2024-01-01']).toBe(9999); // the intended entry
         expect(byDate['2024-02-01']).toBe(2000); // untouched (the stale index pointed here)
       });
 
       it('deletes the entry by its value, not a stale index, after a re-sort (#182)', () => {
-        let amountHistory!: any;
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof AccountContext>;
+        const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
         const TestComponent = () => {
-          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
-          return null;
+
+            Object.assign(captured, useContext(AccountContext));
+
+            Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+            return null;
+
         };
 
         render(
@@ -677,17 +762,17 @@ describe('AccountContext', () => {
 
         const account = new SavedAccount('1', 'Savings', 1000);
         act(() => {
-          dispatch({ type: 'ADD_ACCOUNT', payload: account }); // 2024-01-15 / 1000
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account }); // 2024-01-15 / 1000
         });
         act(() => {
-          dispatch({ type: 'ADD_HISTORY_ENTRY', payload: { id: '1', date: '2024-02-01', num: 2000 } });
+          capturedDispatch.dispatch({ type: 'ADD_HISTORY_ENTRY', payload: { id: '1', date: '2024-02-01', num: 2000 } });
         });
         act(() => {
-          dispatch({ type: 'ADD_HISTORY_ENTRY', payload: { id: '1', date: '2024-03-01', num: 3000 } });
+          capturedDispatch.dispatch({ type: 'ADD_HISTORY_ENTRY', payload: { id: '1', date: '2024-03-01', num: 3000 } });
         });
         // Move the index-2 entry to the front.
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'UPDATE_HISTORY_ENTRY',
             payload: { id: '1', index: 2, prevDate: '2024-03-01', prevNum: 3000, date: '2024-01-01', num: 3000 },
           });
@@ -696,25 +781,30 @@ describe('AccountContext', () => {
 
         // Delete that same 2024-01-01 entry using a stale index (2) + identity.
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'DELETE_HISTORY_ENTRY',
             payload: { id: '1', index: 2, prevDate: '2024-01-01', prevNum: 3000 },
           });
         });
 
-        const dates = amountHistory['1'].map((e: any) => e.date);
+        const dates = captured.amountHistory['1'].map((e) => e.date);
         expect(dates).not.toContain('2024-01-01'); // the intended entry is gone
         expect(dates).toContain('2024-02-01'); // the stale-index target survives
-        expect(amountHistory['1']).toHaveLength(2);
+        expect(captured.amountHistory['1']).toHaveLength(2);
       });
 
       it('should not update if index does not exist', () => {
-        let amountHistory!: any;
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof AccountContext>;
+        const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
         const TestComponent = () => {
-          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
-          return null;
+
+            Object.assign(captured, useContext(AccountContext));
+
+            Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+            return null;
+
         };
 
         render(
@@ -726,30 +816,35 @@ describe('AccountContext', () => {
         const account = new SavedAccount('1', 'Savings', 1000);
 
         act(() => {
-          dispatch({ type: 'ADD_ACCOUNT', payload: account });
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account });
         });
 
-        const originalHistory = [...amountHistory['1']];
+        const originalHistory = [...captured.amountHistory['1']];
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'UPDATE_HISTORY_ENTRY',
             payload: { id: '1', index: 5, date: '2024-01-20', num: 1500 },
           });
         });
 
-        expect(amountHistory['1']).toEqual(originalHistory);
+        expect(captured.amountHistory['1']).toEqual(originalHistory);
       });
     });
 
     describe('DELETE_HISTORY_ENTRY', () => {
       it('should delete a history entry', () => {
-        let amountHistory!: any;
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof AccountContext>;
+        const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
         const TestComponent = () => {
-          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
-          return null;
+
+            Object.assign(captured, useContext(AccountContext));
+
+            Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+            return null;
+
         };
 
         render(
@@ -762,12 +857,12 @@ describe('AccountContext', () => {
         const account = new SavedAccount('1', 'Savings', 1000);
 
         act(() => {
-          dispatch({ type: 'ADD_ACCOUNT', payload: account });
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account });
         });
 
         act(() => {
           vi.setSystemTime(localMidnight('2024-01-16'));
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'ADD_AMOUNT_SNAPSHOT',
             payload: { id: '1', amount: 1100 },
           });
@@ -775,34 +870,39 @@ describe('AccountContext', () => {
 
         act(() => {
           vi.setSystemTime(localMidnight('2024-01-17'));
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'ADD_AMOUNT_SNAPSHOT',
             payload: { id: '1', amount: 1200 },
           });
         });
 
-        expect(amountHistory['1']).toHaveLength(3);
+        expect(captured.amountHistory['1']).toHaveLength(3);
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'DELETE_HISTORY_ENTRY',
             payload: { id: '1', index: 1 },
           });
         });
 
-        expect(amountHistory['1']).toHaveLength(2);
-        expect(amountHistory['1'].map((e: any) => e.num)).toEqual([1000, 1200]);
+        expect(captured.amountHistory['1']).toHaveLength(2);
+        expect(captured.amountHistory['1'].map((e) => e.num)).toEqual([1000, 1200]);
       });
     });
 
     describe('ADD_HISTORY_ENTRY', () => {
       it('should add and sort a new history entry', () => {
-        let amountHistory!: any;
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof AccountContext>;
+        const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
         const TestComponent = () => {
-          ({ amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
-          return null;
+
+            Object.assign(captured, useContext(AccountContext));
+
+            Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+            return null;
+
         };
 
         render(
@@ -815,12 +915,12 @@ describe('AccountContext', () => {
         const account = new SavedAccount('1', 'Savings', 1000);
 
         act(() => {
-          dispatch({ type: 'ADD_ACCOUNT', payload: account });
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account });
         });
 
         act(() => {
           vi.setSystemTime(localMidnight('2024-01-20'));
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'ADD_AMOUNT_SNAPSHOT',
             payload: { id: '1', amount: 1200 },
           });
@@ -828,14 +928,14 @@ describe('AccountContext', () => {
 
         // Add entry with date between existing entries
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'ADD_HISTORY_ENTRY',
             payload: { id: '1', date: '2024-01-17', num: 1100 },
           });
         });
 
-        expect(amountHistory['1']).toHaveLength(3);
-        expect(amountHistory['1'].map((e: any) => e.date)).toEqual([
+        expect(captured.amountHistory['1']).toHaveLength(3);
+        expect(captured.amountHistory['1'].map((e) => e.date)).toEqual([
           '2024-01-15',
           '2024-01-17',
           '2024-01-20',
@@ -845,13 +945,17 @@ describe('AccountContext', () => {
 
     describe('SET_BULK_DATA', () => {
       it('should replace all accounts and history', () => {
-        let accounts!: any[];
-        let amountHistory!: any;
-        let dispatch!: any;
+        const captured = {} as React.ContextType<typeof AccountContext>;
+        const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
         const TestComponent = () => {
-          ({ accounts, amountHistory } = useContext(AccountContext)); ({ dispatch } = useContext(AccountDispatchContext));
-          return null;
+
+            Object.assign(captured, useContext(AccountContext));
+
+            Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+            return null;
+
         };
 
         render(
@@ -862,7 +966,7 @@ describe('AccountContext', () => {
 
         const account1 = new SavedAccount('1', 'Old', 100);
         act(() => {
-          dispatch({ type: 'ADD_ACCOUNT', payload: account1 });
+          capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account1 });
         });
 
         const newAccounts = [
@@ -875,28 +979,30 @@ describe('AccountContext', () => {
         };
 
         act(() => {
-          dispatch({
+          capturedDispatch.dispatch({
             type: 'SET_BULK_DATA',
             payload: { accounts: newAccounts, amountHistory: newHistory },
           });
         });
 
-        expect(accounts).toHaveLength(2);
-        expect(accounts[0].id).toBe('2');
-        expect(accounts[1].id).toBe('3');
-        expect(amountHistory).toEqual(newHistory);
+        expect(captured.accounts).toHaveLength(2);
+        expect(captured.accounts[0].id).toBe('2');
+        expect(captured.accounts[1].id).toBe('3');
+        expect(captured.amountHistory).toEqual(newHistory);
       });
     });
   });
 
   describe('Export and Import functionality', () => {
     it('should export data with correct structure', () => {
-      let exportData: any;
-      let dispatch!: any;
+      const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
       const TestComponent = () => {
-        ({ exportData, dispatch } = useContext(AccountDispatchContext));
-        return null;
+
+          Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+          return null;
+
       };
 
       render(
@@ -907,7 +1013,7 @@ describe('AccountContext', () => {
 
       const account = new SavedAccount('1', 'Savings', 1000, 2.5);
       act(() => {
-        dispatch({ type: 'ADD_ACCOUNT', payload: account });
+        capturedDispatch.dispatch({ type: 'ADD_ACCOUNT', payload: account });
       });
 
       // Mock URL and DOM methods
@@ -916,7 +1022,7 @@ describe('AccountContext', () => {
       const createElementSpy = vi.spyOn(document, 'createElement');
 
       act(() => {
-        exportData();
+        capturedDispatch.exportData();
       });
 
       expect(createObjectURLSpy).toHaveBeenCalled();
@@ -928,13 +1034,17 @@ describe('AccountContext', () => {
     });
 
     it('should import valid JSON data', () => {
-      let importData: any;
-      let accounts!: any[];
-      let amountHistory!: any;
+      const captured = {} as React.ContextType<typeof AccountContext>;
+      const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
       const TestComponent = () => {
-        ({ accounts, amountHistory } = useContext(AccountContext)); ({ importData } = useContext(AccountDispatchContext));
-        return null;
+
+          Object.assign(captured, useContext(AccountContext));
+
+          Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+          return null;
+
       };
 
       render(
@@ -962,23 +1072,26 @@ describe('AccountContext', () => {
       const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
 
       act(() => {
-        importData(jsonData);
+        capturedDispatch.importData(jsonData);
       });
 
-      expect(accounts).toHaveLength(1);
-      expect(accounts[0].name).toBe('Imported Savings');
-      expect(amountHistory['1']).toEqual([{ date: '2024-01-01', num: 3000 }]);
+      expect(captured.accounts).toHaveLength(1);
+      expect(captured.accounts[0].name).toBe('Imported Savings');
+      expect(captured.amountHistory['1']).toEqual([{ date: '2024-01-01', num: 3000 }]);
       expect(alertSpy).toHaveBeenCalledWith('Import successful!');
 
       alertSpy.mockRestore();
     });
 
     it('should show error on invalid JSON import', () => {
-      let importData: any;
+      const capturedDispatch = {} as React.ContextType<typeof AccountDispatchContext>;
 
       const TestComponent = () => {
-        ({ importData } = useContext(AccountDispatchContext));
-        return null;
+
+          Object.assign(capturedDispatch, useContext(AccountDispatchContext));
+
+          return null;
+
       };
 
       render(
@@ -990,7 +1103,7 @@ describe('AccountContext', () => {
       const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
 
       act(() => {
-        importData('invalid json data');
+        capturedDispatch.importData('invalid json data');
       });
 
       expect(alertSpy).toHaveBeenCalledWith('Failed to import data. Check file format.');

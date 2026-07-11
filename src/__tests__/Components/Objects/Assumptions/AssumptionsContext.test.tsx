@@ -119,9 +119,9 @@ describe('AssumptionsContext', () => {
     };
     localStorageMock.setItem('assumptions_settings', JSON.stringify(savedState));
 
-    let loaded: AssumptionsState | undefined;
+    const captured: { loaded: AssumptionsState | undefined } = { loaded: undefined };
     const Capture = () => {
-      loaded = useContext(AssumptionsContext).state;
+      Object.assign(captured, { loaded: useContext(AssumptionsContext).state });
       return null;
     };
     render(
@@ -130,9 +130,9 @@ describe('AssumptionsContext', () => {
       </AssumptionsProvider>
     );
 
-    expect(loaded?.demographics.priorEarnings).toBeDefined();
-    expect(loaded?.demographics.priorEarnings).toHaveLength(2);
-    expect(loaded?.demographics.priorEarnings?.[0]).toMatchObject({ year: 2010, amount: 50000 });
+    expect(captured.loaded?.demographics.priorEarnings).toBeDefined();
+    expect(captured.loaded?.demographics.priorEarnings).toHaveLength(2);
+    expect(captured.loaded?.demographics.priorEarnings?.[0]).toMatchObject({ year: 2010, amount: 50000 });
   });
 
   // Regression: PR #52 finding #6.
@@ -151,9 +151,9 @@ describe('AssumptionsContext', () => {
     } as AssumptionsState;
     localStorageMock.setItem('assumptions_settings', JSON.stringify(savedState));
 
-    let loaded: AssumptionsState | undefined;
+    const captured: { loaded: AssumptionsState | undefined } = { loaded: undefined };
     const Capture = () => {
-      loaded = useContext(AssumptionsContext).state;
+      Object.assign(captured, { loaded: useContext(AssumptionsContext).state });
       return null;
     };
     render(
@@ -162,7 +162,7 @@ describe('AssumptionsContext', () => {
       </AssumptionsProvider>
     );
 
-    expect(getLifeExpectancy(loaded!.milestones)).toBe(90);
+    expect(getLifeExpectancy(captured.loaded!.milestones)).toBe(90);
   });
 
   it('should save state to localStorage when state changes (debounced)', async () => {
@@ -207,12 +207,11 @@ describe('AssumptionsContext', () => {
   // Priorities Reducer Tests
   describe('Priorities Reducer Actions', () => {
     it('should add a priority', () => {
-      let state!: AssumptionsState;
-      let dispatch: React.Dispatch<any>;
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
 
       const TestComponent = () => {
-        ({ state, dispatch } = useContext(AssumptionsContext));
-        return null;
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
       };
 
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
@@ -220,19 +219,18 @@ describe('AssumptionsContext', () => {
       const newPriority: PriorityBucket = { id: '1', name: 'Test', type: 'INVESTMENT', capType: 'MAX' };
 
       act(() => {
-        dispatch({ type: 'ADD_PRIORITY', payload: newPriority });
+        captured.dispatch({ type: 'ADD_PRIORITY', payload: newPriority });
       });
 
-      expect(state.priorities).toContainEqual(newPriority);
+      expect(captured.state.priorities).toContainEqual(newPriority);
     });
 
     it('should remove a priority', () => {
-        let state!: AssumptionsState;
-        let dispatch: React.Dispatch<any>;
-  
+        const captured = {} as React.ContextType<typeof AssumptionsContext>;
+
         const TestComponent = () => {
-          ({ state, dispatch } = useContext(AssumptionsContext));
-          return null;
+            Object.assign(captured, useContext(AssumptionsContext));
+            return null;
         };
         
         const initialPriority: PriorityBucket = { id: '1', name: 'Test', type: 'INVESTMENT', capType: 'MAX' };
@@ -240,23 +238,22 @@ describe('AssumptionsContext', () => {
         render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
         
         act(() => {
-            dispatch({ type: 'ADD_PRIORITY', payload: initialPriority });
+            captured.dispatch({ type: 'ADD_PRIORITY', payload: initialPriority });
         });
         
         act(() => {
-          dispatch({ type: 'REMOVE_PRIORITY', payload: '1' });
+          captured.dispatch({ type: 'REMOVE_PRIORITY', payload: '1' });
         });
   
-        expect(state.priorities).not.toContainEqual(initialPriority);
+        expect(captured.state.priorities).not.toContainEqual(initialPriority);
     });
 
     it('should update a priority', () => {
-        let state!: AssumptionsState;
-        let dispatch: React.Dispatch<any>;
-  
+        const captured = {} as React.ContextType<typeof AssumptionsContext>;
+
         const TestComponent = () => {
-          ({ state, dispatch } = useContext(AssumptionsContext));
-          return null;
+            Object.assign(captured, useContext(AssumptionsContext));
+            return null;
         };
         
         const initialPriority: PriorityBucket = { id: '1', name: 'Test', type: 'INVESTMENT', capType: 'MAX' };
@@ -265,15 +262,15 @@ describe('AssumptionsContext', () => {
         render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
 
         act(() => {
-            dispatch({ type: 'ADD_PRIORITY', payload: initialPriority });
+            captured.dispatch({ type: 'ADD_PRIORITY', payload: initialPriority });
         });
         
         act(() => {
-          dispatch({ type: 'UPDATE_PRIORITY', payload: updatedPriority });
+          captured.dispatch({ type: 'UPDATE_PRIORITY', payload: updatedPriority });
         });
   
-        expect(state.priorities).toContainEqual(updatedPriority);
-        expect(state.priorities).not.toContainEqual(initialPriority);
+        expect(captured.state.priorities).toContainEqual(updatedPriority);
+        expect(captured.state.priorities).not.toContainEqual(initialPriority);
     });
 
   });
@@ -281,12 +278,11 @@ describe('AssumptionsContext', () => {
   // Withdrawal Strategy Reducer Tests
   describe('Withdrawal Strategy Reducer Actions', () => {
     it('should add a withdrawal strategy item', () => {
-      let state!: AssumptionsState;
-      let dispatch: React.Dispatch<any>;
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
 
       const TestComponent = () => {
-        ({ state, dispatch } = useContext(AssumptionsContext));
-        return null;
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
       };
 
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
@@ -294,19 +290,18 @@ describe('AssumptionsContext', () => {
       const newWithdrawalItem: WithdrawalBucket = { id: 'wd-1', name: 'Emergency Fund', accountId: 'acc-1' };
 
       act(() => {
-        dispatch({ type: 'ADD_WITHDRAWAL_STRATEGY', payload: newWithdrawalItem });
+        captured.dispatch({ type: 'ADD_WITHDRAWAL_STRATEGY', payload: newWithdrawalItem });
       });
 
-      expect(state.withdrawalStrategy).toContainEqual(newWithdrawalItem);
+      expect(captured.state.withdrawalStrategy).toContainEqual(newWithdrawalItem);
     });
 
     it('should remove a withdrawal strategy item', () => {
-        let state!: AssumptionsState;
-        let dispatch: React.Dispatch<any>;
-  
+        const captured = {} as React.ContextType<typeof AssumptionsContext>;
+
         const TestComponent = () => {
-          ({ state, dispatch } = useContext(AssumptionsContext));
-          return null;
+            Object.assign(captured, useContext(AssumptionsContext));
+            return null;
         };
 
         const initialItem: WithdrawalBucket = { id: 'wd-1', name: 'Emergency Fund', accountId: 'acc-1' };
@@ -314,23 +309,22 @@ describe('AssumptionsContext', () => {
         render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
 
         act(() => {
-            dispatch({ type: 'ADD_WITHDRAWAL_STRATEGY', payload: initialItem });
+            captured.dispatch({ type: 'ADD_WITHDRAWAL_STRATEGY', payload: initialItem });
         });
         
         act(() => {
-          dispatch({ type: 'REMOVE_WITHDRAWAL_STRATEGY', payload: 'wd-1' });
+          captured.dispatch({ type: 'REMOVE_WITHDRAWAL_STRATEGY', payload: 'wd-1' });
         });
   
-        expect(state.withdrawalStrategy).not.toContainEqual(initialItem);
+        expect(captured.state.withdrawalStrategy).not.toContainEqual(initialItem);
     });
 
     it('should update a withdrawal strategy item', () => {
-        let state!: AssumptionsState;
-        let dispatch: React.Dispatch<any>;
-  
+        const captured = {} as React.ContextType<typeof AssumptionsContext>;
+
         const TestComponent = () => {
-          ({ state, dispatch } = useContext(AssumptionsContext));
-          return null;
+            Object.assign(captured, useContext(AssumptionsContext));
+            return null;
         };
 
         const initialItem: WithdrawalBucket = { id: 'wd-1', name: 'Emergency Fund', accountId: 'acc-1' };
@@ -339,160 +333,153 @@ describe('AssumptionsContext', () => {
         render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
         
         act(() => {
-            dispatch({ type: 'ADD_WITHDRAWAL_STRATEGY', payload: initialItem });
+            captured.dispatch({ type: 'ADD_WITHDRAWAL_STRATEGY', payload: initialItem });
         });
         
         act(() => {
-          dispatch({ type: 'UPDATE_WITHDRAWAL_STRATEGY', payload: updatedItem });
+          captured.dispatch({ type: 'UPDATE_WITHDRAWAL_STRATEGY', payload: updatedItem });
         });
   
-        expect(state.withdrawalStrategy).toContainEqual(updatedItem);
-        expect(state.withdrawalStrategy).not.toContainEqual(initialItem);
+        expect(captured.state.withdrawalStrategy).toContainEqual(updatedItem);
+        expect(captured.state.withdrawalStrategy).not.toContainEqual(initialItem);
     });
   });
 
   it('should reset to default settings', () => {
-    let state!: AssumptionsState;
-    let dispatch: React.Dispatch<any>;
+    const captured = {} as React.ContextType<typeof AssumptionsContext>;
 
     const TestComponent = () => {
-      ({ state, dispatch } = useContext(AssumptionsContext));
-      return null;
+        Object.assign(captured, useContext(AssumptionsContext));
+        return null;
     };
 
     render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
 
     act(() => {
-      dispatch({ type: 'UPDATE_MACRO', payload: { inflationRate: 99 } });
+      captured.dispatch({ type: 'UPDATE_MACRO', payload: { inflationRate: 99 } });
     });
 
-    expect(state.macro.inflationRate).toBe(99);
+    expect(captured.state.macro.inflationRate).toBe(99);
 
     act(() => {
-      dispatch({ type: 'RESET_DEFAULTS' });
+      captured.dispatch({ type: 'RESET_DEFAULTS' });
     });
 
-    expect(state).toEqual(defaultAssumptions);
+    expect(captured.state).toEqual(defaultAssumptions);
   });
 
   describe('Income Reducer Actions', () => {
     it('should update income settings', () => {
-      let state!: AssumptionsState;
-      let dispatch: React.Dispatch<any>;
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
 
       const TestComponent = () => {
-        ({ state, dispatch } = useContext(AssumptionsContext));
-        return null;
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
       };
 
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
 
       act(() => {
-        dispatch({ type: 'UPDATE_INCOME', payload: { salaryGrowth: 4.5 } });
+        captured.dispatch({ type: 'UPDATE_INCOME', payload: { salaryGrowth: 4.5 } });
       });
 
-      expect(state.income.salaryGrowth).toBe(4.5);
-      expect(state.income.qualifiesForSocialSecurity).toBe(defaultAssumptions.income.qualifiesForSocialSecurity);
+      expect(captured.state.income.salaryGrowth).toBe(4.5);
+      expect(captured.state.income.qualifiesForSocialSecurity).toBe(defaultAssumptions.income.qualifiesForSocialSecurity);
     });
 
     it('should update social security start age', () => {
-      let state!: AssumptionsState;
-      let dispatch: React.Dispatch<any>;
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
 
       const TestComponent = () => {
-        ({ state, dispatch } = useContext(AssumptionsContext));
-        return null;
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
       };
 
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
 
       act(() => {
-        dispatch({ type: 'UPDATE_INCOME', payload: { qualifiesForSocialSecurity: false } });
+        captured.dispatch({ type: 'UPDATE_INCOME', payload: { qualifiesForSocialSecurity: false } });
       });
 
-      expect(state.income.qualifiesForSocialSecurity).toBe(false);
+      expect(captured.state.income.qualifiesForSocialSecurity).toBe(false);
     });
   });
 
   describe('Expenses Reducer Actions', () => {
     it('should update expense settings', () => {
-      let state!: AssumptionsState;
-      let dispatch: React.Dispatch<any>;
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
 
       const TestComponent = () => {
-        ({ state, dispatch } = useContext(AssumptionsContext));
-        return null;
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
       };
 
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
 
       act(() => {
-        dispatch({ type: 'UPDATE_EXPENSES', payload: { lifestyleCreep: 30.0, housingAppreciation: 4.0 } });
+        captured.dispatch({ type: 'UPDATE_EXPENSES', payload: { lifestyleCreep: 30.0, housingAppreciation: 4.0 } });
       });
 
-      expect(state.expenses.lifestyleCreep).toBe(30.0);
-      expect(state.expenses.housingAppreciation).toBe(4.0);
-      expect(state.expenses.rentInflation).toBe(defaultAssumptions.expenses.rentInflation);
+      expect(captured.state.expenses.lifestyleCreep).toBe(30.0);
+      expect(captured.state.expenses.housingAppreciation).toBe(4.0);
+      expect(captured.state.expenses.rentInflation).toBe(defaultAssumptions.expenses.rentInflation);
     });
   });
 
   describe('Investments Reducer Actions', () => {
     it('should update investment settings', () => {
-      let state!: AssumptionsState;
-      let dispatch: React.Dispatch<any>;
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
 
       const TestComponent = () => {
-        ({ state, dispatch } = useContext(AssumptionsContext));
-        return null;
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
       };
 
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
 
       act(() => {
-        dispatch({ type: 'UPDATE_INVESTMENTS', payload: { withdrawalStrategy: 'Percentage' as const, withdrawalRate: 3.5 } });
+        captured.dispatch({ type: 'UPDATE_INVESTMENTS', payload: { withdrawalStrategy: 'Percentage' as const, withdrawalRate: 3.5 } });
       });
 
-      expect(state.investments.withdrawalStrategy).toBe('Percentage');
-      expect(state.investments.withdrawalRate).toBe(3.5);
+      expect(captured.state.investments.withdrawalStrategy).toBe('Percentage');
+      expect(captured.state.investments.withdrawalRate).toBe(3.5);
     });
 
     it('should update investment return rates', () => {
-      let state!: AssumptionsState;
-      let dispatch: React.Dispatch<any>;
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
 
       const TestComponent = () => {
-        ({ state, dispatch } = useContext(AssumptionsContext));
-        return null;
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
       };
 
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
 
       act(() => {
-        dispatch({ type: 'UPDATE_INVESTMENT_RATES', payload: { ror: 8.5 } });
+        captured.dispatch({ type: 'UPDATE_INVESTMENT_RATES', payload: { ror: 8.5 } });
       });
 
-      expect(state.investments.returnRates.ror).toBe(8.5);
+      expect(captured.state.investments.returnRates.ror).toBe(8.5);
     });
   });
 
   describe('Demographics Reducer Actions', () => {
     it('should update birth year via milestone', () => {
-      let state!: AssumptionsState;
-      let dispatch: React.Dispatch<any>;
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
 
       const TestComponent = () => {
-        ({ state, dispatch } = useContext(AssumptionsContext));
-        return null;
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
       };
 
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
 
       // Update birth year via UPDATE_MILESTONE on the Birth milestone
-      const birthMilestone = state.milestones.find(m => m.id === BUILTIN_MILESTONE_IDS.BIRTH);
+      const birthMilestone = captured.state.milestones.find(m => m.id === BUILTIN_MILESTONE_IDS.BIRTH);
       expect(birthMilestone).toBeDefined();
 
       act(() => {
-        dispatch({
+        captured.dispatch({
           type: 'UPDATE_MILESTONE',
           payload: {
             ...birthMilestone!,
@@ -501,21 +488,20 @@ describe('AssumptionsContext', () => {
         });
       });
 
-      expect(getBirthYear(state.milestones)).toBe(1990);
+      expect(getBirthYear(captured.state.milestones)).toBe(1990);
       // Retirement age and life expectancy are now derived from milestones
-      expect(getRetirementAge(state.milestones)).toBeGreaterThan(0);
-      expect(getLifeExpectancy(state.milestones)).toBeGreaterThan(0);
+      expect(getRetirementAge(captured.state.milestones)).toBeGreaterThan(0);
+      expect(getLifeExpectancy(captured.state.milestones)).toBeGreaterThan(0);
     });
   });
 
   describe('Bulk Data Actions', () => {
     it('should set bulk data replacing entire state', () => {
-      let state!: AssumptionsState;
-      let dispatch: React.Dispatch<any>;
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
 
       const TestComponent = () => {
-        ({ state, dispatch } = useContext(AssumptionsContext));
-        return null;
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
       };
 
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
@@ -527,20 +513,19 @@ describe('AssumptionsContext', () => {
       };
 
       act(() => {
-        dispatch({ type: 'SET_BULK_DATA', payload: newState });
+        captured.dispatch({ type: 'SET_BULK_DATA', payload: newState });
       });
 
-      expect(state.macro.inflationRate).toBe(15.0);
-      expect(state.income.salaryGrowth).toBe(10.0);
+      expect(captured.state.macro.inflationRate).toBe(15.0);
+      expect(captured.state.income.salaryGrowth).toBe(10.0);
     });
 
     it('should set priorities in bulk', () => {
-      let state!: AssumptionsState;
-      let dispatch: React.Dispatch<any>;
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
 
       const TestComponent = () => {
-        ({ state, dispatch } = useContext(AssumptionsContext));
-        return null;
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
       };
 
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
@@ -551,20 +536,19 @@ describe('AssumptionsContext', () => {
       ];
 
       act(() => {
-        dispatch({ type: 'SET_PRIORITIES', payload: priorities });
+        captured.dispatch({ type: 'SET_PRIORITIES', payload: priorities });
       });
 
-      expect(state.priorities).toHaveLength(2);
-      expect(state.priorities).toEqual(priorities);
+      expect(captured.state.priorities).toHaveLength(2);
+      expect(captured.state.priorities).toEqual(priorities);
     });
 
     it('should set withdrawal strategy in bulk', () => {
-      let state!: AssumptionsState;
-      let dispatch: React.Dispatch<any>;
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
 
       const TestComponent = () => {
-        ({ state, dispatch } = useContext(AssumptionsContext));
-        return null;
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
       };
 
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
@@ -575,11 +559,11 @@ describe('AssumptionsContext', () => {
       ];
 
       act(() => {
-        dispatch({ type: 'SET_WITHDRAWAL_STRATEGY', payload: withdrawalStrategy });
+        captured.dispatch({ type: 'SET_WITHDRAWAL_STRATEGY', payload: withdrawalStrategy });
       });
 
-      expect(state.withdrawalStrategy).toHaveLength(2);
-      expect(state.withdrawalStrategy).toEqual(withdrawalStrategy);
+      expect(captured.state.withdrawalStrategy).toHaveLength(2);
+      expect(captured.state.withdrawalStrategy).toEqual(withdrawalStrategy);
     });
   });
 
@@ -592,53 +576,66 @@ describe('AssumptionsContext', () => {
       };
       localStorageMock.getItem.mockReturnValueOnce(JSON.stringify(oldData));
 
-      let state!: AssumptionsState;
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
+
       const TestComponent = () => {
-        ({ state } = useContext(AssumptionsContext));
-        return null;
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
       };
 
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
 
       // Saved values should be preserved
-      expect(state.macro.inflationRate).toBe(4.0);
-      expect(state.income.salaryGrowth).toBe(2.0);
+      expect(captured.state.macro.inflationRate).toBe(4.0);
+      expect(captured.state.income.salaryGrowth).toBe(2.0);
 
       // Missing fields should have defaults
-      expect(state.macro.healthcareInflation).toBe(defaultAssumptions.macro.healthcareInflation);
-      expect(state.macro.inflationAdjusted).toBe(defaultAssumptions.macro.inflationAdjusted);
-      expect(state.income.qualifiesForSocialSecurity).toBe(defaultAssumptions.income.qualifiesForSocialSecurity);
-      expect(state.income.socialSecurityFundingPercent).toBe(defaultAssumptions.income.socialSecurityFundingPercent);
+      expect(captured.state.macro.healthcareInflation).toBe(defaultAssumptions.macro.healthcareInflation);
+      expect(captured.state.macro.inflationAdjusted).toBe(defaultAssumptions.macro.inflationAdjusted);
+      expect(captured.state.income.qualifiesForSocialSecurity).toBe(defaultAssumptions.income.qualifiesForSocialSecurity);
+      expect(captured.state.income.socialSecurityFundingPercent).toBe(defaultAssumptions.income.socialSecurityFundingPercent);
     });
 
     it('migrates the retired rate-match Roth strategy to std-ded-only', () => {
       localStorageMock.getItem.mockReturnValueOnce(JSON.stringify({
         investments: { rothConversionStrategy: 'rate-match' },
       }));
-      let state!: AssumptionsState;
-      const TestComponent = () => { ({ state } = useContext(AssumptionsContext)); return null; };
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
+
+      const TestComponent = () => {
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
+      };
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
-      expect(state.investments.rothConversionStrategy).toBe('std-ded-only');
+      expect(captured.state.investments.rothConversionStrategy).toBe('std-ded-only');
     });
 
     it('leaves a saved dp-precomputed Roth strategy untouched', () => {
       localStorageMock.getItem.mockReturnValueOnce(JSON.stringify({
         investments: { rothConversionStrategy: 'dp-precomputed' },
       }));
-      let state!: AssumptionsState;
-      const TestComponent = () => { ({ state } = useContext(AssumptionsContext)); return null; };
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
+
+      const TestComponent = () => {
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
+      };
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
-      expect(state.investments.rothConversionStrategy).toBe('dp-precomputed');
+      expect(captured.state.investments.rothConversionStrategy).toBe('dp-precomputed');
     });
 
     it('migrates the retired bequeath situation to self-liquidate', () => {
       localStorageMock.getItem.mockReturnValueOnce(JSON.stringify({
         investments: { rothConversionUserSituation: 'bequeath' },
       }));
-      let state!: AssumptionsState;
-      const TestComponent = () => { ({ state } = useContext(AssumptionsContext)); return null; };
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
+
+      const TestComponent = () => {
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
+      };
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
-      expect(state.investments.rothConversionUserSituation).toBe('self-liquidate');
+      expect(captured.state.investments.rothConversionUserSituation).toBe('self-liquidate');
     });
 
     // Re-review 1: a malformed/older backup can carry a milestone object that lacks its
@@ -684,51 +681,54 @@ describe('AssumptionsContext', () => {
       };
       localStorageMock.getItem.mockReturnValueOnce(JSON.stringify(partialData));
 
-      let state!: AssumptionsState;
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
+
       const TestComponent = () => {
-        ({ state } = useContext(AssumptionsContext));
-        return null;
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
       };
 
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
 
       // Saved section should be preserved
-      expect(state.macro.inflationRate).toBe(3.5);
-      expect(state.macro.inflationAdjusted).toBe(false);
+      expect(captured.state.macro.inflationRate).toBe(3.5);
+      expect(captured.state.macro.inflationAdjusted).toBe(false);
 
       // Missing sections should have all defaults
-      expect(state.income).toEqual(defaultAssumptions.income);
-      expect(state.expenses).toEqual(defaultAssumptions.expenses);
-      expect(state.demographics).toEqual(defaultAssumptions.demographics);
+      expect(captured.state.income).toEqual(defaultAssumptions.income);
+      expect(captured.state.expenses).toEqual(defaultAssumptions.expenses);
+      expect(captured.state.demographics).toEqual(defaultAssumptions.demographics);
     });
 
     it('should handle invalid JSON gracefully', () => {
       localStorageMock.getItem.mockReturnValueOnce('not valid json {{{');
 
-      let state!: AssumptionsState;
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
+
       const TestComponent = () => {
-        ({ state } = useContext(AssumptionsContext));
-        return null;
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
       };
 
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
 
       // Should fall back to defaults
-      expect(state).toEqual(defaultAssumptions);
+      expect(captured.state).toEqual(defaultAssumptions);
     });
 
     it('should handle null/undefined localStorage gracefully', () => {
       localStorageMock.getItem.mockReturnValueOnce(null);
 
-      let state!: AssumptionsState;
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
+
       const TestComponent = () => {
-        ({ state } = useContext(AssumptionsContext));
-        return null;
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
       };
 
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
 
-      expect(state).toEqual(defaultAssumptions);
+      expect(captured.state).toEqual(defaultAssumptions);
     });
 
     it('should preserve arrays (priorities, withdrawalStrategy) from saved data', () => {
@@ -742,18 +742,19 @@ describe('AssumptionsContext', () => {
       };
       localStorageMock.getItem.mockReturnValueOnce(JSON.stringify(savedData));
 
-      let state!: AssumptionsState;
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
+
       const TestComponent = () => {
-        ({ state } = useContext(AssumptionsContext));
-        return null;
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
       };
 
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
 
-      expect(state.priorities).toHaveLength(1);
-      expect(state.priorities[0].name).toBe('Test Priority');
-      expect(state.withdrawalStrategy).toHaveLength(1);
-      expect(state.withdrawalStrategy[0].name).toBe('Test Withdrawal');
+      expect(captured.state.priorities).toHaveLength(1);
+      expect(captured.state.priorities[0].name).toBe('Test Priority');
+      expect(captured.state.withdrawalStrategy).toHaveLength(1);
+      expect(captured.state.withdrawalStrategy[0].name).toBe('Test Withdrawal');
     });
 
     it('should handle wrong types by using defaults', () => {
@@ -768,23 +769,24 @@ describe('AssumptionsContext', () => {
       };
       localStorageMock.getItem.mockReturnValueOnce(JSON.stringify(badData));
 
-      let state!: AssumptionsState;
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
+
       const TestComponent = () => {
-        ({ state } = useContext(AssumptionsContext));
-        return null;
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
       };
 
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
 
       // Wrong type should fall back to default
-      expect(state.macro.inflationRate).toBe(defaultAssumptions.macro.inflationRate);
+      expect(captured.state.macro.inflationRate).toBe(defaultAssumptions.macro.inflationRate);
       // Birth year is now derived from milestones
-      expect(getBirthYear(state.milestones)).toBeGreaterThan(0);
+      expect(getBirthYear(captured.state.milestones)).toBeGreaterThan(0);
 
       // Correct types should be preserved
-      expect(state.macro.healthcareInflation).toBe(5.0);
+      expect(captured.state.macro.healthcareInflation).toBe(5.0);
       // retirementAge is now derived from milestones (legacy data should migrate to milestones)
-      expect(getRetirementAge(state.milestones)).toBe(65);
+      expect(getRetirementAge(captured.state.milestones)).toBe(65);
     });
 
     it('should handle deeply nested fields like returnRates', () => {
@@ -796,18 +798,19 @@ describe('AssumptionsContext', () => {
       };
       localStorageMock.getItem.mockReturnValueOnce(JSON.stringify(savedData));
 
-      let state!: AssumptionsState;
+      const captured = {} as React.ContextType<typeof AssumptionsContext>;
+
       const TestComponent = () => {
-        ({ state } = useContext(AssumptionsContext));
-        return null;
+          Object.assign(captured, useContext(AssumptionsContext));
+          return null;
       };
 
       render(<AssumptionsProvider><TestComponent /></AssumptionsProvider>);
 
       // Saved value preserved
-      expect(state.investments.withdrawalRate).toBe(3.5);
+      expect(captured.state.investments.withdrawalRate).toBe(3.5);
       // Missing nested object gets default
-      expect(state.investments.returnRates.ror).toBe(defaultAssumptions.investments.returnRates.ror);
+      expect(captured.state.investments.returnRates.ror).toBe(defaultAssumptions.investments.returnRates.ror);
     });
   });
 
