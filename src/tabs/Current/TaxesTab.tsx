@@ -1,6 +1,7 @@
 import { useContext, useMemo, useCallback, useState } from "react";
 import { IncomeContext } from "../../components/Objects/Income/IncomeContext";
 import { ExpenseContext } from "../../components/Objects/Expense/ExpenseContext";
+import { MortgageExpense, getExpenseActiveMultiplier } from "../../components/Objects/Expense/models";
 import { TaxContext } from "../../components/Objects/Taxes/TaxContext";
 import { AssumptionsContext, getBirthYear, getLifeExpectancy } from "../../components/Objects/Assumptions/AssumptionsContext";
 import { TAX_DATABASE, FilingStatus, getClosestTaxYear } from "../../data/TaxData";
@@ -25,6 +26,7 @@ import { TaxLifeEvent } from "../../components/Objects/Taxes/TaxContext";
 import { DeductionMethod } from "../../components/Objects/Taxes/TaxContext";
 import { Panel } from "../../components/Layout/Primitives";
 import { Tooltip } from "../../components/Layout/InputFields/Tooltip";
+import { AlertBanner } from "../../components/Layout/AlertBanner";
 
 // Suggestion: Create a 'useTax' hook in TaxContext.tsx that handles the null check
 // and throws an error if the provider is missing.
@@ -120,6 +122,21 @@ export default function TaxesTab() {
 
     const stateItemized = useMemo(
         () => getItemizedDeductions(expenses, taxYear),
+        [expenses, taxYear]
+    );
+
+    // #201 — Every itemized mortgage shares one $750k acquisition-debt cap, and
+    // rental/investment-property interest usually isn't an itemized deduction at
+    // all. Warn once 2+ active mortgages are flagged Itemized so the user can
+    // check which should actually be deductible.
+    const itemizedMortgageCount = useMemo(
+        () =>
+            expenses.filter(
+                (exp) =>
+                    exp instanceof MortgageExpense &&
+                    exp.is_tax_deductible === "Itemized" &&
+                    getExpenseActiveMultiplier(exp, taxYear) > 0,
+            ).length,
         [expenses, taxYear]
     );
     const federalItemizedTotal = stateItemized + stateTax;
@@ -482,6 +499,14 @@ export default function TaxesTab() {
 
                     {/* Main Results Section */}
                     <div className="lg:col-span-2 space-y-6">
+                        {itemizedMortgageCount >= 2 && (
+                            <AlertBanner severity="warning" title="Multiple mortgages set to Itemized">
+                                {itemizedMortgageCount} mortgages are marked Itemized. Second-home interest
+                                shares one $750,000 acquisition-debt cap, and rental- or investment-property
+                                interest usually isn't an itemized deduction at all (it belongs on Schedule E).
+                                Check which of these should actually be deductible.
+                            </AlertBanner>
+                        )}
                         <Panel padding="none" className="p-8 shadow-2xl">
                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-8">
                                 <div>

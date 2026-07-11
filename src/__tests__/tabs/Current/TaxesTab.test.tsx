@@ -9,7 +9,17 @@ import type { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 import { AssumptionsContext, defaultAssumptions } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { WorkIncome } from '../../../components/Objects/Income/models';
 import type { AnyIncome } from '../../../components/Objects/Income/models';
+import { MortgageExpense } from '../../../components/Objects/Expense/models';
 import type { AnyExpense } from '../../../components/Objects/Expense/models';
+
+function itemizedMortgage(id: string, deductible: 'Itemized' | 'No' = 'Itemized'): MortgageExpense {
+    // Active as of the current tax year (started two years ago, no end date).
+    return new MortgageExpense(
+        id, 'Home', 'Monthly', 500_000, 400_000, 400_000, 6.0, 30,
+        1.0, 0, 1.0, 0, 0.5, 0.5, 0, deductible, 0, `acc-${id}`,
+        new Date(new Date().getFullYear() - 2, 0, 1), 0, 0,
+    );
+}
 
 function renderTaxesTab(taxState: Partial<TaxState> = {}, incomes: AnyIncome[] = [], expenses: AnyExpense[] = []) {
     const dispatch = vi.fn();
@@ -64,5 +74,24 @@ describe('TaxesTab', () => {
         ];
         renderTaxesTab({}, incomes);
         expect(screen.getByText('Employer Match (post-tax)')).toBeInTheDocument();
+    });
+
+    describe('#201 multiple-itemized-mortgage warning', () => {
+        const WARNING = /Multiple mortgages set to Itemized/;
+
+        it('warns when 2+ active mortgages are marked Itemized', () => {
+            renderTaxesTab({}, [], [itemizedMortgage('m1'), itemizedMortgage('m2')]);
+            expect(screen.getByText(WARNING)).toBeInTheDocument();
+        });
+
+        it('does NOT warn for a single itemized mortgage', () => {
+            renderTaxesTab({}, [], [itemizedMortgage('m1')]);
+            expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
+        });
+
+        it('does NOT warn when only one of two mortgages is Itemized (other set to No)', () => {
+            renderTaxesTab({}, [], [itemizedMortgage('m1'), itemizedMortgage('m2', 'No')]);
+            expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
+        });
     });
 });
