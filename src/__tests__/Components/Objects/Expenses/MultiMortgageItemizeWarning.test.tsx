@@ -18,7 +18,7 @@ import { AccountContext, AccountDispatchContext } from '../../../../components/O
 import { MortgageExpense } from '../../../../components/Objects/Expense/models';
 import type { AnyExpense } from '../../../../components/Objects/Expense/models';
 
-const WARNING_TITLE = /Multiple mortgages set to Itemized/;
+const WARNING_TITLE = /Multiple Mortgages Set to Itemized/;
 
 function mortgage(
     id: string,
@@ -51,7 +51,15 @@ describe('MultiMortgageItemizeWarning', () => {
     it('warns when 2+ active mortgages are flagged Itemized', () => {
         render(withExpenses([mortgage('M1'), mortgage('M2')], <MultiMortgageItemizeWarning />));
         expect(screen.getByText(WARNING_TITLE)).toBeInTheDocument();
-        expect(screen.getByText(/2 mortgages are marked Itemized/)).toBeInTheDocument();
+        expect(screen.getByText(/one shared/)).toBeInTheDocument();
+        // The shared $750,000 acquisition-debt cap is called out.
+        expect(screen.getByText('$750,000')).toBeInTheDocument();
+    });
+
+    it('names each affected mortgage in the list', () => {
+        render(withExpenses([mortgage('M1'), mortgage('M2')], <MultiMortgageItemizeWarning />));
+        expect(screen.getByText('Home M1')).toBeInTheDocument();
+        expect(screen.getByText('Home M2')).toBeInTheDocument();
     });
 
     it('stays silent with a single itemized mortgage', () => {

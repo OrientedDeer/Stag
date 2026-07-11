@@ -77,7 +77,7 @@ describe('TaxesTab', () => {
     });
 
     describe('#201 multiple-itemized-mortgage warning', () => {
-        const WARNING = /Multiple mortgages set to Itemized/;
+        const WARNING = /Multiple Mortgages Set to Itemized/;
 
         it('warns when 2+ active mortgages are marked Itemized', () => {
             renderTaxesTab({}, [], [itemizedMortgage('m1'), itemizedMortgage('m2')]);

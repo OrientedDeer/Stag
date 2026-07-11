@@ -13,27 +13,48 @@ import { AlertBanner } from "../../Layout/AlertBanner";
  *
  * Shown on the Accounts, Expenses, AND Taxes tabs — mortgages are created from
  * the first two, so a Taxes-only warning is easy to never see.
+ *
+ * Styled to match the non-vesting RSU warning in FutureTab: Title Case title,
+ * a lead-in paragraph, a per-item list naming each affected mortgage, and a
+ * closing paragraph pointing at where to fix it. Left margin-free so the parent
+ * container owns spacing (ExpenseTab/AccountTab wrap it in `mb-4 empty:hidden`,
+ * TaxesTab lays it out under `space-y-6`).
  */
 export function MultiMortgageItemizeWarning({ year }: { year?: number }) {
     const { expenses } = useContext(ExpenseContext);
     const activeYear = year ?? new Date().getFullYear();
-    const count = useMemo(
+    const itemized = useMemo(
         () =>
             expenses.filter(
-                (exp) =>
+                (exp): exp is MortgageExpense =>
                     exp instanceof MortgageExpense &&
                     exp.is_tax_deductible === "Itemized" &&
                     getExpenseActiveMultiplier(exp, activeYear) > 0,
-            ).length,
+            ),
         [expenses, activeYear]
     );
-    if (count < 2) return null;
+    if (itemized.length < 2) return null;
     return (
-        <AlertBanner severity="warning" title="Multiple mortgages set to Itemized">
-            {count} mortgages are marked Itemized. Second-home interest
-            shares one $750,000 acquisition-debt cap, and rental- or investment-property
-            interest usually isn't an itemized deduction at all (it belongs on Schedule E).
-            Check which of these should actually be deductible.
+        <AlertBanner severity="warning" title="Multiple Mortgages Set to Itemized">
+            <p className="text-sm">
+                The projection sums the interest on every mortgage flagged Itemized under
+                one shared <strong>$750,000</strong> acquisition-debt cap — it does not
+                pick the larger loan — so a wrongly-flagged mortgage inflates your itemized
+                deduction:
+            </p>
+            <ul className="mt-2 list-disc list-inside text-sm space-y-1">
+                {itemized.map((exp) => (
+                    <li key={exp.id}>
+                        <strong>{exp.name}</strong> is deducted as itemized mortgage interest.
+                    </li>
+                ))}
+            </ul>
+            <p className="mt-2 text-sm">
+                Fix it on the expense's card in the <strong>Expenses</strong> tab (the
+                Tax Deductible setting). A second home's interest legitimately shares the
+                same $750,000 cap, but rental- or investment-property interest belongs on
+                Schedule E — not in your itemized deductions.
+            </p>
         </AlertBanner>
     );
 }
