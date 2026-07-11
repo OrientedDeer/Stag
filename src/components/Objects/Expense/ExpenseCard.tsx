@@ -17,7 +17,9 @@ import {
     isLongTermGoal,
     getGoalMonthlySetAside
 } from './models.js';
-import { ExpenseDispatchContext, type AllExpenseKeys } from "./ExpenseContext.js";
+import { ExpenseContext, ExpenseDispatchContext, type AllExpenseKeys } from "./ExpenseContext.js";
+import { MultiMortgageItemizeWarning, getActiveItemizedMortgages } from "./MultiMortgageItemizeWarning.js";
+import { WarningTriangleIcon } from "../../Layout/Icons/WarningTriangleIcon.js";
 import { AccountContext, AccountDispatchContext } from "../Accounts/AccountContext.js";
 import { StyledDisplay, StyledSelect } from "../../Layout/InputFields/StyleUI.js";
 import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput.js";
@@ -72,6 +74,7 @@ function getExpenseIconBg(expense: AnyExpense): string {
 
 function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
     const expenseDispatch = useContext(ExpenseDispatchContext);
+    const { expenses } = useContext(ExpenseContext);
     const { accounts } = useContext(AccountContext);
     const { dispatch: accountDispatch } = useContext(AccountDispatchContext);
     const { state: assumptions } = useContext(AssumptionsContext);
@@ -222,6 +225,25 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
     const descriptor = getExpenseDescriptor(expense);
     const iconBg = getExpenseIconBg(expense);
 
+    // #201: when 2+ active mortgages are flagged Itemized, they all share one
+    // $750k acquisition-debt cap and the engine sums their interest — so the
+    // warning belongs ON each offending mortgage. Surface a header badge (visible
+    // while collapsed) when THIS mortgage is one of the 2+; the full explanation
+    // (naming every sibling) lives in the expanded body below. Reads the shared
+    // getActiveItemizedMortgages predicate so it can never disagree with the banner.
+    const itemizedMortgages = getActiveItemizedMortgages(expenses, new Date().getFullYear());
+    const inMultiMortgageSet = itemizedMortgages.length >= 2 &&
+        itemizedMortgages.some((m) => m.id === expense.id);
+    const badge = inMultiMortgageSet ? (
+        <span
+            className="inline-flex items-center gap-1 rounded-full border border-warning-strong bg-warning-tint/30 px-2 py-0.5 text-xs font-semibold text-warning-bright whitespace-nowrap"
+            title="Multiple mortgages are set to Itemized. The projection sums their interest under one shared $750,000 acquisition-debt cap, so a wrongly-flagged mortgage inflates your deduction. Expand to review — check the Tax Deductible setting."
+        >
+            <WarningTriangleIcon className="w-3.5 h-3.5" />
+            Shared $750k cap
+        </span>
+    ) : undefined;
+
     const headerContent = (
         <NameInput
             label=""
@@ -246,9 +268,19 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
             frequencySuffix={`/${getFrequencyAbbrev(expense.frequency)}`}
             headerContent={headerContent}
             headerActions={headerActions}
+            badge={badge}
             ariaLabelType="expense"
         >
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 bg-[var(--c-surface-raised)] p-6 rounded-xl border border-border-subtle">
+                {/* #201: full multi-mortgage explanation, kept top-level so it's
+                    never hidden behind a collapsed section (mirrors the PMI-warning
+                    precedent). Names every affected mortgage so the siblings are
+                    visible right on the card. */}
+                {inMultiMortgageSet && (
+                    <div className="col-span-full">
+                        <MultiMortgageItemizeWarning />
+                    </div>
+                )}
                 {!(expense instanceof MortgageExpense) && (
                     <CurrencyInput
                         id={`${expense.id}-amount`}

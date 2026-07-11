@@ -17,6 +17,8 @@ import { formatCompactCurrency } from "../../../tabs/Future/tabs/FutureUtils.js"
 import { AssumptionsContext } from "../Assumptions/AssumptionsContext.js";
 import { ExpandableCard } from "../../Layout/ExpandableCard.js";
 import { CardSection } from "../../Layout/CardSection.js";
+import { getActiveItemizedMortgages } from "../Expense/MultiMortgageItemizeWarning.js";
+import { WarningTriangleIcon } from "../../Layout/Icons/WarningTriangleIcon.js";
 
 // Grid layout shared by the card body and its collapsible sections.
 const CARD_SECTION_GRID = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 px-4 pb-4";
@@ -179,6 +181,24 @@ function AccountCard({ account }: { account: AnyAccount }): ReactElement {
     const descriptor = getAccountDescriptor(account);
     const iconBg = getAccountIconBg(account);
 
+    // #201: a property account linked to a mortgage that's one of 2+ active
+    // Itemized mortgages carries a header badge — the underlying fix (which
+    // mortgage should really be Itemized) lives on the expense's card in the
+    // Expenses tab, so the badge points there. Reads the same shared predicate
+    // as the ExpenseCard badge and the banner, keyed by the mortgage→account link.
+    const itemizedMortgages = getActiveItemizedMortgages(expenses, new Date().getFullYear());
+    const inMultiMortgageSet = itemizedMortgages.length >= 2 &&
+        itemizedMortgages.some((m) => m.linkedAccountId === account.id);
+    const badge = inMultiMortgageSet ? (
+        <span
+            className="inline-flex items-center gap-1 rounded-full border border-warning-strong bg-warning-tint/30 px-2 py-0.5 text-xs font-semibold text-warning-bright whitespace-nowrap"
+            title="This property's mortgage is one of several set to Itemized. They share one $750,000 acquisition-debt cap, so a wrongly-flagged mortgage inflates your deduction. Fix it on the mortgage's card in the Expenses tab (the Tax Deductible setting)."
+        >
+            <WarningTriangleIcon className="w-3.5 h-3.5" />
+            Shared $750k cap
+        </span>
+    ) : undefined;
+
     const headerContent = (
         <NameInput
             label=""
@@ -215,6 +235,7 @@ function AccountCard({ account }: { account: AnyAccount }): ReactElement {
                 displayValue={displayAmount}
                 headerContent={headerContent}
                 headerActions={headerActions}
+                badge={badge}
                 ariaLabelType="account"
             >
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 bg-[var(--c-surface-raised)] p-6 rounded-xl border border-border-subtle">

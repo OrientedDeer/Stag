@@ -1,7 +1,28 @@
 import { useContext, useMemo } from "react";
 import { ExpenseContext } from "./ExpenseContext";
 import { MortgageExpense, getExpenseActiveMultiplier } from "./models";
+import type { AnyExpense } from "./models";
 import { AlertBanner } from "../../Layout/AlertBanner";
+
+/**
+ * The mortgages that count toward the shared-$750k-cap warning: active this
+ * year AND flagged Itemized. The warning fires once this set has 2+ members.
+ * Exported so the page/expanded banner, the ExpenseCard badge, and the
+ * AccountCard badge all read the SAME predicate — they can never disagree
+ * about which mortgages are in the set.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- pure predicate exported alongside the banner so the card badges share one source of truth
+export function getActiveItemizedMortgages(
+    expenses: AnyExpense[],
+    year: number,
+): MortgageExpense[] {
+    return expenses.filter(
+        (exp): exp is MortgageExpense =>
+            exp instanceof MortgageExpense &&
+            exp.is_tax_deductible === "Itemized" &&
+            getExpenseActiveMultiplier(exp, year) > 0,
+    );
+}
 
 /**
  * #201 — every itemized mortgage shares one $750k acquisition-debt cap, and
@@ -11,8 +32,11 @@ import { AlertBanner } from "../../Layout/AlertBanner";
  * silently inflates the deduction. Warn once 2+ active mortgages are flagged
  * Itemized so the user can check which should actually be deductible.
  *
- * Shown on the Accounts, Expenses, AND Taxes tabs — mortgages are created from
- * the first two, so a Taxes-only warning is easy to never see.
+ * Rendered as a full banner on the Taxes tab (deduction context) and inside the
+ * EXPANDED body of each offending mortgage's ExpenseCard. The card HEADERS on
+ * the Expenses and Accounts tabs carry a compact badge (see ExpenseCard /
+ * AccountCard) so the warning sits ON the mortgage producing it, not adrift at
+ * the top of the page.
  *
  * Styled to match the non-vesting RSU warning in FutureTab: Title Case title,
  * a lead-in paragraph, a per-item list naming each affected mortgage, and a
@@ -24,13 +48,7 @@ export function MultiMortgageItemizeWarning({ year }: { year?: number }) {
     const { expenses } = useContext(ExpenseContext);
     const activeYear = year ?? new Date().getFullYear();
     const itemized = useMemo(
-        () =>
-            expenses.filter(
-                (exp): exp is MortgageExpense =>
-                    exp instanceof MortgageExpense &&
-                    exp.is_tax_deductible === "Itemized" &&
-                    getExpenseActiveMultiplier(exp, activeYear) > 0,
-            ),
+        () => getActiveItemizedMortgages(expenses, activeYear),
         [expenses, activeYear]
     );
     if (itemized.length < 2) return null;
