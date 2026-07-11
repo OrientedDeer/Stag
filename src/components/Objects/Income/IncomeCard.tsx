@@ -14,6 +14,7 @@ import {
 import { IncomeContext, IncomeDispatchContext, type AllIncomeKeys } from './IncomeContext';
 import { StyledSelect } from '../../Layout/InputFields/StyleUI';
 import { WarningTriangleIcon } from '../../Layout/Icons/WarningTriangleIcon';
+import { HoverTooltip } from '../../Layout/InputFields/Tooltip';
 import { CurrencyInput } from '../../Layout/InputFields/CurrencyInput';
 import DeleteIncomeControl from './DeleteIncomeUI';
 import { NameInput } from '../../Layout/InputFields/NameInput';
@@ -212,13 +213,12 @@ function IncomeCard({ income }: { income: AnyIncome }): ReactElement {
     const needsRsuAccount = isWorkIncome && !incomeEnded && rsuGrantNeedsAccount(income, rsuAccounts);
     const needsEsppAccount = isWorkIncome && !incomeEnded && esppGrantNeedsAccount(income, esppAccounts);
     const missingAccountBadge = (needsRsuAccount || needsEsppAccount) ? (
-        <span
-            className="inline-flex items-center gap-1 rounded-full border border-warning-strong bg-warning-tint/30 px-2 py-0.5 text-xs font-semibold text-warning-bright whitespace-nowrap"
-            title={`This income's ${needsRsuAccount ? 'RSU grant' : 'ESPP contribution'} has no linked account, so it won't be tracked. Expand the card to link one.`}
-        >
-            <WarningTriangleIcon className="w-3.5 h-3.5" />
-            No account
-        </span>
+        <HoverTooltip text={`This income's ${needsRsuAccount ? 'RSU grant' : 'ESPP contribution'} has no linked account, so it won't be tracked. Expand the card to link one.`}>
+            <span className="inline-flex items-center gap-1 rounded-full border border-warning-strong bg-warning-tint/30 px-2 py-0.5 text-xs font-semibold text-warning-bright whitespace-nowrap">
+                <WarningTriangleIcon className="w-3.5 h-3.5" />
+                No account
+            </span>
+        </HoverTooltip>
     ) : undefined;
 
     // Timing hint: a not-yet-started or already-ended income otherwise looks

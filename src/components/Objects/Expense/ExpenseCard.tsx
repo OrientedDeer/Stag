@@ -20,6 +20,7 @@ import {
 import { ExpenseContext, ExpenseDispatchContext, type AllExpenseKeys } from "./ExpenseContext.js";
 import { MultiMortgageItemizeWarning, getActiveItemizedMortgages } from "./MultiMortgageItemizeWarning.js";
 import { WarningTriangleIcon } from "../../Layout/Icons/WarningTriangleIcon.js";
+import { HoverTooltip } from "../../Layout/InputFields/Tooltip.js";
 import { AccountContext, AccountDispatchContext } from "../Accounts/AccountContext.js";
 import { StyledDisplay, StyledSelect } from "../../Layout/InputFields/StyleUI.js";
 import { CurrencyInput } from "../../Layout/InputFields/CurrencyInput.js";
@@ -235,13 +236,12 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
     const inMultiMortgageSet = itemizedMortgages.length >= 2 &&
         itemizedMortgages.some((m) => m.id === expense.id);
     const badge = inMultiMortgageSet ? (
-        <span
-            className="inline-flex items-center gap-1 rounded-full border border-warning-strong bg-warning-tint/30 px-2 py-0.5 text-xs font-semibold text-warning-bright whitespace-nowrap"
-            title="Multiple mortgages are set to Itemized. The projection sums their interest under one shared $750,000 acquisition-debt cap, so a wrongly-flagged mortgage inflates your deduction. Expand to review — check the Tax Deductible setting."
-        >
-            <WarningTriangleIcon className="w-3.5 h-3.5" />
-            Shared $750k cap
-        </span>
+        <HoverTooltip text="Multiple mortgages are set to Itemized. The projection sums their interest under one shared $750,000 acquisition-debt cap, so a wrongly-flagged mortgage inflates your deduction. Expand to review — check the Tax Deductible setting.">
+            <span className="inline-flex items-center gap-1 rounded-full border border-warning-strong bg-warning-tint/30 px-2 py-0.5 text-xs font-semibold text-warning-bright whitespace-nowrap">
+                <WarningTriangleIcon className="w-3.5 h-3.5" />
+                Shared $750k cap
+            </span>
+        </HoverTooltip>
     ) : undefined;
 
     const headerContent = (
