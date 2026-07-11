@@ -20,6 +20,7 @@ import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-p
 import { ObjectsIcicleChart } from '../../components/Charts/ObjectsIcicleChart';
 import { tailwindToCssVar, getDistributedColors } from '../../components/Charts/icicleChartHelpers';
 import { Panel } from "../../components/Layout/Primitives";
+import { MultiMortgageItemizeWarning } from "../../components/Objects/Expense/MultiMortgageItemizeWarning";
 import { ChevronIcon } from "../../components/Layout/Icons/ChevronIcon";
 
 // Cadence sub-tabs for the expense list, mirroring the Accounts page. Weekly +
@@ -203,6 +204,9 @@ const TabsContent = () => {
     return (
         <div className="w-full min-h-full flex bg-surface-base justify-center pt-6 pb-24">
             <div className="w-full px-4 sm:px-8 max-w-screen-2xl">
+                <div className="mb-4 empty:hidden">
+                    <MultiMortgageItemizeWarning />
+                </div>
                 {/* Chart Section */}
                 <Panel className="space-y-4 mb-4">
                     <h2 className="text-xl font-bold text-white mb-4 border-b border-border-default pb-2">

@@ -21,6 +21,7 @@ import ImportBalancesModal from "./ImportBalancesModal";
 import { ObjectsIcicleChart } from "../../components/Charts/ObjectsIcicleChart";
 import { tailwindToCssVar, getDistributedColors } from "../../components/Charts/icicleChartHelpers";
 import { Panel } from "../../components/Layout/Primitives";
+import { MultiMortgageItemizeWarning } from "../../components/Objects/Expense/MultiMortgageItemizeWarning";
 
 const AccountList = ({ type }: { type: abstract new (...args: never[]) => unknown }) => {
     const { accounts } = useContext(AccountContext);
@@ -282,7 +283,9 @@ export default function AccountTab() {
     return (
         <div className="w-full min-h-full flex bg-surface-base justify-center pt-6 pb-24">
             <div className="w-full px-4 sm:px-8 max-w-screen-2xl">
-
+                <div className="mb-4 empty:hidden">
+                    <MultiMortgageItemizeWarning />
+                </div>
                 <Panel className="space-y-4 mb-4">
                     <div className="flex justify-between items-center mb-4 border-b border-border-default pb-2">
                         <h2 className="text-xl font-bold text-white">
