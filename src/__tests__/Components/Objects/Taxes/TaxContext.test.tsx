@@ -3,10 +3,10 @@ import { render, act } from '@testing-library/react';
 import { useContext } from 'react';
 
 import {
-  TaxProvider,
   TaxContext,
   TaxState,
 } from '../../../../components/Objects/Taxes/TaxContext';
+import { TaxProvider } from '../../../../components/Objects/Taxes/TaxProvider';
 
 // Mock localStorage
 const localStorageMock = (() => {

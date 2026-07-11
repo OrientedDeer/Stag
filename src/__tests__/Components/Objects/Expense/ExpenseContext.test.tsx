@@ -3,10 +3,10 @@ import { render, act } from '@testing-library/react';
 import { useContext } from 'react';
 
 import {
-  ExpenseProvider,
   ExpenseContext,
   ExpenseDispatchContext,
 } from '../../../../components/Objects/Expense/ExpenseContext';
+import { ExpenseProvider } from '../../../../components/Objects/Expense/ExpenseProvider';
 import { RentExpense, FoodExpense, OtherExpense } from '../../../../components/Objects/Expense/models';
 
 // Mock localStorage

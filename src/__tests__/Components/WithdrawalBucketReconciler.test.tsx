@@ -2,11 +2,9 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
 import { act, useContext, ReactNode } from 'react';
 import { WithdrawalBucketReconciler } from '../../components/WithdrawalBucketReconciler';
-import { AccountProvider } from '../../components/Objects/Accounts/AccountContext';
-import {
-    AssumptionsProvider,
-    AssumptionsContext,
-} from '../../components/Objects/Assumptions/AssumptionsContext';
+import { AccountProvider } from '../../components/Objects/Accounts/AccountProvider';
+import { AssumptionsContext } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsProvider } from '../../components/Objects/Assumptions/AssumptionsProvider';
 
 /**
  * The bucket↔account sync must run app-wide (not on Withdrawal-tab visit):

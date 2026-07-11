@@ -18,7 +18,8 @@ import AccountCard from "../../components/Objects/Accounts/AccountCard";
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import AddAccountModal from "../../components/Objects/Accounts/AddAccountModal";
 import ImportBalancesModal from "./ImportBalancesModal";
-import { ObjectsIcicleChart, tailwindToCssVar, getDistributedColors } from "../../components/Charts/ObjectsIcicleChart";
+import { ObjectsIcicleChart } from "../../components/Charts/ObjectsIcicleChart";
+import { tailwindToCssVar, getDistributedColors } from "../../components/Charts/icicleChartHelpers";
 import { Panel } from "../../components/Layout/Primitives";
 
 const AccountList = ({ type }: { type: abstract new (...args: never[]) => unknown }) => {

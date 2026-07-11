@@ -3,12 +3,12 @@ import { render, act } from '@testing-library/react';
 import { useContext } from 'react';
 
 import {
-    ScenarioProvider,
     ScenarioContext,
     useScenarios,
     useScenariosList,
     useScenarioComparison,
 } from '../../../../components/Objects/Scenarios/ScenarioContext';
+import { ScenarioProvider } from '../../../../components/Objects/Scenarios/ScenarioProvider';
 import {
     SavedScenario,
     LoadedScenario,

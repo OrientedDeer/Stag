@@ -18,7 +18,8 @@ import {
 	DropResult,
 } from "@hello-pangea/dnd";
 import AddIncomeModal from "../../components/Objects/Income/AddIncomeModal";
-import { ObjectsIcicleChart, tailwindToCssVar, getDistributedColors } from "../../components/Charts/ObjectsIcicleChart";
+import { ObjectsIcicleChart } from "../../components/Charts/ObjectsIcicleChart";
+import { tailwindToCssVar, getDistributedColors } from "../../components/Charts/icicleChartHelpers";
 import { Panel } from "../../components/Layout/Primitives";
 
 interface IncomeListProps {

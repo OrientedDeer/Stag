@@ -1,6 +1,5 @@
-import { createContext, ReactNode, useMemo } from 'react';
+import { createContext } from 'react';
 import { FilingStatus, max_year } from '../../../data/TaxData';
-import { usePersistedReducer } from '../../../hooks/usePersistedReducer';
 import { activeSurvivorScenario, type SurvivorScenario } from '../../../services/simulation/SurvivorScenario';
 
 export type DeductionMethod = 'Standard' | 'Itemized' | 'Auto';
@@ -84,7 +83,7 @@ export const defaultTaxState: TaxState = {
   year: max_year,
 };
 
-function taxReducer(state: TaxState, action: Action): TaxState {
+export function taxReducer(state: TaxState, action: Action): TaxState {
   switch (action.type) {
     case 'SET_STATUS': return { ...state, filingStatus: action.payload };
     case 'SET_STATE': return { ...state, stateResidency: action.payload };
@@ -160,14 +159,3 @@ export const TaxContext = createContext<TaxContextProps>({
   state: defaultTaxState,
   dispatch: () => null,
 });
-
-export function TaxProvider({ children }: { children: ReactNode }): React.ReactElement {
-  const [state, dispatch] = usePersistedReducer(taxReducer, defaultTaxState, {
-    storageKey: 'tax_settings',
-    // Merge with defaults to ensure new fields exist even with old saved data
-  });
-
-  const contextValue = useMemo(() => ({ state, dispatch }), [state, dispatch]);
-
-  return <TaxContext.Provider value={contextValue}>{children}</TaxContext.Provider>;
-}

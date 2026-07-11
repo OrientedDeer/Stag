@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, act } from '@testing-library/react';
 import { useContext } from 'react';
 
+import { IncomeProvider } from '../../../../components/Objects/Income/IncomeProvider';
 import {
-  IncomeProvider,
   IncomeContext,
   IncomeDispatchContext,
 } from '../../../../components/Objects/Income/IncomeContext';

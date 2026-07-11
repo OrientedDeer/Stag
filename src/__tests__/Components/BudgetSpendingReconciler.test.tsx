@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
 import { useContext, ReactNode } from 'react';
 import { BudgetSpendingReconciler } from '../../components/BudgetSpendingReconciler';
-import { BudgetContext, BudgetProvider } from '../../components/Objects/Budget/BudgetContext';
+import { BudgetContext } from '../../components/Objects/Budget/BudgetContext';
+import { BudgetProvider } from '../../components/Objects/Budget/BudgetProvider';
 
 /**
  * The transaction→spending auto-reconcile must run app-wide (not on Budget-tab

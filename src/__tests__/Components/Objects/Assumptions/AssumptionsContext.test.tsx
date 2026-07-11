@@ -3,7 +3,6 @@ import { render, act } from '@testing-library/react';
 import React, { useContext } from 'react';
 
 import {
-  AssumptionsProvider,
   AssumptionsContext,
   defaultAssumptions,
   AssumptionsState,
@@ -16,6 +15,7 @@ import {
   BUILTIN_MILESTONE_IDS,
   migrateAssumptions,
 } from '../../../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsProvider } from '../../../../components/Objects/Assumptions/AssumptionsProvider';
 import { evaluateMilestone } from '../../../../services/simulation/MilestoneEvaluator';
 import { CustomMilestone } from '../../../../services/simulation/types';
 

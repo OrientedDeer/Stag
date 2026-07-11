@@ -3,11 +3,11 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import { useContext, useEffect, useRef } from 'react';
 
 import {
-  AccountProvider,
   AccountContext,
   AccountDispatchContext,
   AmountHistoryEntry,
 } from '../../../../components/Objects/Accounts/AccountContext';
+import { AccountProvider } from '../../../../components/Objects/Accounts/AccountProvider';
 import { EditHistoryModal } from '../../../../components/Objects/Accounts/EditHistoryModal';
 
 // Minimal localStorage mock so usePersistedReducer can initialise.

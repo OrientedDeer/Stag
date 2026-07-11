@@ -1,5 +1,4 @@
-import { createContext, ReactNode, Dispatch, useMemo, useCallback } from 'react';
-import { usePersistedReducer } from '../../../hooks/usePersistedReducer';
+import { createContext, Dispatch } from 'react';
 
 // Re-export types and constants for backward compatibility
 export {
@@ -36,7 +35,7 @@ import { parseDate } from '../modelUtils';
 
 const now = new Date();
 
-const initialState: BudgetState = {
+export const initialState: BudgetState = {
     months: [],
     importSettings: {
         dateColumn: 'Date',
@@ -75,7 +74,7 @@ export type BudgetAction =
     | { type: 'SET_PROJECT_FUTURE'; payload: boolean }
     | { type: 'SET_BULK_DATA'; payload: Partial<BudgetState> };
 
-function budgetReducer(state: BudgetState, action: BudgetAction): BudgetState {
+export function budgetReducer(state: BudgetState, action: BudgetAction): BudgetState {
     switch (action.type) {
         case 'SET_SELECTED_MONTH':
             return {
@@ -419,7 +418,7 @@ function budgetReducer(state: BudgetState, action: BudgetAction): BudgetState {
     }
 }
 
-const STORAGE_KEY = 'user_budget_data';
+export const STORAGE_KEY = 'user_budget_data';
 
 interface BudgetContextProps extends BudgetState {
     dispatch: Dispatch<BudgetAction>;
@@ -504,7 +503,7 @@ export function reconstituteBudgetState(parsed: unknown): Partial<BudgetState> {
     };
 }
 
-function hydrateBudgetState(parsed: unknown, initial: BudgetState): BudgetState {
+export function hydrateBudgetState(parsed: unknown, initial: BudgetState): BudgetState {
     const data = parsed as Record<string, unknown>;
     if (!data) return initial;
 
@@ -535,49 +534,3 @@ function hydrateBudgetState(parsed: unknown, initial: BudgetState): BudgetState 
     };
 }
 
-export function BudgetProvider({ children }: { children: ReactNode }): React.ReactElement {
-    const [state, dispatch] = usePersistedReducer(budgetReducer, initialState, {
-        storageKey: STORAGE_KEY,
-        hydrate: hydrateBudgetState,
-    });
-
-    const getOrCreateMonth = useCallback((month: number, year: number): MonthlySnapshot => {
-        const existing = state.months.find(m => m.month === month && m.year === year);
-        if (existing) return existing;
-
-        const newMonth: MonthlySnapshot = {
-            id: generateId('MONTH'),
-            month,
-            year,
-            spending: {},
-            accountBalances: {},
-            contributions: {},
-            transactions: [],
-            reconciled: false,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-        };
-
-        dispatch({ type: 'ADD_MONTH', payload: newMonth });
-        return newMonth;
-    }, [state.months]);
-
-    const getCurrentMonth = useCallback((): MonthlySnapshot | undefined => {
-        return state.months.find(
-            m => m.month === state.selectedMonth && m.year === state.selectedYear
-        );
-    }, [state.months, state.selectedMonth, state.selectedYear]);
-
-    const contextValue = useMemo(() => ({
-        ...state,
-        dispatch,
-        getOrCreateMonth,
-        getCurrentMonth,
-    }), [state, dispatch, getOrCreateMonth, getCurrentMonth]);
-
-    return (
-        <BudgetContext.Provider value={contextValue}>
-            {children}
-        </BudgetContext.Provider>
-    );
-}

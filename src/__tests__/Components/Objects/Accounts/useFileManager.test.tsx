@@ -3,18 +3,18 @@ import { renderHook, act } from '@testing-library/react';
 import { ReactNode } from 'react';
 
 import { useFileManager } from '../../../../components/Objects/Accounts/useFileManager';
-import { AccountProvider } from '../../../../components/Objects/Accounts/AccountContext';
-import { IncomeProvider } from '../../../../components/Objects/Income/IncomeContext';
-import { ExpenseProvider } from '../../../../components/Objects/Expense/ExpenseContext';
-import { TaxProvider } from '../../../../components/Objects/Taxes/TaxContext';
+import { AccountProvider } from '../../../../components/Objects/Accounts/AccountProvider';
+import { IncomeProvider } from '../../../../components/Objects/Income/IncomeProvider';
+import { ExpenseProvider } from '../../../../components/Objects/Expense/ExpenseProvider';
+import { TaxProvider } from '../../../../components/Objects/Taxes/TaxProvider';
 import {
-  AssumptionsProvider,
   defaultAssumptions,
   migrateAssumptions,
   getBirthYear,
   getRetirementAge,
   getLifeExpectancy,
 } from '../../../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsProvider } from '../../../../components/Objects/Assumptions/AssumptionsProvider';
 
 // Mock localStorage
 const localStorageMock = (() => {

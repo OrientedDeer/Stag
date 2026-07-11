@@ -1,13 +1,12 @@
-import { createContext, ReactNode, Dispatch, useCallback, useRef } from 'react';
+import { createContext, Dispatch } from 'react';
 import { AnyAccount, reconstituteAccount } from './models';
-import { usePersistedReducer } from '../../../hooks/usePersistedReducer';
 import { formatDateForInput, jsonDateReplacer } from '../../../utils/formatters';
 
 type AllKeys<T> = T extends unknown ? keyof T : never;
 export type AllAccountKeys = AllKeys<AnyAccount>;
 
-const CURRENT_SCHEMA_VERSION = 1;
-const STORAGE_KEY = 'user_accounts_data';
+export const CURRENT_SCHEMA_VERSION = 1;
+export const STORAGE_KEY = 'user_accounts_data';
 
 export interface AmountHistoryEntry {
   date: string;
@@ -30,7 +29,7 @@ type Action =
   | { type: 'ADD_HISTORY_ENTRY'; payload: { id: string; date: string; num: number } }
   | { type: 'SET_BULK_DATA'; payload: { accounts: AnyAccount[]; amountHistory: Record<string, AmountHistoryEntry[]> } };
 
-const initialState: AccountState = {
+export const initialState: AccountState = {
   accounts: [],
   amountHistory: {},
 };
@@ -60,7 +59,7 @@ function resolveHistoryTarget(
   return history.findIndex(e => e.date === prevDate && e.num === prevNum);
 }
 
-function accountReducer(state: AccountState, action: Action): AccountState {
+export function accountReducer(state: AccountState, action: Action): AccountState {
   switch (action.type) {
     case 'SET_BULK_DATA':
       return {
@@ -82,7 +81,8 @@ function accountReducer(state: AccountState, action: Action): AccountState {
     }
 
     case 'DELETE_ACCOUNT': {
-      const { [action.payload.id]: _, ...remainingHistory } = state.amountHistory;
+      const remainingHistory = { ...state.amountHistory };
+      delete remainingHistory[action.payload.id];
       return {
         ...state,
         accounts: state.accounts.filter((acc) => acc.id !== action.payload.id),
@@ -192,7 +192,7 @@ export function serializeAccountState(state: AccountState): string {
   }, jsonDateReplacer);
 }
 
-interface AccountDispatch {
+export interface AccountDispatch {
   dispatch: Dispatch<Action>;
   exportData: () => void;
   importData: (jsonData: string) => void;
@@ -208,59 +208,3 @@ export const AccountDispatchContext = createContext<AccountDispatch>({
   exportData: () => {},
   importData: () => {},
 });
-
-export function AccountProvider({ children }: { children: ReactNode }): React.ReactElement {
-  const [state, dispatch] = usePersistedReducer(accountReducer, initialState, {
-    storageKey: STORAGE_KEY,
-    hydrate: hydrateAccountState,
-    serialize: serializeAccountState,
-  });
-
-  // Keep latest state in a ref so exportData can read it without re-creating.
-  const stateRef = useRef(state);
-  stateRef.current = state;
-
-  const exportData = useCallback(() => {
-    const data = {
-      version: CURRENT_SCHEMA_VERSION,
-      accounts: stateRef.current.accounts.map(acc => ({ ...acc, className: acc.constructor.name })),
-      amountHistory: stateRef.current.amountHistory,
-    };
-    const blob = new Blob([JSON.stringify(data, jsonDateReplacer, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    // Local date (not toISOString, which is UTC): an evening export in a
-    // negative-offset timezone would otherwise be stamped with tomorrow's date.
-    a.download = `stag_backup_${formatDateForInput(new Date())}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, []);
-
-  const importData = useCallback((json: string) => {
-    try {
-      const parsed = JSON.parse(json);
-      const accounts = (parsed.accounts || [])
-        .map(reconstituteAccount)
-        .filter((acc: AnyAccount | null): acc is AnyAccount => acc !== null);
-
-      dispatch({
-        type: 'SET_BULK_DATA',
-        payload: { accounts, amountHistory: parsed.amountHistory || {} },
-      });
-      alert('Import successful!');
-    } catch {
-      alert('Failed to import data. Check file format.');
-    }
-  }, []);
-
-  const dispatchValue = useRef<AccountDispatch>({ dispatch, exportData, importData });
-
-  return (
-    <AccountDispatchContext.Provider value={dispatchValue.current}>
-      <AccountContext.Provider value={state}>
-        {children}
-      </AccountContext.Provider>
-    </AccountDispatchContext.Provider>
-  );
-}

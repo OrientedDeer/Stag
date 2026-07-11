@@ -1,6 +1,4 @@
-// @refresh reset - This file exports both components and hooks, so full remount is needed for HMR
-import { createContext, useReducer, useContext, ReactNode, useMemo } from 'react';
-import { useDebouncedLocalStorage } from '../../../hooks/useDebouncedLocalStorage';
+import { createContext, useContext } from 'react';
 import { EarningsRecord } from '../../../services/SocialSecurityCalculator';
 import { CustomMilestone } from '../../../services/simulation/types';
 import { normalizeMilestones } from '../../../services/simulation/MilestoneEvaluator';
@@ -560,7 +558,7 @@ type Action =
   | { type: 'REMOVE_MILESTONE'; payload: string }
   | { type: 'UPDATE_MILESTONE'; payload: CustomMilestone };
 
-const assumptionsReducer = (state: AssumptionsState, action: Action): AssumptionsState => {
+export const assumptionsReducer = (state: AssumptionsState, action: Action): AssumptionsState => {
   switch (action.type) {
     case 'UPDATE_MACRO':
       return { ...state, macro: { ...state.macro, ...action.payload } };
@@ -658,34 +656,6 @@ export const AssumptionsContext = createContext<AssumptionsContextProps>({
   state: defaultAssumptions,
   dispatch: () => null,
 })
-
-export const AssumptionsProvider = ({ children }: { children: ReactNode }) => {
-  const [state, dispatch] = useReducer(assumptionsReducer, defaultAssumptions, (initial) => {
-    const saved = localStorage.getItem('assumptions_settings');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        // Deep merge with defaults to handle missing fields from older versions
-        return migrateAssumptions(parsed, initial);
-      } catch {
-        // JSON parse failed - return defaults
-        return initial;
-      }
-    }
-    return initial;
-  });
-
-  // Debounced localStorage persistence (500ms delay to prevent main thread blocking)
-  useDebouncedLocalStorage('assumptions_settings', state);
-
-  // Memoize context value to prevent unnecessary re-renders
-  const contextValue = useMemo(() => ({
-    state,
-    dispatch
-  }), [state, dispatch]);
-
-  return <AssumptionsContext.Provider value={contextValue}>{children}</AssumptionsContext.Provider>;
-};
 
 /**
  * Custom hook to access assumptions state

@@ -1,14 +1,5 @@
-import { createContext, useState, useCallback, useMemo, ReactNode } from 'react';
-
-interface ImportKeyContextProps {
-    importKey: number;
-    incrementImportKey: () => void;
-}
-
-export const ImportKeyContext = createContext<ImportKeyContextProps>({
-    importKey: 0,
-    incrementImportKey: () => {},
-});
+import { useState, useCallback, useMemo, ReactNode } from 'react';
+import { ImportKeyContext } from './ImportKeyContext';
 
 export const ImportKeyProvider = ({ children }: { children: ReactNode }) => {
     const [importKey, setImportKey] = useState(0);

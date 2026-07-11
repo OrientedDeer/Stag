@@ -21,7 +21,8 @@ import { describe, it, expect } from 'vitest';
 import { render, act } from '@testing-library/react';
 import { useContext, type ContextType } from 'react';
 
-import { ScenarioProvider, ScenarioContext } from '../../components/Objects/Scenarios/ScenarioContext';
+import { ScenarioContext } from '../../components/Objects/Scenarios/ScenarioContext';
+import { ScenarioProvider } from '../../components/Objects/Scenarios/ScenarioProvider';
 import type { SavedScenario } from '../../services/ScenarioTypes';
 import { AnyAccount, SavedAccount } from '../../components/Objects/Accounts/models';
 import { AnyExpense, FoodExpense } from '../../components/Objects/Expense/models';

@@ -3,10 +3,10 @@ import { render, act } from '@testing-library/react';
 import { useContext } from 'react';
 
 import {
-  AccountProvider,
   AccountContext,
   AccountDispatchContext,
 } from '../../../../components/Objects/Accounts/AccountContext';
+import { AccountProvider } from '../../../../components/Objects/Accounts/AccountProvider';
 import { SavedAccount, InvestedAccount } from '../../../../components/Objects/Accounts/models';
 
 // Mock localStorage

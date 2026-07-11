@@ -3,12 +3,12 @@ import { render, act } from '@testing-library/react';
 import { useContext } from 'react';
 
 import {
-    MonteCarloProvider,
     MonteCarloContext,
     useMonteCarlo,
     useMonteCarloConfig,
     useMonteCarloResults,
 } from '../../../../components/Objects/Assumptions/MonteCarloContext';
+import { MonteCarloProvider } from '../../../../components/Objects/Assumptions/MonteCarloProvider';
 import {
     MonteCarloConfig,
     MonteCarloSummary,

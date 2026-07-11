@@ -1,9 +1,8 @@
-import { createContext, ReactNode, Dispatch } from 'react';
+import { createContext, Dispatch } from 'react';
 import { AnyIncome, reconstituteIncome } from './models';
-import { usePersistedReducer } from '../../../hooks/usePersistedReducer';
 import { jsonDateReplacer } from '../../../utils/formatters';
 
-type AllKeys<T> = T extends any ? keyof T : never;
+type AllKeys<T> = T extends unknown ? keyof T : never;
 export type AllIncomeKeys = AllKeys<AnyIncome>;
 
 interface IncomeState {
@@ -17,13 +16,13 @@ type Action =
   | { type: 'REORDER_INCOMES'; payload: { startIndex: number; endIndex: number } }
   | { type: 'SET_BULK_DATA'; payload: { incomes: AnyIncome[] } };
 
-const STORAGE_KEY = 'user_incomes_data';
+export const STORAGE_KEY = 'user_incomes_data';
 
-const initialState: IncomeState = {
+export const initialState: IncomeState = {
   incomes: [],
 };
 
-function incomeReducer(state: IncomeState, action: Action): IncomeState {
+export function incomeReducer(state: IncomeState, action: Action): IncomeState {
   switch (action.type) {
     case 'ADD_INCOME':
       return { ...state, incomes: [...state.incomes, action.payload] };
@@ -78,19 +77,3 @@ export function serializeIncomeState(state: IncomeState): string {
 
 export const IncomeContext = createContext<IncomeState>({ incomes: [] });
 export const IncomeDispatchContext = createContext<Dispatch<Action>>(() => null);
-
-export function IncomeProvider({ children }: { children: ReactNode }): React.ReactElement {
-  const [state, dispatch] = usePersistedReducer(incomeReducer, initialState, {
-    storageKey: STORAGE_KEY,
-    hydrate: hydrateIncomeState,
-    serialize: serializeIncomeState,
-  });
-
-  return (
-    <IncomeDispatchContext.Provider value={dispatch}>
-      <IncomeContext.Provider value={state}>
-        {children}
-      </IncomeContext.Provider>
-    </IncomeDispatchContext.Provider>
-  );
-}

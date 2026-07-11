@@ -27,7 +27,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, act } from '@testing-library/react';
 import { useContext, type ContextType } from 'react';
 
-import { ScenarioProvider, ScenarioContext } from '../../components/Objects/Scenarios/ScenarioContext';
+import { ScenarioContext } from '../../components/Objects/Scenarios/ScenarioContext';
+import { ScenarioProvider } from '../../components/Objects/Scenarios/ScenarioProvider';
 import type { SavedScenario } from '../../services/ScenarioTypes';
 import {
     AnyAccount, InvestedAccount, SavedAccount, reconstituteAccount,

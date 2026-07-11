@@ -1,12 +1,11 @@
-import { createContext, ReactNode, Dispatch, useMemo } from 'react';
+import { createContext, Dispatch } from 'react';
 import { SimulationYear } from './SimulationEngine';
 import { AnyAccount, reconstituteAccount } from '../Accounts/models';
 import { AnyIncome, reconstituteIncome } from '../Income/models';
 import { AnyExpense, reconstituteExpense } from '../Expense/models';
-import { usePersistedReducer } from '../../../hooks/usePersistedReducer';
 import { jsonDateReplacer } from '../../../utils/formatters';
 
-const STORAGE_KEY = 'user_simulation_data';
+export const STORAGE_KEY = 'user_simulation_data';
 
 interface SimulationState {
   simulation: SimulationYear[];
@@ -17,12 +16,12 @@ type Action =
   | { type: 'SET_SIMULATION'; payload: SimulationYear[] }
   | { type: 'SET_SIMULATION_WITH_HASH'; payload: { simulation: SimulationYear[]; inputHash: string } };
 
-const initialState: SimulationState = {
+export const initialState: SimulationState = {
   simulation: [],
   inputHash: null,
 };
 
-function simulationReducer(state: SimulationState, action: Action): SimulationState {
+export function simulationReducer(state: SimulationState, action: Action): SimulationState {
   switch (action.type) {
     case 'SET_SIMULATION':
       return { ...state, simulation: action.payload };
@@ -82,19 +81,3 @@ export const SimulationContext = createContext<SimulationContextProps>({
   ...initialState,
   dispatch: () => null,
 });
-
-export function SimulationProvider({ children }: { children: ReactNode }): React.ReactElement {
-  const [state, dispatch] = usePersistedReducer(simulationReducer, initialState, {
-    storageKey: STORAGE_KEY,
-    hydrate: hydrateSimulationState,
-    serialize: serializeSimulationState,
-  });
-
-  const contextValue = useMemo(() => ({ ...state, dispatch }), [state, dispatch]);
-
-  return (
-    <SimulationContext.Provider value={contextValue}>
-      {children}
-    </SimulationContext.Provider>
-  );
-}

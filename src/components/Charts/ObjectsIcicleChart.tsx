@@ -1,5 +1,5 @@
 import { memo, useCallback, useRef, useState, useEffect } from 'react';
-import { ResponsiveIcicle } from "@nivo/icicle";
+import { ResponsiveIcicle, type IcicleNode } from "@nivo/icicle";
 import { useChartTheme } from './useChartTheme';
 import { ChartFrame } from "./ChartFrame";
 
@@ -8,33 +8,33 @@ const CHART_MARGIN = { top: 20, right: 20, bottom: 20, left: 20 };
 const CHART_THEME = { tooltip: { container: { zIndex: 9999 } } };
 
 // --- Types ---
+// Hierarchical datum the tab files build and feed to the icicle chart. Extra
+// fields (color/netWorth/totalAssets) ride alongside nivo's required id/value.
+interface IcicleDatum {
+    id: string;
+    value?: number;
+    color?: string;
+    netWorth?: number;
+    totalAssets?: number;
+    // Tab builders leave holes (filtered categories) in the children arrays;
+    // allow nulls so the chart accepts what they already produce. (No index
+    // signature: it would make Omit<IcicleDatum,'children'> — nivo's node.data —
+    // collapse and drop these named fields.)
+    children?: (IcicleDatum | null)[];
+}
+
 interface ObjectsIcicleChartProps {
-    data: any; // Hierarchical data structure
+    data: IcicleDatum; // Hierarchical data structure
     valueFormat?: string; // Format string for values (default: ">-$0,.0f")
     height?: number; // Height in pixels (default: 192px which is h-48)
 }
 
 // --- Helpers ---
-// Helper to convert Tailwind class "bg-chart-Name-10" -> CSS var "var(--color-chart-Name-10)"
-const tailwindToCssVar = (className: string) => {
-    if (!className) return '#ccc';
-    return `var(--color-${className.replace('bg-', '')})`;
-};
-
 // Truncate label if longer than maxLength
 const truncateLabel = (label: string, maxLength: number = 24): string => {
     if (label.length <= maxLength) return label;
     return label.substring(0, maxLength - 1) + '…';
 };
-
-// Gradient distribution logic for color palettes
-function getDistributedColors<T extends string>(palette: T[], count: number): T[] {
-    if (count <= 1) return [palette[Math.floor(palette.length / 2)]]; // Use middle color for single item
-    return Array.from({ length: count }, (_, i) => {
-        const index = Math.round((i * (palette.length - 1)) / (count - 1));
-        return palette[index];
-    });
-}
 
 
 // --- Component ---
@@ -47,12 +47,12 @@ export const ObjectsIcicleChart = memo(({
     const [containerWidth, setContainerWidth] = useState<number | null>(null);
     const { resolve } = useChartTheme();
 
-    const colorAccessor = useCallback((node: any) => resolve(node.data.color), [resolve]);
-    const label = useCallback((node: any) => truncateLabel(node.id), []);
+    const colorAccessor = useCallback((node: Omit<IcicleNode<IcicleDatum>, 'color' | 'fill'>) => resolve(node.data.color), [resolve]);
+    const label = useCallback((node: Omit<IcicleNode<IcicleDatum>, 'rect'>) => truncateLabel(node.id), []);
 
-    const tooltip = useCallback((node: any) => {
+    const tooltip = useCallback((node: IcicleNode<IcicleDatum>) => {
         const { id, value, data: nodeData } = node;
-        const customData = nodeData as any;
+        const customData = nodeData;
 
         // Use netWorth if available (for account root node), otherwise use value
         const displayValue = customData.netWorth !== undefined ? customData.netWorth : value;
@@ -147,6 +147,3 @@ export const ObjectsIcicleChart = memo(({
         </div>
     );
 });
-
-// Export helper functions for use in tab files
-export { tailwindToCssVar, getDistributedColors };

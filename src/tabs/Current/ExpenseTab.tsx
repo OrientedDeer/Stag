@@ -17,7 +17,8 @@ import {
 import ExpenseCard from '../../components/Objects/Expense/ExpenseCard';
 import AddExpenseModal from '../../components/Objects/Expense/AddExpenseModal';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { ObjectsIcicleChart, tailwindToCssVar, getDistributedColors } from '../../components/Charts/ObjectsIcicleChart';
+import { ObjectsIcicleChart } from '../../components/Charts/ObjectsIcicleChart';
+import { tailwindToCssVar, getDistributedColors } from '../../components/Charts/icicleChartHelpers';
 import { Panel } from "../../components/Layout/Primitives";
 import { ChevronIcon } from "../../components/Layout/Icons/ChevronIcon";
 
