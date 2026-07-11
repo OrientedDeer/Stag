@@ -1,4 +1,4 @@
-import React, { useState, useContext, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useContext, useMemo, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { useSubTabKeyboardNav } from '../../hooks/useKeyboardShortcuts';
 import { AssumptionsContext, getBirthYear } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { getSimulationInputHash } from '../../services/simulationHash';
@@ -27,12 +27,24 @@ import { AfterTaxNetWorthChart } from './tabs/AfterTaxNetWorthChart';
 import { CashflowTab } from './tabs/CashflowTabs';
 import { DebtTab } from './tabs/DebtTab';
 import { DataTab } from './tabs/DataTab';
-import { MonteCarloTab } from './tabs/MonteCarloTab';
 import { TaxOptimizationTab } from './tabs/TaxOptimizationTab';
-import { ScenarioComparisonTab } from './tabs/ScenarioComparisonTab';
 import { FinancialRatiosTab } from './tabs/FinancialRatiosTab';
 import { Panel } from "../../components/Layout/Primitives";
 import { FUTURE_TABS, migrateSavedFutureTab } from './futureTabs';
+
+// Heavy sub-tabs (Monte Carlo simulation + Scenario comparison) — code-split
+// so they don't load on first paint of the Projection route. Style matches
+// the lazy chart imports in Dashboard.tsx / CashflowTabs.tsx.
+const MonteCarloTab = lazy(() =>
+    import('./tabs/MonteCarloTab').then(m => ({ default: m.MonteCarloTab }))
+);
+const ScenarioComparisonTab = lazy(() =>
+    import('./tabs/ScenarioComparisonTab').then(m => ({ default: m.ScenarioComparisonTab }))
+);
+
+const TabSkeleton = () => (
+    <div className="h-[400px] animate-pulse bg-surface-raised/50 rounded-xl" />
+);
 
 // All visible tabs. "Risk" wraps Monte Carlo (which nests its own Historical
 // Backtest toggle); "Strategy" wraps Tax + Scenarios behind a secondary toggle.
@@ -365,7 +377,9 @@ export default function FutureTab() {
             </div>
             <div data-sub-tab-content className={activeTab === 'Risk' ? '' : 'hidden'}>
                 {/* Monte Carlo nests its own Monte Carlo / Historical Backtest toggle */}
-                <MonteCarloTab simulationData={simulationWithoutEOY} />
+                <Suspense fallback={<TabSkeleton />}>
+                    <MonteCarloTab simulationData={simulationWithoutEOY} />
+                </Suspense>
             </div>
             <div data-sub-tab-content className={activeTab === 'Strategy' ? '' : 'hidden'}>
                 {/* Secondary toggle — same pill idiom as MonteCarloTab's sub-tabs */}
@@ -391,7 +405,9 @@ export default function FutureTab() {
                     <TaxOptimizationTab simulationData={simulationWithoutEOY} />
                 </div>
                 <div className={strategySubTab === 'Scenarios' ? '' : 'hidden'}>
-                    <ScenarioComparisonTab simulationData={simulationWithoutEOY} />
+                    <Suspense fallback={<TabSkeleton />}>
+                        <ScenarioComparisonTab simulationData={simulationWithoutEOY} />
+                    </Suspense>
                 </div>
             </div>
             <div data-sub-tab-content className={activeTab === 'Ratios' ? '' : 'hidden'}>

@@ -77,12 +77,14 @@ describe('FutureTab — grouped tabs', () => {
         expect(screen.queryByRole('tab', { name: 'Monte Carlo' })).not.toBeInTheDocument();
     });
 
-    it('keeps all tab panels mounted (CSS-hidden, not unmounted)', () => {
+    it('keeps all tab panels mounted (CSS-hidden, not unmounted)', async () => {
         renderFutureTab();
         // Charts must stay mounted across tab switches — see renderTabContent.
-        expect(screen.getByTestId('stub-monte-carlo')).toBeInTheDocument();
+        // MonteCarloTab/ScenarioComparisonTab are lazy (#202), so they resolve
+        // via Suspense — findBy* (async) rather than getBy*.
+        expect(await screen.findByTestId('stub-monte-carlo')).toBeInTheDocument();
         expect(screen.getByTestId('stub-tax')).toBeInTheDocument();
-        expect(screen.getByTestId('stub-scenarios')).toBeInTheDocument();
+        expect(await screen.findByTestId('stub-scenarios')).toBeInTheDocument();
         expect(screen.getByTestId('stub-ratios')).toBeInTheDocument();
     });
 
@@ -91,6 +93,26 @@ describe('FutureTab — grouped tabs', () => {
         fireEvent.click(topTab('Risk'));
         expect(topTab('Risk')).toHaveAttribute('aria-selected', 'true');
         expect(localStorage.getItem('stag_future_tab')).toBe('Risk');
+    });
+
+    // #202 — MonteCarloTab and ScenarioComparisonTab are lazy-loaded (React.lazy
+    // + Suspense) from within FutureTab. They render inside a Suspense boundary
+    // now, so a click no longer guarantees the real content is present in the
+    // very next synchronous assertion — findBy* (async) is the correct query,
+    // not getBy*. This also validates the `.then(m => ({ default: m.X }))`
+    // export-name mapping in FutureTab.tsx: a typo there would leave `default`
+    // undefined and React.lazy would throw instead of rendering the stub.
+    it('lazily loads and renders the Monte Carlo tab on click (#202)', async () => {
+        renderFutureTab();
+        fireEvent.click(topTab('Risk'));
+        expect(await screen.findByTestId('stub-monte-carlo')).toBeInTheDocument();
+    });
+
+    it('lazily loads and renders the Scenario Comparison tab on click (#202)', async () => {
+        renderFutureTab();
+        fireEvent.click(topTab('Strategy'));
+        fireEvent.click(screen.getByRole('tab', { name: 'Scenarios' }));
+        expect(await screen.findByTestId('stub-scenarios')).toBeInTheDocument();
     });
 
     it('Strategy hosts a Tax/Scenarios secondary toggle', () => {

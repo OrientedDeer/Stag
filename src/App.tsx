@@ -6,8 +6,8 @@ import Dashboard from "./tabs/Dashboard";
 import AccountTab from "./tabs/Current/AccountTab";
 import IncomeTab from "./tabs/Current/IncomeTab";
 import ExpenseTab from "./tabs/Current/ExpenseTab";
-import Testing from "./tabs/Testing/Testing";
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
+import { LoadingSpinner } from "./components/Layout/LoadingSpinner";
 import { AccountProvider } from './components/Objects/Accounts/AccountProvider';
 import { IncomeProvider } from './components/Objects/Income/IncomeProvider';
 import { ExpenseProvider } from './components/Objects/Expense/ExpenseProvider';
@@ -35,6 +35,20 @@ import CloudBackupSync from "./components/Objects/CloudBackup/CloudBackupSync";
 import GlobalKeyboardShortcuts from "./components/Layout/Overlays/GlobalKeyboardShortcuts";
 import { ReceiptToastProvider } from "./components/Layout/Overlays/ReceiptToast";
 import { PerformanceProfiler } from "./components/Layout/PerformanceProfiler";
+
+// Heavy tab (~6,600 lines) — code-split so it doesn't load on first paint;
+// most sessions never open Testing. Style matches the lazy chart imports in
+// Dashboard.tsx / CashflowTabs.tsx.
+const Testing = lazy(() => import("./tabs/Testing/Testing"));
+
+const TabFallback = () => (
+  <div className="p-4 text-white bg-surface-base text-center">
+    <div className="flex items-center justify-center gap-2">
+      <LoadingSpinner size="md" />
+      <p>Loading...</p>
+    </div>
+  </div>
+);
 
 /** Reset the scrolled content pane on navigation. The app scrolls the inner
  *  `#main-content` container (not `window`), so without this each page opens at
@@ -103,7 +117,7 @@ export default function App() {
                       <Route path="/future/allocation" element={<Navigate to="/plan/allocation" replace />} />
                       <Route path="/future/withdrawal" element={<Navigate to="/plan/withdrawal" replace />} />
                       <Route path="/future/charts" element={<Navigate to="/projection" replace />} />
-                      <Route path="/testing" element={<PerformanceProfiler id="Testing"><Testing /></PerformanceProfiler>} />
+                      <Route path="/testing" element={<PerformanceProfiler id="Testing"><Suspense fallback={<TabFallback />}><Testing /></Suspense></PerformanceProfiler>} />
                     </Routes>
                   </main>
                 </div>
