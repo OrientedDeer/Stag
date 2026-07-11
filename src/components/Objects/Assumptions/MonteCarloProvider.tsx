@@ -10,8 +10,9 @@ import {
     initialMonteCarloState,
 } from '../../../services/MonteCarloTypes';
 import { runMonteCarloSimulation } from '../../../services/MonteCarloEngine';
-import { runMonteCarloInWorker } from '../../../services/montecarloRunner';
+import { runMonteCarloInWorker, reconstituteSummary } from '../../../services/montecarloRunner';
 import { createRandomSeed } from '../../../services/RandomGenerator';
+import { mcSummaryCacheKey, getCachedSummary, putCachedSummary } from '../../../services/mcSummaryCache';
 import { type AnyAccount } from '../Accounts/models';
 import { type AnyIncome } from '../Income/models';
 import { type AnyExpense } from '../Expense/models';
@@ -31,6 +32,13 @@ function monteCarloReducer(state: MonteCarloState, action: MonteCarloAction): Mo
             return { ...state, phase: action.payload };
         case 'COMPLETE_SIMULATION':
             return { ...state, isRunning: false, progress: 100, phase: 'idle', summary: action.payload, error: null };
+        case 'RESTORE_SUMMARY':
+            // Only fill an empty, idle slot. If the user already has results
+            // (a fresh run finished) or a run is in flight, a late-resolving
+            // restore must not clobber it — this reducer-level guard is what
+            // makes tryRestoreSummary safe against the async race.
+            if (state.summary || state.isRunning) return state;
+            return { ...state, summary: action.payload, error: null };
         case 'SIMULATION_ERROR':
             return { ...state, isRunning: false, progress: 0, phase: 'idle', error: action.payload };
         case 'RESET':
@@ -92,11 +100,47 @@ export function MonteCarloProvider({ children }: { children: ReactNode }): React
                 );
             }
             dispatch({ type: 'COMPLETE_SIMULATION', payload: summary });
+            // Persist the summary so a page refresh can restore it (#204).
+            // Fire-and-forget and fully swallowed: a cache failure must never
+            // affect the run the user just completed.
+            try {
+                const key = mcSummaryCacheKey(state.config, accounts, incomes, expenses, assumptions, taxState);
+                void putCachedSummary(key, summary);
+            } catch {
+                // Best-effort persistence; ignore.
+            }
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Simulation failed';
             dispatch({ type: 'SIMULATION_ERROR', payload: message });
         }
     }, [state.config]);
+
+    /**
+     * Restore a persisted summary on mount after a page refresh (#204). No-ops
+     * when results already exist or a run is in flight; on a cache hit it
+     * reconstitutes the class instances structured clone strips (same fix the
+     * worker path uses) and dispatches RESTORE_SUMMARY — whose reducer re-checks
+     * the guard, so a restore that resolves after the user clicks Run can't
+     * clobber the newer state. Returns true only when a summary was restored.
+     */
+    const tryRestoreSummary = useCallback(async (
+        accounts: AnyAccount[],
+        incomes: AnyIncome[],
+        expenses: AnyExpense[],
+        assumptions: AssumptionsState,
+        taxState: TaxState,
+    ): Promise<boolean> => {
+        if (state.summary || state.isRunning) return false;
+        try {
+            const key = mcSummaryCacheKey(state.config, accounts, incomes, expenses, assumptions, taxState);
+            const cached = await getCachedSummary(key);
+            if (!cached) return false;
+            dispatch({ type: 'RESTORE_SUMMARY', payload: reconstituteSummary(cached) });
+            return true;
+        } catch {
+            return false;
+        }
+    }, [state.summary, state.isRunning, state.config]);
 
     const updateConfig = useCallback((config: Partial<MonteCarloConfig>) => {
         dispatch({ type: 'UPDATE_CONFIG', payload: config });
@@ -117,7 +161,8 @@ export function MonteCarloProvider({ children }: { children: ReactNode }): React
         updateConfig,
         resetResults,
         generateNewSeed,
-    }), [state, runSimulation, updateConfig, resetResults, generateNewSeed]);
+        tryRestoreSummary,
+    }), [state, runSimulation, updateConfig, resetResults, generateNewSeed, tryRestoreSummary]);
 
     return (
         <MonteCarloContext.Provider value={contextValue}>

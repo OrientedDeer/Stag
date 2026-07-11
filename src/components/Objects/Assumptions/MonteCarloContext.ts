@@ -24,6 +24,18 @@ interface MonteCarloContextProps {
     updateConfig: (config: Partial<MonteCarloConfig>) => void;
     resetResults: () => void;
     generateNewSeed: () => void;
+    /**
+     * Restore a persisted summary after a page refresh (#204). Resolves true
+     * when a matching cached summary was restored, false on miss / already-has-
+     * results / in-flight run / any failure.
+     */
+    tryRestoreSummary: (
+        accounts: AnyAccount[],
+        incomes: AnyIncome[],
+        expenses: AnyExpense[],
+        assumptions: AssumptionsState,
+        taxState: TaxState
+    ) => Promise<boolean>;
 }
 
 export const MonteCarloContext = createContext<MonteCarloContextProps>({
@@ -33,6 +45,7 @@ export const MonteCarloContext = createContext<MonteCarloContextProps>({
     updateConfig: () => {},
     resetResults: () => {},
     generateNewSeed: () => {},
+    tryRestoreSummary: async () => false,
 });
 
 /**

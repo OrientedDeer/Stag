@@ -340,6 +340,12 @@ export type MonteCarloAction =
     | { type: 'UPDATE_PROGRESS'; payload: number }
     | { type: 'SET_PHASE'; payload: MonteCarloPhase }
     | { type: 'COMPLETE_SIMULATION'; payload: MonteCarloSummary }
+    // Restore a persisted summary after a page refresh (#204). Distinct from
+    // COMPLETE_SIMULATION: the reducer only fills an EMPTY, idle slot, so a
+    // late-resolving restore can never clobber a fresh run the user just kicked
+    // off (or one already in flight), and it leaves progress/phase at idle
+    // rather than claiming the run "just finished".
+    | { type: 'RESTORE_SUMMARY'; payload: MonteCarloSummary }
     | { type: 'SIMULATION_ERROR'; payload: string }
     | { type: 'RESET' };
 

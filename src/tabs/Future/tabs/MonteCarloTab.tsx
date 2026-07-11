@@ -1,4 +1,4 @@
-import React, { useMemo, useContext, useState, useEffect } from 'react';
+import React, { useMemo, useContext, useState, useEffect, useRef } from 'react';
 import { FanChart } from '../../../components/Charts/FanChart';
 import { useMonteCarlo } from '../../../components/Objects/Assumptions/MonteCarloContext';
 import { AccountContext } from '../../../components/Objects/Accounts/AccountContext';
@@ -66,7 +66,7 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
         setActiveSubTab(tab);
         localStorage.setItem(SUBTAB_STORAGE_KEY, tab);
     };
-    const { state, runSimulation, updateConfig, generateNewSeed } = useMonteCarlo();
+    const { state, runSimulation, updateConfig, generateNewSeed, tryRestoreSummary } = useMonteCarlo();
     const { accounts } = useContext(AccountContext);
     const { incomes } = useContext(IncomeContext);
     const { expenses } = useContext(ExpenseContext);
@@ -138,6 +138,31 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
         return extractDeterministicLine(simulationData);
     }, [simulationData]);
 
+    // The assumptions MC actually runs under: the deterministic projection's
+    // chosen withdrawal order applied on top of the user's assumptions (#1). Both
+    // the run (handleRun) and the refresh-restore key MUST use this SAME object,
+    // or the persisted-summary key won't match on reload (it reorders
+    // withdrawalStrategy, which getSimulationInputHash hashes).
+    const mcAssumptions = useMemo(
+        () => applyChosenWithdrawalOrder(
+            assumptions,
+            simulationData[0]?.chosenWithdrawalOrder,
+            new Set(accounts.map(a => a.id)),
+        ),
+        [assumptions, simulationData, accounts],
+    );
+
+    // Restore a persisted summary once on mount so a hard refresh re-displays the
+    // last run instead of "No simulation data" (#204). Runs at most once; the
+    // provider no-ops when results already exist or a run is in flight, and its
+    // reducer guards against a late resolve clobbering a newer run.
+    const didAttemptRestore = useRef(false);
+    useEffect(() => {
+        if (didAttemptRestore.current) return;
+        didAttemptRestore.current = true;
+        void tryRestoreSummary(accounts, incomes, expenses, mcAssumptions, taxState);
+    }, [tryRestoreSummary, accounts, incomes, expenses, mcAssumptions, taxState]);
+
     // Handle preset selection - uses inflation setting to determine real vs nominal.
     // Custom preset pulls its return mean from assumptions (ror + inflation if toggle on).
     const handlePresetChange = (presetKey: ReturnPresetKey) => {
@@ -177,19 +202,10 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
         updateConfig(newConfig);
     };
 
-    // Handle running simulation
+    // Handle running simulation. Uses `mcAssumptions` (the deterministic plan's
+    // chosen withdrawal order applied on top of the user's assumptions, #1) —
+    // see its useMemo above; the refresh-restore key reuses the same object.
     const handleRun = async () => {
-        // Run MC under the SAME withdrawal order the deterministic projection chose (#1), so the MC
-        // bands and the chart's deterministic line model the same drawdown. The joint optimizer records
-        // its pick on year 0 (chosenWithdrawalOrder); when absent (manual order / tax-opt off) this is a
-        // no-op and MC uses the user's stored order. The chosen order may name sellable accounts the user
-        // OMITTED from their strategy (the optimizer owns the order under Tax Optimization); pass the live
-        // account ids so those keep their chosen position instead of being dropped and re-appended at the tail.
-        const mcAssumptions = applyChosenWithdrawalOrder(
-            assumptions,
-            simulationData[0]?.chosenWithdrawalOrder,
-            new Set(accounts.map(a => a.id)),
-        );
         await runSimulation(accounts, incomes, expenses, mcAssumptions, taxState);
     };
 
