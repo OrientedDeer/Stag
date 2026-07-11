@@ -784,12 +784,15 @@ const FlowTrajectory = ({ simulationData, target, currentYear, onSelectYear, for
 
     const handleKeyDown = (e: React.KeyboardEvent<SVGSVGElement>) => {
         if (!onSelectYear) return;
-        if (e.key === 'ArrowRight') {
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
             e.preventDefault();
-            selectIdx((currentIdx < 0 ? -1 : currentIdx) + 1);
-        } else if (e.key === 'ArrowLeft') {
-            e.preventDefault();
-            selectIdx((currentIdx < 0 ? n : currentIdx) - 1);
+            // The Cashflow tab's useArrowKeyAdjust listens for the same keys on
+            // window; without stopping propagation both handlers advance the
+            // year and every press jumps two years.
+            e.stopPropagation();
+            const delta = e.key === 'ArrowRight' ? 1 : -1;
+            const base = currentIdx >= 0 ? currentIdx : (delta > 0 ? -1 : n);
+            selectIdx(base + delta);
         }
     };
 
