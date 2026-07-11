@@ -1,14 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { InvestedAccount, BrokerageLot } from '../../components/Objects/Accounts/models';
-import { createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
+import { AssumptionsState, createBuiltinMilestones, defaultAssumptions } from '../../components/Objects/Assumptions/AssumptionsContext';
 
 // Helper to create a minimal AssumptionsState for increment()
-function makeAssumptions(ror: number = 7) {
+function makeAssumptions(ror: number = 7): AssumptionsState {
     return {
+        ...defaultAssumptions,
         demographics: { priorEarnings: [] },
         milestones: createBuiltinMilestones(1990, 65, 90),
-        macro: { inflationRate: 3, inflationAdjusted: false },
+        macro: { ...defaultAssumptions.macro, inflationRate: 3, inflationAdjusted: false },
         investments: {
+            ...defaultAssumptions.investments,
             returnRates: { ror },
             withdrawalRate: 4,
             withdrawalStrategy: 'None' as const,
@@ -17,11 +19,11 @@ function makeAssumptions(ror: number = 7) {
             gkLowerGuardrail: 20,
             gkAdjustmentPercent: 10,
         },
-        income: { salaryGrowth: 3, socialSecurityFundingPercent: 100 },
-        expenses: { lifestyleCreep: 0 },
+        income: { ...defaultAssumptions.income, salaryGrowth: 3, socialSecurityFundingPercent: 100 },
+        expenses: { ...defaultAssumptions.expenses, lifestyleCreep: 0 },
         withdrawalStrategy: [],
         priorities: [],
-    } as any;
+    };
 }
 
 describe('BrokerageLot tracking', () => {

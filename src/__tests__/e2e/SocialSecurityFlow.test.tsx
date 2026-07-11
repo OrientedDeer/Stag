@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { WorkIncome, FutureSocialSecurityIncome, CurrentSocialSecurityIncome } from '../../components/Objects/Income/models';
-import { simulateOneYear } from '../../components/Objects/Assumptions/SimulationEngine';
+import { simulateOneYear, SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { defaultAssumptions } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { max_year } from '../../data/TaxData';
+import { AnyExpense } from '../../components/Objects/Expense/models';
+import { AnyAccount } from '../../components/Objects/Accounts/models';
 
 const testTaxState: TaxState = {
   filingStatus: 'Single',
@@ -62,11 +64,11 @@ describe('Social Security End-to-End Flow', () => {
     );
 
     const incomes = [workIncome, futureSS];
-    const expenses: any[] = [];
-    const accounts: any[] = [];
+    const expenses: AnyExpense[] = [];
+    const accounts: AnyAccount[] = [];
 
     // Simulate multiple years to build earnings history
-    let timeline: any[] = [];
+    const timeline: SimulationYear[] = [];
 
     // Simulate 10 years of work (ages 30-39, years 2024-2033)
     for (let year = startYear; year < startYear + 10; year++) {
@@ -134,7 +136,7 @@ describe('Social Security End-to-End Flow', () => {
     };
 
     // User already receiving $2000/month in SSDI benefits
-    let currentSS = new CurrentSocialSecurityIncome(
+    const currentSS = new CurrentSocialSecurityIncome(
       'css-1',
       'SSDI Benefits',
       2000,
@@ -144,10 +146,10 @@ describe('Social Security End-to-End Flow', () => {
     );
 
     const incomes = [currentSS];
-    const expenses: any[] = [];
-    const accounts: any[] = [];
+    const expenses: AnyExpense[] = [];
+    const accounts: AnyAccount[] = [];
 
-    let timeline: any[] = [];
+    const timeline: SimulationYear[] = [];
 
     // Simulate 5 years
     for (let year = startYear; year < startYear + 5; year++) {

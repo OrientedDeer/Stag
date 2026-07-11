@@ -18,9 +18,9 @@
 
 import { describe, it, expect } from 'vitest';
 import { solveRetirementYear, YearSolverInput } from '../../../services/simulation/YearSolver';
-import { InvestedAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
+import { AnyAccount, InvestedAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
 import { OtherExpense } from '../../../components/Objects/Expense/models';
-import { PassiveIncome } from '../../../components/Objects/Income/models';
+import { AnyIncome, PassiveIncome } from '../../../components/Objects/Income/models';
 import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../../components/Objects/Taxes/TaxContext';
 
@@ -105,12 +105,12 @@ function buildSolverInput(opts?: {
     currentAge?: number;
     birthYear?: number;
     totalLivingExpenses?: number;
-    incomes?: any[];
+    incomes?: AnyIncome[];
     traditionalBalance?: number;
     brokerageBalance?: number;
     rothBalance?: number;
     acaAware?: boolean;
-    accounts?: any[];
+    accounts?: AnyAccount[];
     rmdAmount?: number;
 }): YearSolverInput {
     const accounts = opts?.accounts

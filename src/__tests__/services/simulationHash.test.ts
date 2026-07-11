@@ -9,6 +9,9 @@ import { hashString, getSimulationInputHash } from '../../services/simulationHas
 import { AssumptionsState } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { WorkIncome } from '../../components/Objects/Income/models';
+import type { AnyAccount } from '../../components/Objects/Accounts/models';
+import type { AnyIncome } from '../../components/Objects/Income/models';
+import type { AnyExpense } from '../../components/Objects/Expense/models';
 
 // =============================================================================
 // Mock Objects
@@ -133,6 +136,33 @@ function createMockTaxState(overrides: Partial<TaxState> = {}): TaxState {
     } as TaxState;
 }
 
+/**
+ * getSimulationInputHash only reads a handful of fields off each account/
+ * income/expense (id, amount, name, constructor.name, plus a few type-specific
+ * ones gated by `instanceof` — see simulationHash.ts). The mock factories
+ * above are deliberately NOT real AnyAccount/AnyIncome/AnyExpense instances:
+ * they duck-type just the fields the serializer reads and override
+ * `constructor.name` directly to control the serialized className without
+ * standing up every concrete subclass's full constructor. Route calls through
+ * this single `unknown`-typed wrapper rather than casting `as any` at each of
+ * the many call sites below.
+ */
+function hashInputs(
+    accounts: unknown[],
+    incomes: unknown[],
+    expenses: unknown[],
+    assumptions: AssumptionsState,
+    taxState: TaxState
+): string {
+    return getSimulationInputHash(
+        accounts as AnyAccount[],
+        incomes as AnyIncome[],
+        expenses as AnyExpense[],
+        assumptions,
+        taxState
+    );
+}
+
 // =============================================================================
 // hashString tests
 // =============================================================================
@@ -240,8 +270,8 @@ describe('getSimulationInputHash', () => {
             const assumptions = createMockAssumptions();
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses as any, assumptions, taxState);
-            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses as any, assumptions, taxState);
+            const hash1 = hashInputs(accounts, incomes, expenses, assumptions, taxState);
+            const hash2 = hashInputs(accounts, incomes, expenses, assumptions, taxState);
 
             expect(hash1).toBe(hash2);
         });
@@ -254,7 +284,7 @@ describe('getSimulationInputHash', () => {
             const taxState = createMockTaxState();
 
             const hashes = Array.from({ length: 5 }, () =>
-                getSimulationInputHash(accounts as any, incomes as any, expenses as any, assumptions, taxState)
+                hashInputs(accounts, incomes, expenses, assumptions, taxState)
             );
 
             expect(new Set(hashes).size).toBe(1);
@@ -270,8 +300,8 @@ describe('getSimulationInputHash', () => {
             const assumptions = createMockAssumptions();
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash(accounts1 as any, incomes as any, expenses as any, assumptions, taxState);
-            const hash2 = getSimulationInputHash(accounts2 as any, incomes as any, expenses as any, assumptions, taxState);
+            const hash1 = hashInputs(accounts1, incomes, expenses, assumptions, taxState);
+            const hash2 = hashInputs(accounts2, incomes, expenses, assumptions, taxState);
 
             expect(hash1).not.toBe(hash2);
         });
@@ -284,8 +314,8 @@ describe('getSimulationInputHash', () => {
             const assumptions = createMockAssumptions();
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash(accounts1 as any, incomes as any, expenses as any, assumptions, taxState);
-            const hash2 = getSimulationInputHash(accounts2 as any, incomes as any, expenses as any, assumptions, taxState);
+            const hash1 = hashInputs(accounts1, incomes, expenses, assumptions, taxState);
+            const hash2 = hashInputs(accounts2, incomes, expenses, assumptions, taxState);
 
             expect(hash1).not.toBe(hash2);
         });
@@ -298,8 +328,8 @@ describe('getSimulationInputHash', () => {
             const assumptions = createMockAssumptions();
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash(accounts1 as any, incomes as any, expenses as any, assumptions, taxState);
-            const hash2 = getSimulationInputHash(accounts2 as any, incomes as any, expenses as any, assumptions, taxState);
+            const hash1 = hashInputs(accounts1, incomes, expenses, assumptions, taxState);
+            const hash2 = hashInputs(accounts2, incomes, expenses, assumptions, taxState);
 
             expect(hash1).not.toBe(hash2);
         });
@@ -314,8 +344,8 @@ describe('getSimulationInputHash', () => {
             const assumptions = createMockAssumptions();
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash(accounts as any, incomes1 as any, expenses as any, assumptions, taxState);
-            const hash2 = getSimulationInputHash(accounts as any, incomes2 as any, expenses as any, assumptions, taxState);
+            const hash1 = hashInputs(accounts, incomes1, expenses, assumptions, taxState);
+            const hash2 = hashInputs(accounts, incomes2, expenses, assumptions, taxState);
 
             expect(hash1).not.toBe(hash2);
         });
@@ -328,8 +358,8 @@ describe('getSimulationInputHash', () => {
             const assumptions = createMockAssumptions();
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash(accounts as any, incomes1 as any, expenses as any, assumptions, taxState);
-            const hash2 = getSimulationInputHash(accounts as any, incomes2 as any, expenses as any, assumptions, taxState);
+            const hash1 = hashInputs(accounts, incomes1, expenses, assumptions, taxState);
+            const hash2 = hashInputs(accounts, incomes2, expenses, assumptions, taxState);
 
             expect(hash1).not.toBe(hash2);
         });
@@ -344,8 +374,8 @@ describe('getSimulationInputHash', () => {
             const assumptions = createMockAssumptions();
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses1 as any, assumptions, taxState);
-            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses2 as any, assumptions, taxState);
+            const hash1 = hashInputs(accounts, incomes, expenses1, assumptions, taxState);
+            const hash2 = hashInputs(accounts, incomes, expenses2, assumptions, taxState);
 
             expect(hash1).not.toBe(hash2);
         });
@@ -358,8 +388,8 @@ describe('getSimulationInputHash', () => {
             const assumptions = createMockAssumptions();
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses1 as any, assumptions, taxState);
-            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses2 as any, assumptions, taxState);
+            const hash1 = hashInputs(accounts, incomes, expenses1, assumptions, taxState);
+            const hash2 = hashInputs(accounts, incomes, expenses2, assumptions, taxState);
 
             expect(hash1).not.toBe(hash2);
         });
@@ -376,8 +406,8 @@ describe('getSimulationInputHash', () => {
             const assumptions = createMockAssumptions();
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses1 as any, assumptions, taxState);
-            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses2 as any, assumptions, taxState);
+            const hash1 = hashInputs(accounts, incomes, expenses1, assumptions, taxState);
+            const hash2 = hashInputs(accounts, incomes, expenses2, assumptions, taxState);
 
             expect(hash1).not.toBe(hash2);
         });
@@ -391,8 +421,8 @@ describe('getSimulationInputHash', () => {
             const assumptions = createMockAssumptions();
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses1 as any, assumptions, taxState);
-            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses2 as any, assumptions, taxState);
+            const hash1 = hashInputs(accounts, incomes, expenses1, assumptions, taxState);
+            const hash2 = hashInputs(accounts, incomes, expenses2, assumptions, taxState);
 
             expect(hash1).not.toBe(hash2);
         });
@@ -406,8 +436,8 @@ describe('getSimulationInputHash', () => {
             const assumptions = createMockAssumptions();
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses1 as any, assumptions, taxState);
-            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses2 as any, assumptions, taxState);
+            const hash1 = hashInputs(accounts, incomes, expenses1, assumptions, taxState);
+            const hash2 = hashInputs(accounts, incomes, expenses2, assumptions, taxState);
 
             expect(hash1).not.toBe(hash2);
         });
@@ -421,8 +451,8 @@ describe('getSimulationInputHash', () => {
             const assumptions = createMockAssumptions();
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses1 as any, assumptions, taxState);
-            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses2 as any, assumptions, taxState);
+            const hash1 = hashInputs(accounts, incomes, expenses1, assumptions, taxState);
+            const hash2 = hashInputs(accounts, incomes, expenses2, assumptions, taxState);
 
             expect(hash1).not.toBe(hash2);
         });
@@ -437,8 +467,8 @@ describe('getSimulationInputHash', () => {
             const assumptions = createMockAssumptions();
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses1 as any, assumptions, taxState);
-            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses2 as any, assumptions, taxState);
+            const hash1 = hashInputs(accounts, incomes, expenses1, assumptions, taxState);
+            const hash2 = hashInputs(accounts, incomes, expenses2, assumptions, taxState);
 
             expect(hash1).not.toBe(hash2);
         });
@@ -452,8 +482,8 @@ describe('getSimulationInputHash', () => {
             const assumptions = createMockAssumptions();
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses1 as any, assumptions, taxState);
-            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses2 as any, assumptions, taxState);
+            const hash1 = hashInputs(accounts, incomes, expenses1, assumptions, taxState);
+            const hash2 = hashInputs(accounts, incomes, expenses2, assumptions, taxState);
 
             expect(hash1).not.toBe(hash2);
         });
@@ -472,8 +502,8 @@ describe('getSimulationInputHash', () => {
             const assumptions = createMockAssumptions();
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash(accounts as any, incomes as any, make() as any, assumptions, taxState);
-            const hash2 = getSimulationInputHash(accounts as any, incomes as any, make() as any, assumptions, taxState);
+            const hash1 = hashInputs(accounts, incomes, make(), assumptions, taxState);
+            const hash2 = hashInputs(accounts, incomes, make(), assumptions, taxState);
 
             expect(hash1).toBe(hash2);
         });
@@ -490,8 +520,8 @@ describe('getSimulationInputHash', () => {
             } as Partial<AssumptionsState>);
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses as any, assumptions1, taxState);
-            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses as any, assumptions2, taxState);
+            const hash1 = hashInputs(accounts, incomes, expenses, assumptions1, taxState);
+            const hash2 = hashInputs(accounts, incomes, expenses, assumptions2, taxState);
 
             expect(hash1).not.toBe(hash2);
         });
@@ -506,8 +536,8 @@ describe('getSimulationInputHash', () => {
             } as Partial<AssumptionsState>);
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses as any, assumptions1, taxState);
-            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses as any, assumptions2, taxState);
+            const hash1 = hashInputs(accounts, incomes, expenses, assumptions1, taxState);
+            const hash2 = hashInputs(accounts, incomes, expenses, assumptions2, taxState);
 
             expect(hash1).not.toBe(hash2);
         });
@@ -522,8 +552,8 @@ describe('getSimulationInputHash', () => {
             } as Partial<AssumptionsState>);
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses as any, assumptions1, taxState);
-            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses as any, assumptions2, taxState);
+            const hash1 = hashInputs(accounts, incomes, expenses, assumptions1, taxState);
+            const hash2 = hashInputs(accounts, incomes, expenses, assumptions2, taxState);
 
             expect(hash1).not.toBe(hash2);
         });
@@ -538,8 +568,8 @@ describe('getSimulationInputHash', () => {
             const taxState1 = createMockTaxState({ filingStatus: 'Single' });
             const taxState2 = createMockTaxState({ filingStatus: 'Married Filing Jointly' });
 
-            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses as any, assumptions, taxState1);
-            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses as any, assumptions, taxState2);
+            const hash1 = hashInputs(accounts, incomes, expenses, assumptions, taxState1);
+            const hash2 = hashInputs(accounts, incomes, expenses, assumptions, taxState2);
 
             expect(hash1).not.toBe(hash2);
         });
@@ -552,8 +582,8 @@ describe('getSimulationInputHash', () => {
             const taxState1 = createMockTaxState({ stateResidency: 'CA' });
             const taxState2 = createMockTaxState({ stateResidency: 'TX' });
 
-            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses as any, assumptions, taxState1);
-            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses as any, assumptions, taxState2);
+            const hash1 = hashInputs(accounts, incomes, expenses, assumptions, taxState1);
+            const hash2 = hashInputs(accounts, incomes, expenses, assumptions, taxState2);
 
             expect(hash1).not.toBe(hash2);
         });
@@ -566,8 +596,8 @@ describe('getSimulationInputHash', () => {
             const taxState1 = createMockTaxState({ deductionMethod: 'Standard' });
             const taxState2 = createMockTaxState({ deductionMethod: 'Itemized' });
 
-            const hash1 = getSimulationInputHash(accounts as any, incomes as any, expenses as any, assumptions, taxState1);
-            const hash2 = getSimulationInputHash(accounts as any, incomes as any, expenses as any, assumptions, taxState2);
+            const hash1 = hashInputs(accounts, incomes, expenses, assumptions, taxState1);
+            const hash2 = hashInputs(accounts, incomes, expenses, assumptions, taxState2);
 
             expect(hash1).not.toBe(hash2);
         });
@@ -577,9 +607,9 @@ describe('getSimulationInputHash', () => {
         // state/filing tax events; the survivor scenario) but were omitted from
         // the hash, so editing them left the cached result stale with no banner.
         const baseArgs = () => ({
-            accounts: [createMockAccount()] as any,
-            incomes: [createMockIncome()] as any,
-            expenses: [createMockExpense()] as any,
+            accounts: [createMockAccount()],
+            incomes: [createMockIncome()],
+            expenses: [createMockExpense()],
             assumptions: createMockAssumptions(),
         });
 
@@ -587,32 +617,32 @@ describe('getSimulationInputHash', () => {
             const { accounts, incomes, expenses, assumptions } = baseArgs();
             const t1 = createMockTaxState({ fedOverride: null });
             const t2 = createMockTaxState({ fedOverride: 5000 });
-            expect(getSimulationInputHash(accounts, incomes, expenses, assumptions, t1))
-                .not.toBe(getSimulationInputHash(accounts, incomes, expenses, assumptions, t2));
+            expect(hashInputs(accounts, incomes, expenses, assumptions, t1))
+                .not.toBe(hashInputs(accounts, incomes, expenses, assumptions, t2));
         });
 
         it('should return different hash when ficaOverride changes', () => {
             const { accounts, incomes, expenses, assumptions } = baseArgs();
             const t1 = createMockTaxState({ ficaOverride: null });
             const t2 = createMockTaxState({ ficaOverride: 1200 });
-            expect(getSimulationInputHash(accounts, incomes, expenses, assumptions, t1))
-                .not.toBe(getSimulationInputHash(accounts, incomes, expenses, assumptions, t2));
+            expect(hashInputs(accounts, incomes, expenses, assumptions, t1))
+                .not.toBe(hashInputs(accounts, incomes, expenses, assumptions, t2));
         });
 
         it('should return different hash when stateOverride changes', () => {
             const { accounts, incomes, expenses, assumptions } = baseArgs();
             const t1 = createMockTaxState({ stateOverride: null });
             const t2 = createMockTaxState({ stateOverride: 800 });
-            expect(getSimulationInputHash(accounts, incomes, expenses, assumptions, t1))
-                .not.toBe(getSimulationInputHash(accounts, incomes, expenses, assumptions, t2));
+            expect(hashInputs(accounts, incomes, expenses, assumptions, t1))
+                .not.toBe(hashInputs(accounts, incomes, expenses, assumptions, t2));
         });
 
         it('should return different hash when calibrateFutureYears toggles', () => {
             const { accounts, incomes, expenses, assumptions } = baseArgs();
             const t1 = createMockTaxState({ fedOverride: 5000, calibrateFutureYears: false });
             const t2 = createMockTaxState({ fedOverride: 5000, calibrateFutureYears: true });
-            expect(getSimulationInputHash(accounts, incomes, expenses, assumptions, t1))
-                .not.toBe(getSimulationInputHash(accounts, incomes, expenses, assumptions, t2));
+            expect(hashInputs(accounts, incomes, expenses, assumptions, t1))
+                .not.toBe(hashInputs(accounts, incomes, expenses, assumptions, t2));
         });
 
         it('should return different hash when a scheduled tax event is added/edited', () => {
@@ -624,9 +654,9 @@ describe('getSimulationInputHash', () => {
             const t3 = createMockTaxState({
                 taxEvents: [{ id: 'ev-1', kind: 'stateResidency', value: 'FL', year: 2034 }],
             });
-            const h1 = getSimulationInputHash(accounts, incomes, expenses, assumptions, t1);
-            const h2 = getSimulationInputHash(accounts, incomes, expenses, assumptions, t2);
-            const h3 = getSimulationInputHash(accounts, incomes, expenses, assumptions, t3);
+            const h1 = hashInputs(accounts, incomes, expenses, assumptions, t1);
+            const h2 = hashInputs(accounts, incomes, expenses, assumptions, t2);
+            const h3 = hashInputs(accounts, incomes, expenses, assumptions, t3);
             expect(h1).not.toBe(h2); // adding an event
             expect(h2).not.toBe(h3); // editing the destination state
         });
@@ -636,9 +666,9 @@ describe('getSimulationInputHash', () => {
             const t1 = createMockTaxState({ survivorScenario: { enabled: false, deathYear: 2040 } });
             const t2 = createMockTaxState({ survivorScenario: { enabled: true, deathYear: 2040 } });
             const t3 = createMockTaxState({ survivorScenario: { enabled: true, deathYear: 2040, expenseFactor: 0.8 } });
-            const h1 = getSimulationInputHash(accounts, incomes, expenses, assumptions, t1);
-            const h2 = getSimulationInputHash(accounts, incomes, expenses, assumptions, t2);
-            const h3 = getSimulationInputHash(accounts, incomes, expenses, assumptions, t3);
+            const h1 = hashInputs(accounts, incomes, expenses, assumptions, t1);
+            const h2 = hashInputs(accounts, incomes, expenses, assumptions, t2);
+            const h3 = hashInputs(accounts, incomes, expenses, assumptions, t3);
             expect(h1).not.toBe(h2); // enabling
             expect(h2).not.toBe(h3); // changing the expense factor
         });
@@ -647,8 +677,8 @@ describe('getSimulationInputHash', () => {
             const { accounts, incomes, expenses, assumptions } = baseArgs();
             // No taxEvents / survivorScenario set — the default-data shape.
             const t = createMockTaxState();
-            const h1 = getSimulationInputHash(accounts, incomes, expenses, assumptions, t);
-            const h2 = getSimulationInputHash(accounts, incomes, expenses, assumptions, t);
+            const h1 = hashInputs(accounts, incomes, expenses, assumptions, t);
+            const h2 = hashInputs(accounts, incomes, expenses, assumptions, t);
             expect(h1).toBe(h2);
             expect(typeof h1).toBe('string');
         });
@@ -659,8 +689,8 @@ describe('getSimulationInputHash', () => {
     // expected growth) — all consumed by the sim but not by getAnnualAmount().
     describe('sensitivity to WorkIncome field changes', () => {
         const baseArgs = () => ({
-            accounts: [createMockAccount()] as any,
-            expenses: [createMockExpense()] as any,
+            accounts: [createMockAccount()],
+            expenses: [createMockExpense()],
             assumptions: createMockAssumptions(),
             taxState: createMockTaxState(),
         });
@@ -669,63 +699,63 @@ describe('getSimulationInputHash', () => {
             const { accounts, expenses, assumptions, taxState } = baseArgs();
             const i1 = [createMockWorkIncome({ insurance: 2000 })];
             const i2 = [createMockWorkIncome({ insurance: 4000 })];
-            expect(getSimulationInputHash(accounts, i1 as any, expenses, assumptions, taxState))
-                .not.toBe(getSimulationInputHash(accounts, i2 as any, expenses, assumptions, taxState));
+            expect(hashInputs(accounts, i1, expenses, assumptions, taxState))
+                .not.toBe(hashInputs(accounts, i2, expenses, assumptions, taxState));
         });
 
         it('should return different hash when matchAccountId is re-pointed', () => {
             const { accounts, expenses, assumptions, taxState } = baseArgs();
             const i1 = [createMockWorkIncome({ matchAccountId: 'acc-A' })];
             const i2 = [createMockWorkIncome({ matchAccountId: 'acc-B' })];
-            expect(getSimulationInputHash(accounts, i1 as any, expenses, assumptions, taxState))
-                .not.toBe(getSimulationInputHash(accounts, i2 as any, expenses, assumptions, taxState));
+            expect(hashInputs(accounts, i1, expenses, assumptions, taxState))
+                .not.toBe(hashInputs(accounts, i2, expenses, assumptions, taxState));
         });
 
         it('should return different hash when esppDiscountPercent changes (15% -> 5%)', () => {
             const { accounts, expenses, assumptions, taxState } = baseArgs();
             const i1 = [createMockWorkIncome({ esppContributionType: 'PERCENTAGE', esppContributionAmount: 10, esppDiscountPercent: 15 })];
             const i2 = [createMockWorkIncome({ esppContributionType: 'PERCENTAGE', esppContributionAmount: 10, esppDiscountPercent: 5 })];
-            expect(getSimulationInputHash(accounts, i1 as any, expenses, assumptions, taxState))
-                .not.toBe(getSimulationInputHash(accounts, i2 as any, expenses, assumptions, taxState));
+            expect(hashInputs(accounts, i1, expenses, assumptions, taxState))
+                .not.toBe(hashInputs(accounts, i2, expenses, assumptions, taxState));
         });
 
         it('should return different hash when esppHasLookback toggles', () => {
             const { accounts, expenses, assumptions, taxState } = baseArgs();
             const i1 = [createMockWorkIncome({ esppHasLookback: true })];
             const i2 = [createMockWorkIncome({ esppHasLookback: false })];
-            expect(getSimulationInputHash(accounts, i1 as any, expenses, assumptions, taxState))
-                .not.toBe(getSimulationInputHash(accounts, i2 as any, expenses, assumptions, taxState));
+            expect(hashInputs(accounts, i1, expenses, assumptions, taxState))
+                .not.toBe(hashInputs(accounts, i2, expenses, assumptions, taxState));
         });
 
         it('should return different hash when esppOfferingPeriodMonths changes', () => {
             const { accounts, expenses, assumptions, taxState } = baseArgs();
             const i1 = [createMockWorkIncome({ esppOfferingPeriodMonths: 6 })];
             const i2 = [createMockWorkIncome({ esppOfferingPeriodMonths: 12 })];
-            expect(getSimulationInputHash(accounts, i1 as any, expenses, assumptions, taxState))
-                .not.toBe(getSimulationInputHash(accounts, i2 as any, expenses, assumptions, taxState));
+            expect(hashInputs(accounts, i1, expenses, assumptions, taxState))
+                .not.toBe(hashInputs(accounts, i2, expenses, assumptions, taxState));
         });
 
         it('should return different hash when esppAccountId is re-pointed', () => {
             const { accounts, expenses, assumptions, taxState } = baseArgs();
             const i1 = [createMockWorkIncome({ esppAccountId: 'espp-A' })];
             const i2 = [createMockWorkIncome({ esppAccountId: 'espp-B' })];
-            expect(getSimulationInputHash(accounts, i1 as any, expenses, assumptions, taxState))
-                .not.toBe(getSimulationInputHash(accounts, i2 as any, expenses, assumptions, taxState));
+            expect(hashInputs(accounts, i1, expenses, assumptions, taxState))
+                .not.toBe(hashInputs(accounts, i2, expenses, assumptions, taxState));
         });
 
         it('should return different hash when esppExpectedStockGrowth changes', () => {
             const { accounts, expenses, assumptions, taxState } = baseArgs();
             const i1 = [createMockWorkIncome({ esppExpectedStockGrowth: 7 })];
             const i2 = [createMockWorkIncome({ esppExpectedStockGrowth: 10 })];
-            expect(getSimulationInputHash(accounts, i1 as any, expenses, assumptions, taxState))
-                .not.toBe(getSimulationInputHash(accounts, i2 as any, expenses, assumptions, taxState));
+            expect(hashInputs(accounts, i1, expenses, assumptions, taxState))
+                .not.toBe(hashInputs(accounts, i2, expenses, assumptions, taxState));
         });
 
         it('should return the SAME hash for two identical WorkIncomes (no false invalidation)', () => {
             const { accounts, expenses, assumptions, taxState } = baseArgs();
             const make = () => [createMockWorkIncome({ insurance: 3000, esppDiscountPercent: 15 })];
-            expect(getSimulationInputHash(accounts, make() as any, expenses, assumptions, taxState))
-                .toBe(getSimulationInputHash(accounts, make() as any, expenses, assumptions, taxState));
+            expect(hashInputs(accounts, make(), expenses, assumptions, taxState))
+                .toBe(hashInputs(accounts, make(), expenses, assumptions, taxState));
         });
     });
 
@@ -747,8 +777,8 @@ describe('getSimulationInputHash', () => {
             const taxState = createMockTaxState();
             const e1 = [deductibleExpense({ is_tax_deductible: 'No' })];
             const e2 = [deductibleExpense({ is_tax_deductible: 'Itemized', tax_deductible: 8000 })];
-            expect(getSimulationInputHash(accounts as any, incomes as any, e1 as any, assumptions, taxState))
-                .not.toBe(getSimulationInputHash(accounts as any, incomes as any, e2 as any, assumptions, taxState));
+            expect(hashInputs(accounts, incomes, e1, assumptions, taxState))
+                .not.toBe(hashInputs(accounts, incomes, e2, assumptions, taxState));
         });
 
         it('should return different hash when tax_deductible amount changes', () => {
@@ -758,8 +788,8 @@ describe('getSimulationInputHash', () => {
             const taxState = createMockTaxState();
             const e1 = [deductibleExpense({ is_tax_deductible: 'Itemized', tax_deductible: 5000 })];
             const e2 = [deductibleExpense({ is_tax_deductible: 'Itemized', tax_deductible: 9000 })];
-            expect(getSimulationInputHash(accounts as any, incomes as any, e1 as any, assumptions, taxState))
-                .not.toBe(getSimulationInputHash(accounts as any, incomes as any, e2 as any, assumptions, taxState));
+            expect(hashInputs(accounts, incomes, e1, assumptions, taxState))
+                .not.toBe(hashInputs(accounts, incomes, e2, assumptions, taxState));
         });
     });
 
@@ -768,7 +798,7 @@ describe('getSimulationInputHash', () => {
             const assumptions = createMockAssumptions();
             const taxState = createMockTaxState();
 
-            const hash = getSimulationInputHash([] as any, [] as any, [] as any, assumptions, taxState);
+            const hash = hashInputs([], [], [], assumptions, taxState);
 
             expect(typeof hash).toBe('string');
             expect(hash.length).toBeGreaterThan(0);
@@ -778,8 +808,8 @@ describe('getSimulationInputHash', () => {
             const assumptions = createMockAssumptions();
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash([] as any, [] as any, [] as any, assumptions, taxState);
-            const hash2 = getSimulationInputHash([] as any, [] as any, [] as any, assumptions, taxState);
+            const hash1 = hashInputs([], [], [], assumptions, taxState);
+            const hash2 = hashInputs([], [], [], assumptions, taxState);
 
             expect(hash1).toBe(hash2);
         });
@@ -789,8 +819,8 @@ describe('getSimulationInputHash', () => {
             const assumptions = createMockAssumptions();
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash([] as any, [] as any, [] as any, assumptions, taxState);
-            const hash2 = getSimulationInputHash(accounts as any, [] as any, [] as any, assumptions, taxState);
+            const hash1 = hashInputs([], [], [], assumptions, taxState);
+            const hash2 = hashInputs(accounts, [], [], assumptions, taxState);
 
             expect(hash1).not.toBe(hash2);
         });
@@ -805,8 +835,8 @@ describe('getSimulationInputHash', () => {
             const assumptions = createMockAssumptions();
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash([account1, account2] as any, incomes as any, expenses as any, assumptions, taxState);
-            const hash2 = getSimulationInputHash([account2, account1] as any, incomes as any, expenses as any, assumptions, taxState);
+            const hash1 = hashInputs([account1, account2], incomes, expenses, assumptions, taxState);
+            const hash2 = hashInputs([account2, account1], incomes, expenses, assumptions, taxState);
 
             // JSON.stringify preserves array order, so different order = different hash
             expect(hash1).not.toBe(hash2);
@@ -820,8 +850,8 @@ describe('getSimulationInputHash', () => {
             const assumptions = createMockAssumptions();
             const taxState = createMockTaxState();
 
-            const hash1 = getSimulationInputHash(accounts as any, [income1, income2] as any, expenses as any, assumptions, taxState);
-            const hash2 = getSimulationInputHash(accounts as any, [income2, income1] as any, expenses as any, assumptions, taxState);
+            const hash1 = hashInputs(accounts, [income1, income2], expenses, assumptions, taxState);
+            const hash2 = hashInputs(accounts, [income2, income1], expenses, assumptions, taxState);
 
             expect(hash1).not.toBe(hash2);
         });

@@ -20,7 +20,8 @@ import {
 import { SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { defaultAssumptions, AssumptionsState, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { InvestedAccount, SavedAccount, PropertyAccount } from '../../components/Objects/Accounts/models';
-import { FoodExpense } from '../../components/Objects/Expense/models';
+import { AnyExpense, FoodExpense } from '../../components/Objects/Expense/models';
+import { AnyIncome } from '../../components/Objects/Income/models';
 
 // The canonical findFinancialIndependenceYear (single-sourced from
 // MilestoneCalculator) reads each year's real `expenses` array and grosses it up
@@ -280,8 +281,8 @@ describe('localStorage operations', () => {
 describe('captureCurrentState', () => {
     it('should capture state with className property', () => {
         const accounts = [new InvestedAccount('acc-1', 'Test', 1000, 0, 0, 0.1, 'Traditional 401k', true)];
-        const incomes: any[] = [];
-        const expenses: any[] = [];
+        const incomes: AnyIncome[] = [];
+        const expenses: AnyExpense[] = [];
         const taxSettings = { filingStatus: 'Single' as const, stateResidency: 'California', deductionMethod: 'Standard' as const, fedOverride: null, ficaOverride: null, stateOverride: null, year: 2024 };
         const assumptions = defaultAssumptions;
 
@@ -898,8 +899,27 @@ describe('net worth calculation with PropertyAccount', () => {
 // validateAndTransformScenarioImport Tests
 // =============================================================================
 
+interface ScenarioImportTestInput {
+    metadata: {
+        id: string;
+        name: string;
+        createdAt: string;
+        updatedAt: string;
+        description?: string;
+        tags?: string[];
+    };
+    inputs: {
+        accounts: unknown[];
+        incomes: unknown[];
+        expenses: unknown[];
+        taxSettings: Record<string, unknown>;
+        assumptions: Record<string, unknown>;
+    };
+    version?: string;
+}
+
 describe('validateAndTransformScenarioImport', () => {
-    const createValidInput = () => ({
+    const createValidInput = (): ScenarioImportTestInput => ({
         metadata: {
             id: 'original-id',
             name: 'Test Scenario',
@@ -999,7 +1019,7 @@ describe('validateAndTransformScenarioImport', () => {
 
         it('should use SCENARIO_VERSION default when version is missing', () => {
             const input = createValidInput();
-            delete (input as any).version;
+            delete input.version;
 
             const result = validateAndTransformScenarioImport(input);
 
@@ -1018,8 +1038,8 @@ describe('validateAndTransformScenarioImport', () => {
         it('should preserve other metadata fields', () => {
             const input = createValidInput();
             input.metadata.createdAt = '2023-06-15T12:00:00.000Z';
-            (input.metadata as any).description = 'A test description';
-            (input.metadata as any).tags = ['tag1', 'tag2'];
+            input.metadata.description = 'A test description';
+            input.metadata.tags = ['tag1', 'tag2'];
 
             const result = validateAndTransformScenarioImport(input);
 
@@ -1030,7 +1050,7 @@ describe('validateAndTransformScenarioImport', () => {
 
         it('should preserve inputs object', () => {
             const input = createValidInput();
-            input.inputs.accounts = [{ id: 'acc1', name: 'Test Account' }] as any;
+            input.inputs.accounts = [{ id: 'acc1', name: 'Test Account' }];
 
             const result = validateAndTransformScenarioImport(input);
 

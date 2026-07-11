@@ -4,7 +4,7 @@ import { defaultAssumptions, createBuiltinMilestones, BUILTIN_MILESTONE_IDS } fr
 import { defaultTaxState } from '../../components/Objects/Taxes/TaxContext';
 import { SavedAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
 import { FoodExpense, OtherExpense } from '../../components/Objects/Expense/models';
-import { PassiveIncome } from '../../components/Objects/Income/models';
+import { AnyIncome, PassiveIncome } from '../../components/Objects/Income/models';
 
 describe('Fixed Real Withdrawal Strategy', () => {
     it('should only withdraw what is needed for expenses, not force 4% target', () => {
@@ -171,7 +171,7 @@ describe('Fixed Real Withdrawal Strategy', () => {
         );
 
         const accounts = [brokerage];
-        const incomes: any[] = [];
+        const incomes: AnyIncome[] = [];
 
         // Expenses EXCEED 4% target ($80k > $68k)
         // Split into fixed ($30k) and discretionary ($50k) so the cap can trim discretionary

@@ -252,7 +252,7 @@ describe('Long-Horizon Stability: Complex Scenario with Debt', () => {
 
         // Verify lifetime cash-flow reconciliation for complex scenario with debt
         // This catches accounting bugs in mortgage/loan principal tracking
-        assertLifetimeCashFlowReconciliation(simulation, 10); // Allow 10% tolerance for complex debt scenarios
+        assertLifetimeCashFlowReconciliation(simulation);
     });
 
     it('should pay off student loan within expected timeframe', () => {

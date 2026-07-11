@@ -515,15 +515,13 @@ describe('Story 2: Early Retirement FIRE', () => {
             taxState
         );
 
-        // Track cumulative withdrawals from each account
-        let cumulativeBrokerage = 0;
+        // Track cumulative withdrawals from Roth
         let cumulativeRoth = 0;
 
         for (const year of simulation) {
             const age = getAge(year.year, birthYear);
             if (age < retirementAge) continue;
 
-            cumulativeBrokerage += getWithdrawalByName(year, 'Brokerage');
             cumulativeRoth += getWithdrawalByName(year, 'Roth IRA');
 
             // Check: Before Roth is touched significantly, Brokerage should be mostly depleted

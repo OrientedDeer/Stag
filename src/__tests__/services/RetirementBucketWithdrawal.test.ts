@@ -1,11 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { simulateOneYear } from '../../components/Objects/Assumptions/SimulationEngine';
+import { simulateOneYear, SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 import { defaultAssumptions, createBuiltinMilestones, BUILTIN_MILESTONE_IDS } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { defaultTaxState } from '../../components/Objects/Taxes/TaxContext';
 import { SavedAccount, InvestedAccount } from '../../components/Objects/Accounts/models';
 import { FoodExpense } from '../../components/Objects/Expense/models';
-// PassiveIncome imported but not currently used
-// import { PassiveIncome } from '../../components/Objects/Income/models';
+import { AnyIncome } from '../../components/Objects/Income/models';
 
 describe('Retirement Bucket Withdrawal Bug', () => {
     it('should allow reinvestment up to withdrawal amount to correct over-withdrawals', () => {
@@ -86,7 +85,7 @@ describe('Retirement Bucket Withdrawal Bug', () => {
         const accounts = [savings, capitalOne, group, brokerage, trad401k, rothIRA];
 
         // No income - retired and living off withdrawals
-        const incomes: any[] = [];
+        const incomes: AnyIncome[] = [];
 
         // Living expenses (~$68k/year)
         const expense = new FoodExpense(
@@ -95,7 +94,7 @@ describe('Retirement Bucket Withdrawal Bug', () => {
         const expenses = [expense];
 
         // Previous simulation data (needed to establish retirement)
-        const previousSimulation: any[] = [];
+        const previousSimulation: SimulationYear[] = [];
 
         // Run the simulation with retirement already active
         const result = simulateOneYear(
@@ -209,7 +208,7 @@ describe('Retirement Bucket Withdrawal Bug', () => {
         const accounts = [savings, capitalOne, group, brokerage, trad401k, rothIRA];
 
         // No income - retired
-        const incomes: any[] = [];
+        const incomes: AnyIncome[] = [];
 
         const expense = new FoodExpense(
             'exp-living', 'Living Expenses', 68000, 'Annually', new Date('2040-01-01')

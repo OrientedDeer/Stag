@@ -29,6 +29,38 @@ import { WorkIncome } from '../../components/Objects/Income/models';
  * and edge cases to ensure accurate benefit calculations.
  */
 
+// Minimal zeroed fixtures for the parts of SimulationYear these tests don't
+// exercise (extractEarningsFromSimulation only reads `year` and `incomes`).
+function emptyCashflow(): SimulationYear['cashflow'] {
+  return {
+    totalIncome: 0,
+    totalExpense: 0,
+    livingExpenses: 0,
+    discretionary: 0,
+    investedUser: 0,
+    investedMatch: 0,
+    totalInvested: 0,
+    bucketAllocations: 0,
+    bucketDetail: {},
+    withdrawals: 0,
+    withdrawalDetail: {},
+  };
+}
+
+function emptyTaxDetails(): SimulationYear['taxDetails'] {
+  return {
+    fed: 0,
+    state: 0,
+    fica: 0,
+    preTax: 0,
+    insurance: 0,
+    postTax: 0,
+    capitalGains: 0,
+    withdrawalOrdinaryTax: 0,
+    niit: 0,
+  };
+}
+
 describe('SocialSecurityCalculator', () => {
 
   describe('applyWageIndexing', () => {
@@ -264,8 +296,8 @@ describe('SocialSecurityCalculator', () => {
           ],
           expenses: [],
           accounts: [],
-          cashflow: {} as any,
-          taxDetails: {} as any,
+          cashflow: emptyCashflow(),
+          taxDetails: emptyTaxDetails(),
           logs: [],
         },
         {
@@ -276,8 +308,8 @@ describe('SocialSecurityCalculator', () => {
           ],
           expenses: [],
           accounts: [],
-          cashflow: {} as any,
-          taxDetails: {} as any,
+          cashflow: emptyCashflow(),
+          taxDetails: emptyTaxDetails(),
           logs: [],
         },
       ];
@@ -301,8 +333,8 @@ describe('SocialSecurityCalculator', () => {
           ],
           expenses: [],
           accounts: [],
-          cashflow: {} as any,
-          taxDetails: {} as any,
+          cashflow: emptyCashflow(),
+          taxDetails: emptyTaxDetails(),
           logs: [],
         },
       ];
@@ -327,8 +359,8 @@ describe('SocialSecurityCalculator', () => {
           ],
           expenses: [],
           accounts: [],
-          cashflow: {} as any,
-          taxDetails: {} as any,
+          cashflow: emptyCashflow(),
+          taxDetails: emptyTaxDetails(),
           logs: [],
         },
       ];
@@ -360,8 +392,8 @@ describe('SocialSecurityCalculator', () => {
           ],
           expenses: [],
           accounts: [],
-          cashflow: {} as any,
-          taxDetails: {} as any,
+          cashflow: emptyCashflow(),
+          taxDetails: emptyTaxDetails(),
           logs: [],
         },
       ];
@@ -385,8 +417,8 @@ describe('SocialSecurityCalculator', () => {
           ],
           expenses: [],
           accounts: [],
-          cashflow: {} as any,
-          taxDetails: {} as any,
+          cashflow: emptyCashflow(),
+          taxDetails: emptyTaxDetails(),
           logs: [],
         },
       ];
@@ -408,8 +440,8 @@ describe('SocialSecurityCalculator', () => {
             ],
             expenses: [],
             accounts: [],
-            cashflow: {} as any,
-            taxDetails: {} as any,
+            cashflow: emptyCashflow(),
+            taxDetails: emptyTaxDetails(),
             logs: [],
           },
         ];
@@ -435,8 +467,8 @@ describe('SocialSecurityCalculator', () => {
             ],
             expenses: [],
             accounts: [],
-            cashflow: {} as any,
-            taxDetails: {} as any,
+            cashflow: emptyCashflow(),
+            taxDetails: emptyTaxDetails(),
             logs: [],
           },
         ];
@@ -464,8 +496,8 @@ describe('SocialSecurityCalculator', () => {
             ],
             expenses: [],
             accounts: [],
-            cashflow: {} as any,
-            taxDetails: {} as any,
+            cashflow: emptyCashflow(),
+            taxDetails: emptyTaxDetails(),
             logs: [],
           },
         ];
@@ -488,8 +520,8 @@ describe('SocialSecurityCalculator', () => {
             ],
             expenses: [],
             accounts: [],
-            cashflow: {} as any,
-            taxDetails: {} as any,
+            cashflow: emptyCashflow(),
+            taxDetails: emptyTaxDetails(),
             logs: [],
           },
         ];
@@ -522,8 +554,8 @@ describe('SocialSecurityCalculator', () => {
             ],
             expenses: [],
             accounts: [],
-            cashflow: {} as any,
-            taxDetails: {} as any,
+            cashflow: emptyCashflow(),
+            taxDetails: emptyTaxDetails(),
             logs: [],
           },
           {
@@ -534,8 +566,8 @@ describe('SocialSecurityCalculator', () => {
             ],
             expenses: [],
             accounts: [],
-            cashflow: {} as any,
-            taxDetails: {} as any,
+            cashflow: emptyCashflow(),
+            taxDetails: emptyTaxDetails(),
             logs: [],
           },
           {
@@ -546,8 +578,8 @@ describe('SocialSecurityCalculator', () => {
             ],
             expenses: [],
             accounts: [],
-            cashflow: {} as any,
-            taxDetails: {} as any,
+            cashflow: emptyCashflow(),
+            taxDetails: emptyTaxDetails(),
             logs: [],
           },
           {
@@ -558,8 +590,8 @@ describe('SocialSecurityCalculator', () => {
             ],
             expenses: [],
             accounts: [],
-            cashflow: {} as any,
-            taxDetails: {} as any,
+            cashflow: emptyCashflow(),
+            taxDetails: emptyTaxDetails(),
             logs: [],
           },
         ];

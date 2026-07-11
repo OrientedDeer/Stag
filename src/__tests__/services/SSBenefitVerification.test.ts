@@ -5,10 +5,22 @@ import { describe, it, expect } from 'vitest';
 import { AssumptionsState, defaultAssumptions, createBuiltinMilestones } from '../../components/Objects/Assumptions/AssumptionsContext';
 import { TaxState } from '../../components/Objects/Taxes/TaxContext';
 import { InvestedAccount, SavedAccount } from '../../components/Objects/Accounts/models';
-import { WorkIncome, FutureSocialSecurityIncome } from '../../components/Objects/Income/models';
+import { AnyIncome, WorkIncome, FutureSocialSecurityIncome, SocialSecurityIncome, CurrentSocialSecurityIncome } from '../../components/Objects/Income/models';
 import { FoodExpense } from '../../components/Objects/Expense/models';
 import { runSimulation } from '../../components/Objects/Assumptions/useSimulation';
 import { calculateAIME } from '../../services/SocialSecurityCalculator';
+
+function findFutureSS(incomes: AnyIncome[]): FutureSocialSecurityIncome | undefined {
+    return incomes.find((i): i is FutureSocialSecurityIncome => i instanceof FutureSocialSecurityIncome);
+}
+
+function sumSocialSecurityIncome(incomes: AnyIncome[], year: number): number {
+    return incomes
+        .filter((i): i is SocialSecurityIncome | CurrentSocialSecurityIncome | FutureSocialSecurityIncome =>
+            i instanceof SocialSecurityIncome || i instanceof CurrentSocialSecurityIncome || i instanceof FutureSocialSecurityIncome
+        )
+        .reduce((sum, i) => sum + i.getAnnualAmount(year), 0);
+}
 
 describe('SS Benefit Verification', () => {
     it('should verify SS benefit at claiming age 67', () => {
@@ -91,8 +103,7 @@ describe('SS Benefit Verification', () => {
 
         // Check first year (2043)
         if (year2043) {
-            const ssIncome = year2043.incomes.find((i: any) => i.constructor.name === 'FutureSocialSecurityIncome');
-            const ss = ssIncome as any;
+            const ss = findFutureSS(year2043.incomes);
             console.log('Year 2043 (age 42):');
             console.log('  FutureSocialSecurityIncome found:', ss ? 'YES' : 'NO');
             if (ss) {
@@ -104,21 +115,18 @@ describe('SS Benefit Verification', () => {
 
         // Check claiming year (2068)
         if (year2068) {
-            const ssIncome = year2068.incomes.find((i: any) => i.constructor.name === 'FutureSocialSecurityIncome');
-            const ss = ssIncome as any;
+            const ss = findFutureSS(year2068.incomes);
             console.log('\nYear 2068 (age 67 - claiming age):');
             console.log('  FutureSocialSecurityIncome found:', ss ? 'YES' : 'NO');
             if (ss) {
                 console.log('  calculatedPIA:', '$' + (ss.calculatedPIA?.toFixed(2) ?? 'N/A') + '/month');
                 console.log('  amount:', '$' + (ss.amount?.toFixed(2) ?? 'N/A') + '/year');
                 console.log('  startDate:', ss.startDate);
-                console.log('  getAnnualAmount(2068):', '$' + (ss.getAnnualAmount?.(2068)?.toFixed(2) ?? 'N/A'));
+                console.log('  getAnnualAmount(2068):', '$' + (ss.getAnnualAmount(2068)?.toFixed(2) ?? 'N/A'));
             }
 
             // Check if SS shows in gross income
-            const totalSSIncome = year2068.incomes
-                .filter((i: any) => i.constructor.name.includes('SocialSecurity'))
-                .reduce((sum: number, i: any) => sum + (i.getAnnualAmount?.(2068) ?? 0), 0);
+            const totalSSIncome = sumSocialSecurityIncome(year2068.incomes, 2068);
             console.log('\nTotal SS income in 2068:', '$' + totalSSIncome.toFixed(2));
         }
 
@@ -127,16 +135,16 @@ describe('SS Benefit Verification', () => {
         const year2069 = simulation.find(y => y.year === 2069);
 
         if (year2067) {
-            const ss = year2067.incomes.find((i: any) => i.constructor.name === 'FutureSocialSecurityIncome') as any;
+            const ss = findFutureSS(year2067.incomes);
             console.log('\nYear 2067 (age 66 - before claiming):');
-            console.log('  getAnnualAmount(2067):', '$' + (ss?.getAnnualAmount?.(2067)?.toFixed(2) ?? 'N/A'));
+            console.log('  getAnnualAmount(2067):', '$' + (ss?.getAnnualAmount(2067)?.toFixed(2) ?? 'N/A'));
         }
 
         if (year2069) {
-            const ss = year2069.incomes.find((i: any) => i.constructor.name === 'FutureSocialSecurityIncome') as any;
+            const ss = findFutureSS(year2069.incomes);
             console.log('\nYear 2069 (age 68 - after claiming):');
             console.log('  calculatedPIA:', '$' + (ss?.calculatedPIA?.toFixed(2) ?? 'N/A') + '/month');
-            console.log('  getAnnualAmount(2069):', '$' + (ss?.getAnnualAmount?.(2069)?.toFixed(2) ?? 'N/A'));
+            console.log('  getAnnualAmount(2069):', '$' + (ss?.getAnnualAmount(2069)?.toFixed(2) ?? 'N/A'));
         }
 
         console.log('\n===== END VERIFICATION =====\n');

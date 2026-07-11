@@ -74,9 +74,8 @@ export function assertNoNaNOrInfinity(year: SimulationYear): void {
 
 /**
  * Assert cashflow algebra holds (income - expenses = discretionary + invested + withdrawals)
- * Uses tolerance for floating point precision
  */
-function assertCashflowAlgebra(year: SimulationYear, _tolerance: number = 5): void {
+function assertCashflowAlgebra(year: SimulationYear): void {
     const cf = year.cashflow;
     const taxes = year.taxDetails;
 
@@ -119,7 +118,7 @@ export function assertWithdrawalOrderRespected(
         // For each withdrawal, check if it's from a valid account.
         // withdrawalDetail is keyed by account id (#142); resolve id -> name to
         // match against the (name-based) withdrawal order.
-        for (const [accountId, _amount] of Object.entries(withdrawalDetail)) {
+        for (const accountId of Object.keys(withdrawalDetail)) {
             const accountName = year.accounts.find(a => a.id === accountId)?.name ?? accountId;
             // Find the account in withdrawal order
             const accountIndex = withdrawalOrder.findIndex(name =>
@@ -613,11 +612,9 @@ export function assertDirectionalChange(
  * Net Worth End - Net Worth Start ≈ Σ Investment Returns + Σ Contributions
  *
  * @param simulation The full simulation results
- * @param tolerancePercent Allowed variance as percentage of final net worth (default 10%)
  */
 export function assertLifetimeCashFlowReconciliation(
-    simulation: SimulationYear[],
-    _tolerancePercent: number = 10
+    simulation: SimulationYear[]
 ): void {
     if (simulation.length < 2) return;
 
@@ -631,16 +628,10 @@ export function assertLifetimeCashFlowReconciliation(
 
     // Track cumulative values
     let cumulativeInvestmentReturns = 0;
-    let cumulativeContributions = 0;
-    let cumulativeWithdrawals = 0;
 
     for (let i = 1; i < simulation.length; i++) {
         const prevYear = simulation[i - 1];
         const currYear = simulation[i];
-
-        // Sum contributions and withdrawals
-        cumulativeContributions += currYear.cashflow.totalInvested || 0;
-        cumulativeWithdrawals += currYear.cashflow.withdrawals || 0;
 
         // Calculate implied investment returns for each account
         for (const account of currYear.accounts) {
