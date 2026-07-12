@@ -25,8 +25,16 @@ export default function ReconcileTab() {
     // Default to the first tagged source so results render immediately (rather
     // than flashing the untagged set, which source='' would match).
     const [source, setSource] = useState(() => knownSources[0] ?? '');
-    const [startDate, setStartDate] = useState<Date | undefined>(undefined);
-    const [endDate, setEndDate] = useState<Date | undefined>(undefined);
+    // Default window: the last month, ending today. Local-midnight construction
+    // (never UTC parsing) so the date-only ordinals compare correctly.
+    const [startDate, setStartDate] = useState<Date | undefined>(() => {
+        const now = new Date();
+        return new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+    });
+    const [endDate, setEndDate] = useState<Date | undefined>(() => {
+        const now = new Date();
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    });
     const [statementAmount, setStatementAmount] = useState(0);
     const [basis, setBasis] = useState<CompareBasis>('charges');
 
