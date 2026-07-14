@@ -15,6 +15,7 @@ export default function CloudBackupSync() {
         currentDataHash,
         updateCurrentDataHash,
         signIn,
+        signInStatus,
         clearLinkedEmail,
         justSignedIn,
         clearJustSignedIn,
@@ -118,14 +119,32 @@ export default function CloudBackupSync() {
                     <svg className="w-4 h-4 text-info shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
                     </svg>
-                    <p className="text-info-bright text-sm flex-1">
-                        This data is linked to <span className="text-white font-medium">{linkedEmail}</span>. Sign in to restore the latest cloud backup.
-                    </p>
+                    <div className="flex-1">
+                        <p className="text-info-bright text-sm">
+                            This data is linked to <span className="text-white font-medium">{linkedEmail}</span>. Sign in to restore the latest cloud backup.
+                        </p>
+                        {signInStatus === 'suppressed' && (
+                            <p className="text-info-bright/80 text-xs mt-0.5">
+                                Google didn't show the sign-in prompt. Your browser may be blocking third-party sign-in for this site (check the icon next to the address bar), or try again in a bit.
+                            </p>
+                        )}
+                    </div>
                     <button
                         onClick={() => signIn()}
-                        className="px-3 py-1 bg-accent hover:bg-accent-soft text-white rounded text-xs font-medium transition-colors"
+                        disabled={signInStatus === 'prompting'}
+                        className="px-3 py-1 bg-accent hover:bg-accent-soft disabled:opacity-60 disabled:hover:bg-accent text-white rounded text-xs font-medium transition-colors flex items-center gap-1.5"
                     >
-                        Sign in with Google
+                        {signInStatus === 'prompting' ? (
+                            <>
+                                <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                </svg>
+                                Connecting to Google...
+                            </>
+                        ) : (
+                            'Sign in with Google'
+                        )}
                     </button>
                     <button
                         onClick={handleDismiss}

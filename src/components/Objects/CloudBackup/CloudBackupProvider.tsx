@@ -56,6 +56,7 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
             lastBackupHash: meta.lastBackupHash,
             currentDataHash: null,
             justSignedIn: false,
+            signInStatus: 'idle',
         };
     });
 
@@ -86,7 +87,14 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
     // Fired by GIS whenever Google signs the user in (interactively or via
     // silent auto-select). Resolves any pending token wait; otherwise treats it
     // as a fresh interactive sign-in (which triggers the restore prompt).
+    // Monotonic id for the latest explicit sign-in click; stale prompt outcomes
+    // and timeout backstops from an earlier click compare against it and bail.
+    const signInAttemptRef = useRef(0);
+
     const onCredential = useCallback((idToken: string) => {
+        // Any in-flight sign-in attempt just succeeded — retire it so its
+        // moment callbacks / timeout can't flip the UI to "suppressed".
+        signInAttemptRef.current++;
         const expiresAt = getIdTokenExpiry(idToken);
         idTokenRef.current = { token: idToken, expiresAt };
         // Persist so a refresh rehydrates the session instead of re-prompting.
@@ -103,6 +111,7 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
             userEmail: userInfo.email,
             linkedEmail: userInfo.email,
             checkingAuth: false,
+            signInStatus: 'idle',
             // A pending wait is a silent token refresh, not a new sign-in.
             justSignedIn: pending ? s.justSignedIn : true,
         }));
@@ -180,7 +189,27 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
 
     const signIn = useCallback(async () => {
         if (!configRef.current) throw new Error('Cloud backup not configured');
-        promptSignIn();
+        const attempt = ++signInAttemptRef.current;
+        setState(s => ({ ...s, signInStatus: 'prompting', lastError: null }));
+
+        // Backstop: while a FedCM dialog sits open no moment fires, so a short
+        // timeout would falsely read "suppressed" mid-interaction. 15s is long
+        // enough for a human to act, short enough to unstick a dead prompt.
+        setTimeout(() => {
+            if (signInAttemptRef.current !== attempt) return;
+            setState(s => (s.signInStatus === 'prompting' ? { ...s, signInStatus: 'suppressed' } : s));
+        }, 15_000);
+
+        promptSignIn((outcome) => {
+            if (signInAttemptRef.current !== attempt) return;
+            if (outcome.type === 'suppressed') {
+                setState(s => ({ ...s, signInStatus: 'suppressed' }));
+            } else if (outcome.type === 'dismissed') {
+                // Shown and closed by the user — nothing to explain.
+                setState(s => ({ ...s, signInStatus: 'idle' }));
+            }
+            // 'success' is handled by onCredential.
+        });
     }, []);
 
     const signOut = useCallback(() => {
@@ -194,6 +223,7 @@ export function CloudBackupProvider({ children }: { children: ReactNode }) {
             isAuthenticated: false,
             userEmail: null,
             lastError: null,
+            signInStatus: 'idle',
         }));
     }, []);
 

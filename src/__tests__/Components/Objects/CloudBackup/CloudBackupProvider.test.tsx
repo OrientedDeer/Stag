@@ -170,3 +170,55 @@ describe('CloudBackupProvider — post-restore rebaseline', () => {
         expect(result.current.currentDataHash).toBe('h1');
     });
 });
+
+describe('CloudBackupProvider — explicit sign-in prompt feedback', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        localStorage.clear();
+        sessionStorage.clear();
+        auth.loadStoredIdToken.mockReturnValue(null);
+    });
+
+    async function renderSignedOut() {
+        const { result } = renderHook(() => useContext(CloudBackupContext), { wrapper });
+        await waitFor(() => expect(result.current.checkingAuth).toBe(false));
+        return result;
+    }
+
+    it('signIn enters prompting and a suppressed outcome surfaces as suppressed', async () => {
+        const result = await renderSignedOut();
+        expect(result.current.signInStatus).toBe('idle');
+
+        await act(async () => { await result.current.signIn(); });
+        expect(result.current.signInStatus).toBe('prompting');
+
+        // Drive the moment listener passed by the explicit sign-in (the mount-time
+        // auto-select prompt passes no listener).
+        const listener = auth.promptSignIn.mock.calls.at(-1)?.[0];
+        expect(listener).toBeTypeOf('function');
+        act(() => { listener!({ type: 'suppressed', reason: 'unknown_reason' }); });
+
+        expect(result.current.signInStatus).toBe('suppressed');
+    });
+
+    it('a dismissed prompt returns to idle, and a credential retires the attempt', async () => {
+        const result = await renderSignedOut();
+
+        await act(async () => { await result.current.signIn(); });
+        const listener = auth.promptSignIn.mock.calls.at(-1)?.[0];
+        act(() => { listener!({ type: 'dismissed', reason: 'user_cancel' }); });
+        expect(result.current.signInStatus).toBe('idle');
+
+        // New attempt succeeds via onCredential: authenticated + idle, and a
+        // late outcome from that attempt must not flip the state afterwards.
+        await act(async () => { await result.current.signIn(); });
+        const staleListener = auth.promptSignIn.mock.calls.at(-1)?.[0];
+        const onCredential = auth.initGoogleAuth.mock.calls.at(-1)?.[1];
+        act(() => { onCredential!('header.payload.sig'); });
+        expect(result.current.isAuthenticated).toBe(true);
+        expect(result.current.signInStatus).toBe('idle');
+
+        act(() => { staleListener!({ type: 'suppressed', reason: 'unknown_reason' }); });
+        expect(result.current.signInStatus).toBe('idle');
+    });
+});

@@ -2,6 +2,13 @@ import { createContext } from 'react';
 import { type BackupMetadata } from '../../../services/cloud/CloudBackupService';
 import { jsonDateReplacer } from '../../../utils/formatters';
 
+// Lifecycle of an explicit sign-in click. 'prompting' = waiting on Google
+// (script/prompt latency, or a FedCM dialog the user hasn't acted on yet);
+// 'suppressed' = the browser declined to show the prompt at all (FedCM
+// permission blocked or dismissal cooldown) — the UI should say so instead
+// of the button silently doing nothing.
+export type SignInStatus = 'idle' | 'prompting' | 'suppressed';
+
 export interface CloudBackupState {
     enabled: boolean;
     isAuthenticated: boolean;
@@ -15,6 +22,7 @@ export interface CloudBackupState {
     lastBackupHash: string | null;
     currentDataHash: string | null;
     justSignedIn: boolean;
+    signInStatus: SignInStatus;
 }
 
 export interface CloudBackupContextValue extends CloudBackupState {
@@ -143,6 +151,7 @@ const defaultContextValue: CloudBackupContextValue = {
     lastBackupHash: null,
     currentDataHash: null,
     justSignedIn: false,
+    signInStatus: 'idle',
     signIn: async () => {},
     signOut: () => {},
     backup: async () => {},

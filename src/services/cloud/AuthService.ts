@@ -31,9 +31,21 @@ interface GoogleIdInitConfig {
     cancel_on_tap_outside?: boolean;
 }
 
+// Moment notification passed to prompt()'s listener. Under FedCM (Chrome's
+// current default) the display-moment methods are no-ops and reasons collapse
+// to "unknown_reason" — only skipped and dismissed moments reliably fire.
+interface PromptMomentNotification {
+    isSkippedMoment(): boolean;
+    getSkippedReason(): string;
+    isNotDisplayed(): boolean;
+    getNotDisplayedReason(): string;
+    isDismissedMoment(): boolean;
+    getDismissedReason(): string;
+}
+
 interface GoogleAccountsId {
     initialize(config: GoogleIdInitConfig): void;
-    prompt(): void;
+    prompt(momentListener?: (notification: PromptMomentNotification) => void): void;
     renderButton(parent: HTMLElement, options: Record<string, unknown>): void;
     disableAutoSelect(): void;
 }
@@ -90,12 +102,39 @@ export async function initGoogleAuth(
 }
 
 /**
+ * Outcome of a prompt attempt, distilled from GIS moment notifications:
+ *   - suppressed: the browser never showed the prompt (FedCM permission blocked,
+ *     dismissal-cooldown embargo, no Google session). Without surfacing this,
+ *     the sign-in button appears to do nothing at all.
+ *   - dismissed: the prompt was shown and the user closed it without signing in.
+ *   - success: a credential was issued (also delivered via onCredential).
+ */
+export type PromptOutcome =
+    | { type: 'suppressed'; reason: string }
+    | { type: 'dismissed'; reason: string }
+    | { type: 'success' };
+
+/**
  * Trigger the Google sign-in flow (One Tap / auto-select). The resulting ID
  * token is delivered to the `onCredential` callback registered in initGoogleAuth.
  * No-op if GIS hasn't initialized yet.
+ *
+ * `onOutcome` (optional) reports what happened to the prompt itself. Caveat:
+ * while a FedCM dialog sits open awaiting the user, no moment fires — callers
+ * wanting a timeout backstop must keep it generous.
  */
-export function promptSignIn(): void {
-    window.google?.accounts.id.prompt();
+export function promptSignIn(onOutcome?: (outcome: PromptOutcome) => void): void {
+    window.google?.accounts.id.prompt(onOutcome && ((notification) => {
+        if (notification.isSkippedMoment()) {
+            onOutcome({ type: 'suppressed', reason: notification.getSkippedReason() });
+        } else if (notification.isNotDisplayed()) {
+            onOutcome({ type: 'suppressed', reason: notification.getNotDisplayedReason() });
+        } else if (notification.isDismissedMoment()) {
+            const reason = notification.getDismissedReason();
+            if (reason === 'credential_returned') onOutcome({ type: 'success' });
+            else onOutcome({ type: 'dismissed', reason });
+        }
+    }));
 }
 
 /**
