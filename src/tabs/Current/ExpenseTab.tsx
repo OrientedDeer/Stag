@@ -21,6 +21,7 @@ import { ObjectsIcicleChart } from '../../components/Charts/ObjectsIcicleChart';
 import { tailwindToCssVar, getDistributedColors } from '../../components/Charts/icicleChartHelpers';
 import { Panel } from "../../components/Layout/Primitives";
 import { ChevronIcon } from "../../components/Layout/Icons/ChevronIcon";
+import { useStickyPartition } from "../../hooks/useStickyPartition";
 
 // Cadence sub-tabs for the expense list, mirroring the Accounts page. Weekly +
 // Monthly roll up into "Monthly"; "Annually" expenses form "Annual". "Longer
@@ -153,6 +154,12 @@ const TabsContent = () => {
 
     const activeTabDef = CADENCE_TABS.find((t) => t.label === activeTab) ?? CADENCE_TABS[0];
 
+    // Freeze each expense's active/past ("done") section for this mount so
+    // end-dating (or reactivating) a card updates it in place instead of jumping
+    // it between its cadence list and the collapsed "past expenses" drawer.
+    // Cadence membership stays live — only the done/past dimension is sticky.
+    const isDone = useStickyPartition(expenses, isExpenseDone);
+
     // Data wrangling for icicle chart
     const hierarchicalData = useMemo(() => {
         const grouped: Record<string, AnyExpense[]> = {};
@@ -241,7 +248,7 @@ const TabsContent = () => {
                     <div className="p-4">
                         <ExpenseList
                             title=""
-                            match={(exp) => activeTabDef.match(exp) && !isExpenseDone(exp)}
+                            match={(exp) => activeTabDef.match(exp) && !isDone(exp)}
                         />
 
                         <button
@@ -267,7 +274,7 @@ const TabsContent = () => {
                 <div className="px-4">
                     <ExpenseList
                         title="past expenses"
-                        match={isExpenseDone}
+                        match={isDone}
                         collapsible
                         dimmed
                     />

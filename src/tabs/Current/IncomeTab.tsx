@@ -21,6 +21,7 @@ import AddIncomeModal from "../../components/Objects/Income/AddIncomeModal";
 import { ObjectsIcicleChart } from "../../components/Charts/ObjectsIcicleChart";
 import { tailwindToCssVar, getDistributedColors } from "../../components/Charts/icicleChartHelpers";
 import { Panel } from "../../components/Layout/Primitives";
+import { useStickyPartition } from "../../hooks/useStickyPartition";
 
 interface IncomeListProps {
 	/** Which incomes belong to this list; drag-reorder maps back to master indices. */
@@ -124,6 +125,11 @@ const TabsContent = () => {
 	const { incomes } = useContext(IncomeContext);
 	const [isModalOpen, setIsModalOpen] = useState(false);
 
+	// Freeze each income's active/past section for this mount so end-dating (or
+	// reactivating) a card updates it in place instead of jumping it between the
+	// main list and the collapsed "past incomes" drawer. Re-settles on remount.
+	const isPast = useStickyPartition(incomes, hasIncomeEnded);
+
 	// #152: the icicle below shows only income active right now. The fixed
 	// start/end-date gate alone is milestone-BLIND and would count a
 	// milestone-started income (no fixed start date) before its milestone fires —
@@ -206,7 +212,7 @@ const TabsContent = () => {
 
 				{/* Single List Section (ended incomes live in the collapsed section below) */}
 				<div className="p-4">
-					<IncomeList match={(inc) => !hasIncomeEnded(inc)} />
+					<IncomeList match={(inc) => !isPast(inc)} />
 
 					<button
 						onClick={() => setIsModalOpen(true)}
@@ -225,7 +231,7 @@ const TabsContent = () => {
 					    in the main list (same rule as the "ended YYYY" card hint). */}
 					<IncomeList
 						title="past incomes"
-						match={hasIncomeEnded}
+						match={isPast}
 						collapsible
 						dimmed
 					/>
