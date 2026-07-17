@@ -1,5 +1,6 @@
-import { useContext, useState, useRef, useEffect } from 'react';
+import { useContext, useState, useRef, useEffect, useCallback } from 'react';
 import { CloudBackupContext } from './CloudBackupContext';
+import { renderSignInButton } from '../../../services/cloud/AuthService';
 import { useFileManager } from '../Accounts/useFileManager';
 import { AccountDispatchContext } from '../Accounts/AccountContext';
 import { IncomeDispatchContext } from '../Income/IncomeContext';
@@ -38,6 +39,14 @@ export default function CloudBackupPanel({ isOpen, onClose }: CloudBackupPanelPr
         checkBackupStatus,
         clearError,
     } = useContext(CloudBackupContext);
+
+    // Mount the official GIS button as a fallback when One Tap is suppressed
+    // (no Google session in the browser, FedCM blocked, cooldown). Its popup
+    // flow works without an existing session; the credential arrives through
+    // the same onCredential callback registered in initGoogleAuth.
+    const gsiButtonRef = useCallback((el: HTMLDivElement | null) => {
+        if (el) renderSignInButton(el);
+    }, []);
 
     const { getBackupData, handleGlobalExport, handleGlobalImport } = useFileManager();
     const { dispatch: accountDispatch } = useContext(AccountDispatchContext);
@@ -303,9 +312,12 @@ export default function CloudBackupPanel({ isOpen, onClose }: CloudBackupPanelPr
                                     {signInStatus === 'prompting' ? 'Connecting to Google...' : 'Sign in with Google'}
                                 </button>
                                 {signInStatus === 'suppressed' && (
-                                    <p className="text-content-subtle text-xs px-1">
-                                        Google didn't show the sign-in prompt. Your browser may be blocking third-party sign-in for this site (check the icon next to the address bar), or try again in a bit.
-                                    </p>
+                                    <div className="space-y-2">
+                                        <p className="text-content-subtle text-xs px-1">
+                                            Google didn't show the sign-in prompt. Your browser may be blocking third-party sign-in for this site (check the icon next to the address bar), or you may not be signed in to Google in this browser. This button can sign you in directly:
+                                        </p>
+                                        <div ref={gsiButtonRef} className="px-1" />
+                                    </div>
                                 )}
                             </div>
                         ) : (
