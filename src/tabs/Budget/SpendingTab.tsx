@@ -65,17 +65,6 @@ export default function SpendingTab() {
     // Calculate age from birth year
     const currentAge = selectedYear - getBirthYear(assumptions.milestones);
 
-    // Get simulation's bucket allocations for REMAINDER type priorities
-    const simulatedBucketAllocations = useMemo(() => {
-        // Try next year first (Year 1 has actual allocations, Year 0 is baseline)
-        const nextYearSim = simulation.find(s => s.year === selectedYear + 1);
-        if (nextYearSim?.cashflow.bucketDetail && Object.keys(nextYearSim.cashflow.bucketDetail).length > 0) {
-            return nextYearSim.cashflow.bucketDetail;
-        }
-        const currentYearSim = simulation.find(s => s.year === selectedYear);
-        return currentYearSim?.cashflow.bucketDetail || {};
-    }, [simulation, selectedYear]);
-
     const currentSnapshot = useMemo(() =>
         months.find(m => m.month === selectedMonth && m.year === selectedYear),
         [months, selectedMonth, selectedYear]
@@ -98,21 +87,12 @@ export default function SpendingTab() {
         return activeToday.reduce((sum, exp) => sum + exp.getMonthlyAmount(), 0);
     }, [expenses, currentRealMonth, currentRealYear]);
 
-    // Calculate annual contribution goals based on priority capType
-    // For MAX priorities, use IRS limits; for FIXED, use capValue * 12
-    const getAnnualGoal = useCallback((priority: typeof priorities[0], account: typeof accounts[0] | undefined): number => {
-        if (!account) return 0;
-
+    // Annual contribution goal for the capped bucket types (MAX → IRS limit or
+    // capValue, FIXED → capValue × 12). Shared by the display goal and the
+    // current-year remainder derivation below.
+    const getCapContributionGoal = useCallback((priority: typeof priorities[0], account: typeof accounts[0]): number => {
         const inflationAdjusted = assumptions.macro.inflationAdjusted;
         const hsaCoverage = taxState.filingStatus === 'Married Filing Jointly' ? 'family' : 'individual';
-
-        // Goal sinking funds: derive the annual goal from the goal expense
-        // itself so goal edits propagate. Months-prorated, mirroring the sim's
-        // committed funding — a goal started in June plans 7 months of
-        // set-aside this year, not 12. Pacing and the expected-balance ramp
-        // spread this over the active months (see plannedMonths below).
-        const goalAnnual = getGoalFundAnnualSetAside(expenses, priority.accountId, selectedYear);
-        if (goalAnnual !== undefined) return goalAnnual;
 
         if (priority.capType === 'MAX' && account instanceof InvestedAccount) {
             // Look up IRS limit based on account's taxType
@@ -129,18 +109,75 @@ export default function SpendingTab() {
                     // Brokerage or other - use capValue if set
                     return priority.capValue || 0;
             }
-        } else if (priority.capType === 'FIXED') {
+        }
+        if (priority.capType === 'FIXED') {
             return (priority.capValue || 0) * 12; // capValue is monthly
+        }
+        return 0;
+    }, [assumptions, selectedYear, currentAge, taxState.filingStatus]);
+
+    // Annual goal for each REMAINDER bucket, keyed by accountId.
+    // - A year the sim actually allocated (future years): use its bucketDetail.
+    // - The current year: the sim never allocates buckets for Year 0 (its
+    //   bucketDetail is empty on both the baseline and Projected-Dec rows), and
+    //   borrowing next year's allocation misleads whenever income differs
+    //   across the year boundary (segmented salaries, one-off bonuses). Derive
+    //   it from this year's own cashflow instead: discretionary surplus minus
+    //   what the capped buckets consume, first REMAINDER takes the rest.
+    const remainderAnnualGoals = useMemo(() => {
+        const yearSim = simulation.find(s => s.year === selectedYear);
+        const detail = yearSim?.cashflow.bucketDetail;
+        if (detail && Object.keys(detail).length > 0) return detail;
+        if (!yearSim) {
+            // No sim row for this year (e.g. a past year): nearest allocation.
+            return simulation.find(s => s.year === selectedYear + 1)?.cashflow.bucketDetail ?? {};
+        }
+        let pot = Math.max(0, yearSim.cashflow.discretionary);
+        const goals: Record<string, number> = {};
+        for (const p of priorities) {
+            if (!p.accountId) continue;
+            const account = accounts.find(a => a.id === p.accountId);
+            if (!account) continue;
+            // Goal sinking funds are committed transfers inside expenses —
+            // they don't draw from the discretionary surplus.
+            if (getGoalFundAnnualSetAside(expenses, p.accountId, selectedYear) !== undefined) continue;
+            if (p.capType === 'REMAINDER') {
+                goals[p.accountId] = pot;
+                pot = 0;
+            } else if (isBalanceTargetCap(p.capType)) {
+                const target = getBucketTargetBalance(p, currentMonthlyExpenses) ?? 0;
+                pot = Math.max(0, pot - Math.max(0, target - account.amount));
+            } else {
+                pot = Math.max(0, pot - getCapContributionGoal(p, account));
+            }
+        }
+        return goals;
+    }, [simulation, selectedYear, priorities, accounts, expenses, currentMonthlyExpenses, getCapContributionGoal]);
+
+    // Calculate annual contribution goals based on priority capType
+    // For MAX priorities, use IRS limits; for FIXED, use capValue * 12
+    const getAnnualGoal = useCallback((priority: typeof priorities[0], account: typeof accounts[0] | undefined): number => {
+        if (!account) return 0;
+
+        // Goal sinking funds: derive the annual goal from the goal expense
+        // itself so goal edits propagate. Months-prorated, mirroring the sim's
+        // committed funding — a goal started in June plans 7 months of
+        // set-aside this year, not 12. Pacing and the expected-balance ramp
+        // spread this over the active months (see plannedMonths below).
+        const goalAnnual = getGoalFundAnnualSetAside(expenses, priority.accountId, selectedYear);
+        if (goalAnnual !== undefined) return goalAnnual;
+
+        if (priority.capType === 'MAX' || priority.capType === 'FIXED') {
+            return getCapContributionGoal(priority, account);
         } else if (isBalanceTargetCap(priority.capType)) {
             // Balance target: TARGET = capValue dollars; MULTIPLE_OF_EXPENSES =
             // months × current monthly expenses (today's active set).
             return getBucketTargetBalance(priority, currentMonthlyExpenses) ?? 0;
         } else if (priority.capType === 'REMAINDER') {
-            // REMAINDER: Use simulation's projected allocation for this account
-            return simulatedBucketAllocations[priority.accountId!] || 0;
+            return remainderAnnualGoals[priority.accountId!] || 0;
         }
         return 0;
-    }, [assumptions, selectedYear, currentAge, taxState.filingStatus, currentMonthlyExpenses, simulatedBucketAllocations, expenses]);
+    }, [selectedYear, currentMonthlyExpenses, remainderAnnualGoals, expenses, getCapContributionGoal]);
 
     // The "tracking horizon" is the month we treat as YTD-end:
     // - past years: full year (month 12)

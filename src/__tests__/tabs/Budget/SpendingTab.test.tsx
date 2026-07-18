@@ -13,7 +13,9 @@ import {
     type PriorityBucket,
 } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { OtherExpense, type AnyExpense } from '../../../components/Objects/Expense/models';
-import { SavedAccount, type AnyAccount } from '../../../components/Objects/Accounts/models';
+import { InvestedAccount, SavedAccount, type AnyAccount } from '../../../components/Objects/Accounts/models';
+import { SimulationContext } from '../../../components/Objects/Assumptions/SimulationContext';
+import type { SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 
 // The spending grid itself isn't under test — stub out react-datasheet-grid
 // (it doesn't render meaningfully in jsdom). keyColumn/floatColumn/textColumn
@@ -47,9 +49,10 @@ interface HarnessOptions {
     expenses: AnyExpense[];
     accounts: AnyAccount[];
     priorities?: PriorityBucket[];
+    simulation?: SimulationYear[];
 }
 
-const renderSpendingTab = ({ budget, expenses, accounts, priorities = [] }: HarnessOptions) => {
+const renderSpendingTab = ({ budget, expenses, accounts, priorities = [], simulation = [] }: HarnessOptions) => {
     const budgetValue = {
         months: [] as MonthlySnapshot[],
         importSettings: {
@@ -70,15 +73,17 @@ const renderSpendingTab = ({ budget, expenses, accounts, priorities = [] }: Harn
     };
     const wrapper = ({ children }: { children: ReactNode }) => (
         <AssumptionsContext.Provider value={{ state: { ...defaultAssumptions, priorities }, dispatch: () => null }}>
-            <AccountContext.Provider value={{ accounts, amountHistory: {} }}>
-                <IncomeContext.Provider value={{ incomes: [] }}>
-                    <ExpenseContext.Provider value={{ expenses }}>
-                        <BudgetContext.Provider value={budgetValue}>
-                            {children}
-                        </BudgetContext.Provider>
-                    </ExpenseContext.Provider>
-                </IncomeContext.Provider>
-            </AccountContext.Provider>
+            <SimulationContext.Provider value={{ simulation, inputHash: null, dispatch: () => null } as never}>
+                <AccountContext.Provider value={{ accounts, amountHistory: {} }}>
+                    <IncomeContext.Provider value={{ incomes: [] }}>
+                        <ExpenseContext.Provider value={{ expenses }}>
+                            <BudgetContext.Provider value={budgetValue}>
+                                {children}
+                            </BudgetContext.Provider>
+                        </ExpenseContext.Provider>
+                    </IncomeContext.Provider>
+                </AccountContext.Provider>
+            </SimulationContext.Provider>
         </AssumptionsContext.Provider>
     );
     return render(<SpendingTab />, { wrapper });
@@ -246,4 +251,53 @@ describe('SpendingTab pacing "why" tooltip', () => {
         // 5,000 / 20,000 = 25%, $15,000 to go.
         expect(within(row).getByText(/25% · \$15,000 to go/)).toBeInTheDocument();
     });
+});
+
+describe('REMAINDER bucket annual goal', () => {
+    beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    const rent = new OtherExpense('rent', 'Rent', 1000, 'Monthly', new Date(2024, 0, 1));
+
+    // Mirrors the engine's real output shape: the current-year baseline row has
+    // full-year cashflow but an EMPTY bucketDetail (the engine only allocates
+    // buckets from Year 1 on), so the current-year goal must be derived from
+    // the year's own discretionary surplus — not borrowed from next year's
+    // allocation, which diverges whenever income differs across the boundary.
+    const simYear = (year: number, discretionary: number, bucketDetail: Record<string, number>): SimulationYear =>
+        ({ year, cashflow: { discretionary, bucketDetail } } as unknown as SimulationYear);
+
+    it("derives the current year's goal from Year 0 surplus minus capped buckets, not next year's allocation", () => {
+        vi.setSystemTime(new Date(2026, 6, 15)); // July 15, 2026
+
+        const priorities: PriorityBucket[] = [
+            { id: 'p1', name: 'Savings', type: 'SAVINGS', accountId: 'sav', capType: 'FIXED', capValue: 500 },
+            { id: 'p2', name: 'Brokerage', type: 'INVESTMENT', accountId: 'brok', capType: 'REMAINDER', capValue: 0 },
+        ];
+
+        renderSpendingTab({
+            budget: { selectedMonth: 7, selectedYear: 2026 },
+            expenses: [rent],
+            accounts: [
+                new SavedAccount('sav', 'Savings', 1000, 0),
+                new InvestedAccount('brok', 'Brokerage', 50000, 0, 0, 0, 'Brokerage', true, 0, 30000),
+            ],
+            priorities,
+            simulation: [
+                simYear(2026, 26000, {}),          // Year 0: full-year surplus, no allocation
+                simYear(2027, 0, { brok: 11000 }), // next year's leaner plan must NOT be shown
+            ],
+        });
+
+        const row = screen.getByText('Brokerage').closest('tr') as HTMLElement;
+        // 26,000 discretionary − 6,000 (FIXED $500/mo) = 20,000
+        expect(within(row).getByText('$20,000')).toBeInTheDocument();
+        expect(within(row).queryByText('$11,000')).not.toBeInTheDocument();
+    });
+
 });
