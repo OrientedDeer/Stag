@@ -18,6 +18,7 @@ import { NumberInput } from '../../../components/Layout/InputFields/NumberInput'
 import { ToggleInput } from '../../../components/Layout/InputFields/ToggleInput';
 import { AlertBanner } from '../../../components/Layout/AlertBanner';
 import { InvestedAccount } from '../../../components/Objects/Accounts/models';
+import { planHasBondExposure } from '../../../services/simulation/allocation';
 import { McHeadlineTiles } from './McHeadlineTiles';
 import { McConversionCard } from './McConversionCard';
 
@@ -95,14 +96,12 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
     const inflationRate = assumptions.macro?.inflationRate ?? 0;
     // #207: true when anything in the plan is below 100% stock — drives the disclosure
     // banner about the single-stream (deterministic-bond) approximation below.
-    const hasBondAllocation =
-        (assumptions.investments?.defaultAllocation?.stockPct ?? 100) < 100 ||
-        (assumptions.investments?.allocationGlidepath?.enabled === true &&
-            Math.min(
-                assumptions.investments.allocationGlidepath.startStockPct,
-                assumptions.investments.allocationGlidepath.endStockPct,
-            ) < 100) ||
-        accounts.some(a => a instanceof InvestedAccount && a.stockPct !== undefined && a.stockPct < 100);
+    // Shared with the engine's draw decision (#208) so the banner can never disagree with
+    // whether bonds were actually simulated.
+    const hasBondAllocation = planHasBondExposure(
+        accounts.filter(a => a instanceof InvestedAccount),
+        assumptions,
+    );
 
     // #207: deliberately the STOCK rate, not the blended default. Monte Carlo draws ONE
     // series and each account treats it as its stock return, blending in the bond rate at
@@ -191,6 +190,10 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
             preset: presetKey,
             returnMean,
             returnStdDev: preset.returnStdDev,
+            // #208: a preset carries a paired bond volatility. Selecting one WRITES it
+            // into the config (nothing reads the preset at run time), so omitting this
+            // would leave e.g. Conservative running on the historical bond vol.
+            bondReturnStdDev: preset.bondStdDev,
             lastInflationAdjusted: inflationAdjusted,
             lastInflationRate: inflationRate,
             lastRor: ror,
@@ -457,15 +460,18 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                             off-center of the median band for conversion-strategy reasons as well
                             as market volatility.
                         </AlertBanner>
-                        {/* #207: honest disclosure of the single-stream approximation. The bond
-                            leg is deterministic (no bond volatility, no stock/bond correlation),
-                            so a bond-heavy plan's bands are tighter here than in reality. */}
+                        {/* #208: bonds now carry their own volatility and a correlation with
+                            stocks, so the single-stream disclosure that stood here is gone. What
+                            remains worth saying is that the correlation is a fixed average — it
+                            rose sharply in 2022's inflation shock, when diversification helped
+                            least. */}
                         {hasBondAllocation && (
                             <AlertBanner severity="info" size="sm" className="mt-3">
-                                Part of your portfolio is allocated to bonds. Simulated paths vary
-                                the stock return only and apply your bond return as a fixed rate,
-                                so the percentile bands are somewhat narrower than a model with
-                                independent bond volatility would produce.
+                                Bond returns are simulated with their own volatility and a fixed
+                                correlation to stocks. Real correlation is regime-dependent — in an
+                                inflation shock both can fall together — so a bond-heavy plan's
+                                diversification benefit here is closer to a long-run average than a
+                                worst case.
                             </AlertBanner>
                         )}
                     </>

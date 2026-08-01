@@ -6,6 +6,7 @@ import { type AssumptionsState } from "../../components/Objects/Assumptions/Assu
 import { getESPPLimit, get415cLimit } from "../../data/ContributionLimits";
 import { type WithdrawalState } from "./types";
 import { midYearSaleDate } from "./dates";
+import { type ReturnDraw, stockLegOf } from "./allocation";
 
 export interface InflowResult {
     totalEmployerMatch: number;
@@ -334,7 +335,7 @@ export function growAccounts(
     existingDeficitDebt: DeficitDebtAccount | undefined,
     assumptions: AssumptionsState,
     year: number,
-    returnOverride: number | undefined,
+    returnOverride: number | ReturnDraw | undefined,
     // Reserved logs-threading slot (see CLAUDE.md). growAccounts does no logging
     // of its own today, but the engine and many tests pass `logs` positionally as
     // the final argument, so the parameter must stay. This config's no-unused-vars
@@ -441,7 +442,7 @@ export function growAccounts(
                 }
             }
 
-            let grownAccount = workingAccount.increment(assumptions, returnOverride);
+            let grownAccount = workingAccount.increment(assumptions, stockLegOf(returnOverride));
 
             const newLots = esppLots[acc.id] || [];
             if (newLots.length > 0) {
@@ -481,7 +482,7 @@ export function growAccounts(
                 }
             }
 
-            let grownAccount = workingAccount.increment(assumptions, returnOverride);
+            let grownAccount = workingAccount.increment(assumptions, stockLegOf(returnOverride));
 
             // Add this year's vesting tranches (net shares, after sell-to-cover).
             const newLots = rsuLots[acc.id] || [];

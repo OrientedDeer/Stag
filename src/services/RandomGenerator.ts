@@ -28,6 +28,17 @@ export class SeededRandom {
      * @param stdDev - Standard deviation of the distribution
      */
     normal(mean: number, stdDev: number): number {
+        return this.standardNormal() * stdDev + mean;
+    }
+
+    /**
+     * One draw from the STANDARD normal (mean 0, sd 1), consuming exactly two
+     * uniforms. `normal()` is this scaled and shifted — split out so correlated
+     * generation (#208) can reuse the standardized value without altering how many
+     * uniforms an ordinary call consumes, which would shift every downstream draw
+     * and break fixed-seed reproducibility.
+     */
+    standardNormal(): number {
         let u1 = this.next();
         const u2 = this.next();
 
@@ -38,9 +49,7 @@ export class SeededRandom {
         if (u1 === 0) u1 = Number.MIN_VALUE;
 
         // Box-Muller transform
-        const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
-
-        return z0 * stdDev + mean;
+        return Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
     }
 
     /**
@@ -70,6 +79,67 @@ export class SeededRandom {
         }
 
         return returns;
+    }
+
+    /**
+     * Generate CORRELATED annual stock and bond return series (#208).
+     *
+     * Bonds are not risk-free: an aggregate bond fund carries real volatility
+     * (duration risk), and in the REAL terms this app models, inflation surprises
+     * add more. Modeling the bond leg as a constant deletes the bond sleeve's
+     * downside scenarios entirely — see #208 for why that matters most exactly
+     * where the glidepath puts people.
+     *
+     * The two series are linked by a 2x2 Cholesky factorization, which for the
+     * bivariate case reduces to `zb = rho*zs + sqrt(1 - rho^2)*z2`: the bond draw
+     * inherits `rho` of the stock shock and adds an independent remainder scaled to
+     * preserve unit variance.
+     *
+     * STREAM DISCIPLINE (load-bearing): the stock series is drawn FIRST, in its
+     * entirety, using exactly the same call sequence as `generateReturns` — so a
+     * 100%-stock plan produces a byte-identical stock path for a given seed, and
+     * the golden masters don't move. Only then does the bond pass consume from the
+     * continued stream, correlating against each year's STORED standardized stock
+     * draw. Interleaving the two draws per year would shift every stock draw and
+     * silently invalidate every fixed-seed expectation in the suite.
+     *
+     * @param years - Number of years to generate
+     * @param stockMean - Expected annual stock return (e.g., 7 for 7%)
+     * @param stockStdDev - Annual stock volatility (e.g., 18 for 18%)
+     * @param bondMean - Expected annual bond return (e.g., 2 for 2%)
+     * @param bondStdDev - Annual bond volatility (e.g., 7 for 7%)
+     * @param correlation - Stock/bond correlation in [-1, 1]
+     */
+    generateCorrelatedReturns(
+        years: number,
+        stockMean: number,
+        stockStdDev: number,
+        bondMean: number,
+        bondStdDev: number,
+        correlation: number,
+    ): { stock: number[]; bond: number[] } {
+        const rho = Math.min(1, Math.max(-1, correlation));
+        const stock: number[] = [];
+        const bond: number[] = [];
+        // Standardized stock draws, retained so the bond pass can correlate against
+        // them without re-drawing (which would consume the stream out of order).
+        const zStock: number[] = [];
+
+        for (let i = 0; i < years; i++) {
+            const z = this.standardNormal();
+            zStock.push(z);
+            // Same flooring rationale as generateReturns: a growth factor must never
+            // go negative and multiply a balance into a phantom negative asset.
+            stock.push(Math.max(z * stockStdDev + stockMean, -100));
+        }
+
+        const independentWeight = Math.sqrt(Math.max(0, 1 - rho * rho));
+        for (let i = 0; i < years; i++) {
+            const zb = rho * zStock[i] + independentWeight * this.standardNormal();
+            bond.push(Math.max(zb * bondStdDev + bondMean, -100));
+        }
+
+        return { stock, bond };
     }
 
     /**

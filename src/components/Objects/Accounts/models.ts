@@ -1,5 +1,5 @@
 import { type AssumptionsState } from "../Assumptions/AssumptionsContext";
-import { blendedRoR, blendedMonteCarloReturn } from "../../../services/simulation/allocation";
+import { blendedRoR, blendedMonteCarloReturn, type ReturnDraw } from "../../../services/simulation/allocation";
 import { parseDate, hasClassName, extractBaseFields } from "../modelUtils";
 
 // 1. Interface
@@ -216,7 +216,7 @@ export class InvestedAccount extends BaseAccount {
     assumptions: AssumptionsState,
     userContribution: number = 0,
     employerContribution: number = 0,
-    overrideReturnRate?: number,
+    overrideReturnRate?: number | ReturnDraw,
     conversionAmount: number = 0,
     currentYear: number = 0
   ): InvestedAccount {

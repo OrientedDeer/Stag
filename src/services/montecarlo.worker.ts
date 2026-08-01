@@ -22,6 +22,7 @@ import { reconstituteIncome } from '../components/Objects/Income/models';
 import { reconstituteExpense } from '../components/Objects/Expense/models';
 import type { McWorkerRequest, McWorkerResponse } from './montecarloWorkerTypes';
 import { notNull } from '../utils/notNull';
+import { getBondStdDev, getStockBondCorrelation } from './MonteCarloTypes';
 
 const post = (msg: McWorkerResponse): void =>
     (self as unknown as { postMessage: (m: McWorkerResponse) => void }).postMessage(msg);
@@ -83,6 +84,9 @@ export async function handleMcRequest(
             ...req.config,
             returnMean: Number(req.config.returnMean.toFixed(4)),
             returnStdDev: Number(req.config.returnStdDev.toFixed(4)),
+            // #208: same rounding treatment for the bond risk parameters.
+            bondReturnStdDev: Number(getBondStdDev(req.config).toFixed(4)),
+            stockBondCorrelation: Number(getStockBondCorrelation(req.config).toFixed(4)),
         };
 
         // Cache key: everything the policy depends on, EXCLUDING seed and
@@ -100,9 +104,15 @@ export async function handleMcRequest(
             // v3-169: gap-year policy entries are now consulted per path
             // (solveWorkingYear #98 lookup) — pre-#159/#169 cached policies lack
             // gap-year coverage, so force a re-solve.
-            v: 'v3-169',
+            // #208: bumped — the two-asset draw changes the return distribution the
+            // policy is solved against, so pre-#208 cached policies must miss.
+            v: 'v4-208',
             rm: config.returnMean,
             rs: config.returnStdDev,
+            // #208: two configs differing only in bond vol/correlation solve to different
+            // policies, so both must be part of the key.
+            brs: config.bondReturnStdDev,
+            rho: config.stockBondCorrelation,
             a: req.accounts,
             i: req.incomes,
             e: req.expenses,

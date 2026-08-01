@@ -31,6 +31,7 @@ import { sumInvestedAssets } from "../Accounts/accountUtils";
 import { type DPPolicy } from "../../../services/simulation/RothConversionDP";
 import { type YearPlan } from "../../../services/simulation/types";
 import { buildCashflowDetail } from "../../../services/simulation/CashflowDetailBuilder";
+import { type ReturnDraw } from '../../../services/simulation/allocation';
 
 // =============================================================================
 // YearSolver-based simulation engine
@@ -252,7 +253,7 @@ function simulateOneYearWithNewEngine(
     assumptions: AssumptionsState,
     taxState: TaxState,
     previousSimulation: SimulationYear[] = [],
-    returnOverride?: number,
+    returnOverride?: number | ReturnDraw,
     previousActiveMilestones: string[] = [],
     previousMilestoneReachYears: Map<string, number> = new Map(),
     options: SimulateOneYearOptions = {},
@@ -1231,7 +1232,7 @@ export function simulateOneYear(
     assumptions: AssumptionsState,
     taxState: TaxState,
     previousSimulation: SimulationYear[] = [],
-    returnOverride?: number,
+    returnOverride?: number | ReturnDraw,
     previousActiveMilestones: string[] = [],
     previousMilestoneReachYears: Map<string, number> = new Map(),
     options: SimulateOneYearOptions = {},

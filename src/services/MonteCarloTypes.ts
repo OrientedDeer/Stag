@@ -13,8 +13,23 @@ export interface MonteCarloConfig {
     seed: number;
     /** Expected annual return percentage (e.g., 7 for 7%) */
     returnMean: number;
-    /** Annual volatility/standard deviation (e.g., 15 for 15%) */
+    /** Annual STOCK volatility/standard deviation (e.g., 15 for 15%) */
     returnStdDev: number;
+    /**
+     * #208: annual BOND volatility (e.g., 7.9 for 7.9%). Optional so pre-#208
+     * localStorage configs hydrate; readers fall back to the preset's bond stdDev.
+     *
+     * Note there is deliberately NO `bondReturnMean` here. The bond mean already
+     * lives in assumptions (`returnRates.bondRor`) and a config copy would need its
+     * own version of the lastRor/lastInflationAdjusted/lastInflationRate sync that
+     * keeps `returnMean` tracking `ror`. Only the RISK parameters live in config.
+     */
+    bondReturnStdDev?: number;
+    /**
+     * #208: stock/bond correlation in [-1, 1]. Optional for the same hydrate reason;
+     * defaults to the empirical value on HISTORICAL_STATS.
+     */
+    stockBondCorrelation?: number;
     /** Selected preset key (for UI tracking) */
     preset: ReturnPresetKey;
     /** Tracks the inflation toggle state when returnMean was last set (survives unmount via localStorage) */
@@ -52,6 +67,8 @@ export interface ReturnPreset {
     /** Real (inflation-OFF) return mean. Also the base for the derived nominal. */
     returnMeanReal: number;
     returnStdDev: number;
+    /** #208: annual bond volatility paired with this preset's stock volatility. */
+    bondStdDev: number;
 }
 
 // Calculate real return from historical nominal returns and inflation
@@ -60,6 +77,9 @@ const historicalRealReturn = Math.round(
     ((1 + HISTORICAL_STATS.stocks.mean / 100) / (1 + HISTORICAL_STATS.inflation.mean / 100) - 1) * 100 * 10
 ) / 10;
 const historicalStdDev = Math.round(HISTORICAL_STATS.stocks.stdDev * 10) / 10;
+// #208: bonds are NOT risk-free. 10-Year Treasury total return over the same sample
+// runs ~7.9% annual vol (higher, ~8.4%, in the real terms this app models by default).
+const historicalBondStdDev = Math.round(HISTORICAL_STATS.bonds.stdDev * 10) / 10;
 
 export const RETURN_PRESETS: Record<ReturnPresetKey, ReturnPreset> = {
     historical: {
@@ -69,6 +89,7 @@ export const RETURN_PRESETS: Record<ReturnPresetKey, ReturnPreset> = {
         returnMeanNominal: historicalNominalReturn,
         returnMeanReal: historicalRealReturn,
         returnStdDev: historicalStdDev,
+        bondStdDev: historicalBondStdDev,
     },
     conservative: {
         key: 'conservative',
@@ -77,6 +98,9 @@ export const RETURN_PRESETS: Record<ReturnPresetKey, ReturnPreset> = {
         returnMeanNominal: 6,
         returnMeanReal: 4,
         returnStdDev: 12,
+        // Scaled down from the historical bond vol in the same proportion as the
+        // stock leg (12/19.4), keeping the preset internally consistent.
+        bondStdDev: 5,
     },
     custom: {
         key: 'custom',
@@ -85,6 +109,7 @@ export const RETURN_PRESETS: Record<ReturnPresetKey, ReturnPreset> = {
         returnMeanNominal: 7,
         returnMeanReal: 7,
         returnStdDev: 15,
+        bondStdDev: 6,
     },
 };
 
@@ -128,8 +153,28 @@ export const defaultMonteCarloConfig: MonteCarloConfig = {
     seed: Date.now(),
     returnMean: RETURN_PRESETS.historical.returnMeanNominal, // Default assumes inflation-adjusted=true, so use nominal
     returnStdDev: RETURN_PRESETS.historical.returnStdDev,
+    bondReturnStdDev: RETURN_PRESETS.historical.bondStdDev,
+    stockBondCorrelation: HISTORICAL_STATS.stockBondCorrelation,
     preset: 'historical',
 };
+
+/**
+ * #208 accessors. Both fields are optional so pre-#208 persisted configs hydrate
+ * without a migration; every reader must go through these rather than reading the
+ * raw fields, so "absent" resolves the same way everywhere.
+ */
+export function getBondStdDev(config: MonteCarloConfig): number {
+    // Deliberately NOT `RETURN_PRESETS[config.preset].bondStdDev`. `preset` is UI
+    // tracking only — selecting a preset WRITES its values into the config (exactly how
+    // `returnStdDev` works); nothing reads the preset at run time. Falling back through
+    // it would make a UI-only field change the simulated result and the cache key.
+    return config.bondReturnStdDev ?? RETURN_PRESETS.historical.bondStdDev;
+}
+
+export function getStockBondCorrelation(config: MonteCarloConfig): number {
+    const rho = config.stockBondCorrelation ?? HISTORICAL_STATS.stockBondCorrelation;
+    return Math.min(1, Math.max(-1, rho));
+}
 
 /**
  * Result of a single Monte Carlo scenario
@@ -145,8 +190,18 @@ export interface ScenarioResult {
     finalNetWorth: number;
     /** Year when portfolio was depleted (null if never) */
     yearOfDepletion: number | null;
-    /** Array of yearly returns used in this scenario */
+    /**
+     * Array of yearly STOCK returns used in this scenario. Consumed by the
+     * buy-the-dip statistics, whose "down year" means an equity drawdown.
+     */
     yearlyReturns: number[];
+    /**
+     * #208: the paired BOND draws for the same years. Present only so the optional
+     * std-ded baseline arm can replay the identical two-asset path — pairing has to be
+     * exact, and the bond leg can't be regenerated after the fact without replaying the
+     * RNG stream. Not used for reporting.
+     */
+    bondReturns?: number[];
 }
 
 /**

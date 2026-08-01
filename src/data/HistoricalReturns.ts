@@ -325,6 +325,30 @@ function calculateStats(data: Record<number, number>): { mean: number; stdDev: n
   return { mean: Math.round(mean * 100) / 100, stdDev: Math.round(stdDev * 100) / 100, min, max };
 }
 
+/**
+ * Pearson correlation of two annual-return series over their overlapping years.
+ * Used for the #208 stock/bond correlation, so Monte Carlo's diversification
+ * assumption is derived from this dataset rather than a hand-picked constant.
+ */
+function calculateCorrelation(
+  a: Record<number, number>,
+  b: Record<number, number>,
+): number {
+  const years = Object.keys(a).map(Number).filter(y => b[y] !== undefined);
+  if (years.length < 2) return 0;
+  const x = years.map(y => a[y]);
+  const yv = years.map(y => b[y]);
+  const mx = x.reduce((s, v) => s + v, 0) / x.length;
+  const my = yv.reduce((s, v) => s + v, 0) / yv.length;
+  let cov = 0, vx = 0, vy = 0;
+  for (let i = 0; i < x.length; i++) {
+    const dx = x[i] - mx, dy = yv[i] - my;
+    cov += dx * dy; vx += dx * dx; vy += dy * dy;
+  }
+  if (vx === 0 || vy === 0) return 0;
+  return Math.round((cov / Math.sqrt(vx * vy)) * 1000) / 1000;
+}
+
 // Pre-computed statistics for each asset class
 export const HISTORICAL_STATS = {
   stocks: {
@@ -345,6 +369,15 @@ export const HISTORICAL_STATS = {
     endYear: Math.max(...Object.keys(INFLATION_RATES).map(Number)),
     description: 'Consumer Price Index (CPI) Annual Change',
   },
+  /**
+   * #208: nominal annual stock/bond correlation over the overlapping sample
+   * (~0.02 on 1928-2024). Close to zero — bonds have historically diversified
+   * equity risk well ON AVERAGE. Two caveats the number hides: the relationship
+   * is regime-dependent (2022's inflation shock drove both down together), and in
+   * REAL terms the shared inflation exposure pushes it higher (~0.09). Treat it as
+   * a reasonable central default, not a stable structural constant.
+   */
+  stockBondCorrelation: calculateCorrelation(SP500_RETURNS, BOND_RETURNS),
 };
 
 // Get all available years (intersection of all datasets)

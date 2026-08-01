@@ -18,6 +18,76 @@ import { type AssumptionsState, getBirthYear } from '../../components/Objects/As
  * so plans saved before #207 project identically.
  */
 
+/**
+ * One year's drawn returns (#208). Monte Carlo supplies both legs; a bare `number`
+ * is still accepted everywhere a draw is taken and means "stock only, bond leg
+ * deterministic" — the pre-#208 behavior, kept so non-MC callers and the many tests
+ * that pass a scalar override are unaffected.
+ */
+export interface ReturnDraw {
+    /** Drawn STOCK return this year, in percent, nominal if the plan runs nominal. */
+    stock: number;
+    /** Drawn BOND return this year, same units. */
+    bond: number;
+}
+
+/**
+ * Does any part of this plan hold bonds?
+ *
+ * Used to decide whether Monte Carlo needs to draw a bond series at all (#208). This is
+ * NOT just an optimization: the two return legs share one RNG stream, so drawing bonds
+ * for an all-stock plan would consume extra uniforms and shift every subsequent
+ * scenario's stock draws — changing results for users who hold no bonds. Skipping the
+ * bond pass keeps an all-stock run's stream consumption byte-identical to pre-#208.
+ *
+ * Checks the default allocation, both glidepath endpoints (it can dip below 100% at any
+ * point along the path), and every per-account override.
+ */
+export function planHasBondExposure(
+    accounts: readonly AllocatedAccount[],
+    assumptions: AssumptionsState,
+): boolean {
+    if ((assumptions.investments.defaultAllocation?.stockPct ?? 100) < 100) return true;
+    const glide = assumptions.investments.allocationGlidepath;
+    if (glide?.enabled && Math.min(glide.startStockPct, glide.endStockPct) < 100) return true;
+    return accounts.some(a => a.stockPct !== undefined && a.stockPct < 100);
+}
+
+/**
+ * The STOCK leg of a draw. ESPP/RSU are pinned to 100% stock (#207 — a part-bond rate
+ * applied to a single stock's share price is incoherent), so they consume this directly
+ * rather than blending.
+ */
+export function stockLegOf(draw: number | ReturnDraw | undefined): number | undefined {
+    if (draw === undefined) return undefined;
+    return typeof draw === 'number' ? draw : draw.stock;
+}
+
+/**
+ * Standard deviation of a two-asset portfolio at stock weight `w` (a FRACTION, 0-1).
+ *
+ *     sigma_p = sqrt( w^2*ss^2 + (1-w)^2*sb^2 + 2*w*(1-w)*rho*ss*sb )
+ *
+ * With `bondStdDev = 0` this reduces to `w * stockStdDev` — the pre-#208 expression,
+ * so callers that don't supply bond risk are unchanged.
+ */
+export function blendedPortfolioStdDev(
+    stockWeight: number,
+    stockStdDev: number,
+    bondStdDev: number,
+    correlation: number,
+): number {
+    const w = Math.min(1, Math.max(0, stockWeight));
+    const rho = Math.min(1, Math.max(-1, correlation));
+    const variance =
+        w * w * stockStdDev * stockStdDev
+        + (1 - w) * (1 - w) * bondStdDev * bondStdDev
+        + 2 * w * (1 - w) * rho * stockStdDev * bondStdDev;
+    // A correlation near -1 can drive the analytic variance marginally below zero
+    // through floating-point error; clamp rather than return NaN.
+    return Math.sqrt(Math.max(0, variance));
+}
+
 /** An account that can carry a per-account allocation override. */
 export interface AllocatedAccount {
     /** Stock share 0-100. `undefined` ⇒ inherit the default allocation / glidepath. */
@@ -125,23 +195,34 @@ export function effectiveRoR(
 }
 
 /**
- * Monte Carlo blend: the drawn series is the STOCK return, blended against the bond rate.
+ * Monte Carlo blend: combine this year's drawn stock and bond returns at the account's
+ * allocation.
  *
- * `drawnReturn` is NOMINAL when `inflationAdjusted` is on (the MC preset mean already
- * includes inflation), while `bondRor` is stored in the same real terms as `ror`. The bond
- * leg therefore needs inflation added before blending — without it, bond-heavy accounts
- * undershoot by the inflation rate in Monte Carlo only, which reads exactly like a
- * drift-mismatch bug in the DP.
+ * Two forms of `drawn`:
+ *  - `ReturnDraw` (#208): both legs were drawn from the correlated generator, so the bond
+ *    leg carries its own volatility. This is what Monte Carlo passes.
+ *  - `number` (pre-#208): the stock leg only. The bond leg falls back to the DETERMINISTIC
+ *    `bondRor`, which understates risk for bond-bearing portfolios — retained only for
+ *    callers that supply a scalar override.
+ *
+ * Units: a drawn return is NOMINAL when `inflationAdjusted` is on (the MC preset mean
+ * already includes inflation), while `bondRor` is stored in the same real terms as `ror`.
+ * The DETERMINISTIC fallback therefore needs inflation added before blending — without it,
+ * bond-heavy accounts undershoot by the inflation rate in Monte Carlo only, which reads
+ * exactly like a drift-mismatch bug in the DP. A drawn bond leg is already in the right
+ * units and must NOT be adjusted again.
  */
 export function blendedMonteCarloReturn(
     account: AllocatedAccount,
     assumptions: AssumptionsState,
-    drawnReturn: number,
+    drawn: number | ReturnDraw,
     year?: number,
 ): number {
     const stockPct = resolveStockPct(account, assumptions, year);
-    if (stockPct === 100) return drawnReturn;
+    const stockLeg = typeof drawn === 'number' ? drawn : drawn.stock;
+    if (stockPct === 100) return stockLeg;
+    if (typeof drawn !== 'number') return blendRate(stockPct, stockLeg, drawn.bond);
     const inflation = assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0;
     const bondNominal = (assumptions.investments.returnRates.bondRor ?? 0) + inflation;
-    return blendRate(stockPct, drawnReturn, bondNominal);
+    return blendRate(stockPct, stockLeg, bondNominal);
 }

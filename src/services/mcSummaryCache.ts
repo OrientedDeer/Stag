@@ -29,6 +29,7 @@ import type { AnyIncome } from '../components/Objects/Income/models';
 import type { AnyExpense } from '../components/Objects/Expense/models';
 import type { AssumptionsState } from '../components/Objects/Assumptions/AssumptionsContext';
 import type { TaxState } from '../components/Objects/Taxes/TaxContext';
+import { getBondStdDev, getStockBondCorrelation } from './MonteCarloTypes';
 
 const DB_NAME = 'stag-mc-summary';
 const STORE = 'summaries';
@@ -67,10 +68,17 @@ export function mcSummaryCacheKey(
         // engine change that alters MC results (return draws, policy, tax law,
         // valuation ruler) would replay a stale summary. Bump this on any such
         // change so old IndexedDB entries miss.
-        v: 'v1-204',
+        // #208: bumped — Monte Carlo now draws a correlated bond series instead of
+        // applying a deterministic bond rate, so every pre-#208 summary for a plan with
+        // any bond allocation was produced by a different engine and must miss.
+        v: 'v2-208',
         inputHash: getSimulationInputHash(accounts, incomes, expenses, assumptions, taxState),
         rm: Number(config.returnMean.toFixed(4)),
         rs: Number(config.returnStdDev.toFixed(4)),
+        // #208: the bond risk parameters change the draws, so they belong in the key.
+        // Rounded like rm/rs to absorb float noise.
+        brs: Number(getBondStdDev(config).toFixed(4)),
+        rho: Number(getStockBondCorrelation(config).toFixed(4)),
         n: config.numScenarios,
         seed: config.seed,
         cmp: config.compareToBaseline ?? false,

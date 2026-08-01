@@ -5,7 +5,7 @@ import { type AnyAccount, InvestedAccount, SavedAccount, DebtAccount, DeficitDeb
 import { type AnyIncome } from '../Income/models';
 import { type AnyExpense, MortgageExpense, CLASS_TO_CATEGORY } from '../Expense/models';
 import { buildCashflowDetail } from '../../../services/simulation/CashflowDetailBuilder';
-import { effectiveRoR, blendedMonteCarloReturn, defaultBlendedRoR, resolveStockPct, defaultStockPctForYear } from '../../../services/simulation/allocation';
+import { effectiveRoR, blendedMonteCarloReturn, defaultBlendedRoR, resolveStockPct, defaultStockPctForYear, blendedPortfolioStdDev, type ReturnDraw } from '../../../services/simulation/allocation';
 import { type CashflowDetail } from '../../../services/simulation/types';
 import { type AssumptionsState, getLifeExpectancy, getBirthYear, getRetirementAge } from './AssumptionsContext';
 import { resolveRothConversionStrategy } from './rothConversionStrategy';
@@ -340,7 +340,7 @@ function runSimulationLoop(args: {
     milestoneReachYears: Map<string, number>;
     assumptions: AssumptionsState;
     taxState: TaxState;
-    yearlyReturns?: number[];
+    yearlyReturns?: (number | ReturnDraw)[];
     conversionMode: 'rate-match' | 'std-ded-only';
     baselineProvider?: (
         simulationYear: number,
@@ -521,7 +521,7 @@ export const runSimulation = (
     expenses: AnyExpense[],
     assumptions: AssumptionsState,
     taxState: TaxState,
-    yearlyReturns?: number[],
+    yearlyReturns?: (number | ReturnDraw)[],
     options: RunSimulationOptions = {},
 ): SimulationYear[] => {
     const {
@@ -990,6 +990,12 @@ export const buildMcConversionPolicy = (
     returnMean: number,
     returnStdDev: number,
     nodes?: QuadratureNodes,
+    /**
+     * #208 bond risk. Defaults of 0 reduce the portfolio vol to `w · σs`, the #207
+     * expression, so callers that don't model bond risk are unchanged.
+     */
+    bondStdDev: number = 0,
+    stockBondCorrelation: number = 0,
 ): DPPlan | undefined => {
     const strategy = resolveRothConversionStrategy(assumptions.investments.rothConversionStrategy);
     if (strategy !== 'dp-precomputed' || !assumptions.investments.taxOptimizationEnabled) {
@@ -1063,20 +1069,37 @@ export const buildMcConversionPolicy = (
         );
         return (mcMean - rorBase) / 100;
     });
-    // #207: MC applies only `stockPct` of the drawn shock to each account, so the shock the
-    // Traditional axis actually experiences is the balance-weighted stock fraction of the
-    // configured vol. Solving against the unscaled vol would make the policy conservative
-    // (wider shock than reality) for any bond-bearing allocation. Year-0 allocation is used
-    // as the single grid-wide vol; a glidepath's drift is handled by the schedule above.
+    // The shock the Traditional axis actually experiences is the volatility of its
+    // BLENDED portfolio, not the raw stock vol. #207 approximated that as `w · σs`,
+    // which was exactly right while the bond leg was deterministic. #208 gives bonds
+    // their own volatility and a correlation with stocks, so the correct quantity is the
+    // full two-asset portfolio standard deviation:
+    //
+    //     σp = √( w²σs² + (1−w)²σb² + 2w(1−w)ρ·σs·σb )
+    //
+    // Solving against the wrong σ doesn't break the drift invariant (that's meanShift's
+    // job) but it does mis-size the shock the policy is optimized against — too wide at
+    // `σs`, too narrow at `w · σs` once bonds carry risk.
+    //
+    // Year-0 allocation is used as the single grid-wide vol. A glidepath makes σp vary by
+    // year the same way it makes the drift vary, but unlike meanShift the quadrature is
+    // built once for the whole horizon; per-year σ is tracked in #208 as a follow-on.
+    //
+    // KNOWN SECOND-ORDER RESIDUAL: with per-account allocations the Traditional-weighted
+    // and Roth-weighted stock fractions differ, so one σp is exact for neither axis. This
+    // mirrors the accepted Roth-axis residual on meanShift noted above.
     const weightedStockFraction = weightedBy(
         a => resolveStockPct(a, assumptions, shiftStartYear),
         defaultStockPctForYear(assumptions, shiftStartYear),
     ) / 100;
+    const portfolioStdDev = blendedPortfolioStdDev(
+        weightedStockFraction, returnStdDev, bondStdDev, stockBondCorrelation,
+    );
     // Solve the stochastic closed-loop policy — the #98 table each MC path looks up.
     const stochasticPlan = planConversionsViaDP(dpInputs, {
         ...effectiveDpObjective,
         returnDistribution: {
-            stdDev: (returnStdDev * weightedStockFraction) / 100,
+            stdDev: portfolioStdDev / 100,
             meanShift: meanShiftSchedule,
             nodes,
         },
@@ -1233,7 +1256,7 @@ function buildJointSearchInputsKey(
     expenses: AnyExpense[],
     assumptions: AssumptionsState,
     taxState: TaxState,
-    yearlyReturns: number[] | undefined,
+    yearlyReturns: (number | ReturnDraw)[] | undefined,
     referenceDate: Date | undefined,
     eoyContributionAdditions: Record<string, number> | undefined,
     eoyDebtReductions: Record<string, number> | undefined,
@@ -1283,7 +1306,7 @@ export const runSimulationWithOptimization = (
     expenses: AnyExpense[],
     assumptions: AssumptionsState,
     taxState: TaxState,
-    yearlyReturns?: number[],
+    yearlyReturns?: (number | ReturnDraw)[],
     referenceDate?: Date,
     eoyContributionAdditions?: Record<string, number>,
     eoyDebtReductions?: Record<string, number>,

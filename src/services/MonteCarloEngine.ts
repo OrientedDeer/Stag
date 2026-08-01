@@ -1,4 +1,4 @@
-import { type MonteCarloConfig, type ScenarioResult, type MonteCarloSummary } from './MonteCarloTypes';
+import { type MonteCarloConfig, type ScenarioResult, type MonteCarloSummary, getBondStdDev, getStockBondCorrelation } from './MonteCarloTypes';
 import { SeededRandom } from './RandomGenerator';
 import {
     analyzeScenario,
@@ -15,6 +15,7 @@ import { type AnyExpense } from '../components/Objects/Expense/models';
 import { type AssumptionsState, getLifeExpectancy, getBirthYear, BUILTIN_MILESTONE_IDS } from '../components/Objects/Assumptions/AssumptionsContext';
 import { type CustomMilestone } from './simulation/types';
 import { type TaxState } from '../components/Objects/Taxes/TaxContext';
+import { type ReturnDraw, type AllocatedAccount, planHasBondExposure } from './simulation/allocation';
 
 /**
  * Run a single Monte Carlo scenario
@@ -66,6 +67,9 @@ function buildMcConversionPlan(
     const dpPlan = buildMcConversionPolicy(
         yearsToRun, accounts, incomes, expenses, assumptions, taxState,
         config.returnMean, config.returnStdDev,
+        // #208: nodes stays default; the bond risk parameters follow so the policy is
+        // solved against the same portfolio volatility the paths actually experience.
+        undefined, getBondStdDev(config), getStockBondCorrelation(config),
     );
     if (!dpPlan) return {};
     return { plan: dpPlan.conversionsByYear, policy: dpPlan.policy };
@@ -117,8 +121,17 @@ export function buildMcAfterTaxRuler(
  * strategy + `conversionMode: 'std-ded-only'`, conversions are locked to the
  * standard-deduction baseline.
  */
+/**
+ * Rebuild a path's (stock, bond) draws from the legs stored on its result, so the
+ * baseline arm replays the identical two-asset path. A pre-#208 result without
+ * `bondReturns` degrades to the deterministic bond leg rather than throwing.
+ */
+function pairedDraws(s: ScenarioResult): ReturnDraw[] {
+    return s.yearlyReturns.map((stock, i) => ({ stock, bond: s.bondReturns?.[i] ?? 0 }));
+}
+
 function runBaselinePath(
-    yearlyReturns: number[],
+    yearlyReturns: ReturnDraw[],
     yearsToRun: number,
     accounts: AnyAccount[],
     incomes: AnyIncome[],
@@ -131,7 +144,9 @@ function runBaselinePath(
         yearsToRun, accounts, incomes, expenses, baselineAssumptions, taxState, yearlyReturns,
         { conversionMode: 'std-ded-only' },
     );
-    const analyzed = analyzeScenario(0, timeline, yearlyReturns);
+    // #208: downstream statistics key off the STOCK leg — see analyzeScenario's caller
+    // in runSingleScenario for why.
+    const analyzed = analyzeScenario(0, timeline, yearlyReturns.map(d => d.stock));
     return {
         success: analyzed.success,
         yearOfDepletion: analyzed.yearOfDepletion,
@@ -236,13 +251,40 @@ function runSingleScenario(
     taxState: TaxState,
     mcPlan: McConversionPlan,
 ): ScenarioResult {
-    // Generate random returns for this scenario
-    // Use the configured mean/stdDev for return distribution
-    const yearlyReturns = rng.generateReturns(
-        yearsToRun,
-        config.returnMean,
-        config.returnStdDev
-    );
+    // #208: draw CORRELATED stock and bond series. Bonds are not risk-free — modeling
+    // the bond leg as a constant deletes the bond sleeve's downside entirely, which
+    // matters most exactly where the glidepath puts people (bonds, in drawdown).
+    //
+    // The bond MEAN comes from assumptions (`returnRates.bondRor`), not config, so there
+    // is one source of truth for it; only the risk parameters (σ, ρ) live in config. It is
+    // converted to the same nominal units the drawn stock series uses.
+    //
+    // STREAM DISCIPLINE: an all-stock plan skips the bond pass entirely. The two legs
+    // share one RNG stream, so drawing bonds unconditionally would consume extra uniforms
+    // per scenario and shift every subsequent scenario's STOCK draws — silently changing
+    // results for users who hold no bonds. Skipping keeps an all-stock run's stream
+    // consumption identical to pre-#208, which is what makes the golden masters hold.
+    const inflation = assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0;
+    const bondMean = (assumptions.investments.returnRates.bondRor ?? 0) + inflation;
+    const drawn = planHasBondExposure(accounts as AllocatedAccount[], assumptions)
+        ? rng.generateCorrelatedReturns(
+            yearsToRun,
+            config.returnMean,
+            config.returnStdDev,
+            bondMean,
+            getBondStdDev(config),
+            getStockBondCorrelation(config),
+        )
+        // All stock: the bond leg is never consulted (the blend short-circuits at 100%),
+        // so mirror the stock series rather than drawing an array nothing reads.
+        : (() => {
+            const stock = rng.generateReturns(yearsToRun, config.returnMean, config.returnStdDev);
+            return { stock, bond: stock };
+        })();
+    const yearlyReturns: ReturnDraw[] = drawn.stock.map((stock, i) => ({
+        stock,
+        bond: drawn.bond[i],
+    }));
 
     // Single-pass per path (MC's purpose is return-variance analysis, not a per-path DP
     // re-solve). The pre-solved closed-loop POLICY (#98) is looked up per year at this
@@ -260,8 +302,11 @@ function runSingleScenario(
         },
     );
 
-    // Analyze and return the result
-    return analyzeScenario(scenarioId, timeline, yearlyReturns);
+    // #208: `ScenarioResult.yearlyReturns` stays the STOCK series. Its consumers are
+    // the buy-the-dip statistics in MonteCarloAggregator, whose "down year" notion means
+    // an equity drawdown — the stock leg is the right definition, and keeping the type a
+    // plain number[] leaves those consumers untouched.
+    return { ...analyzeScenario(scenarioId, timeline, drawn.stock), bondReturns: drawn.bond };
 }
 
 /**
@@ -347,7 +392,7 @@ export async function runMonteCarloSimulation(
         const baselineAssumptions = stdDedBaselineAssumptions(assumptions);
         for (let i = 0; i < scenarios.length; i++) {
             baselinePaths.push(runBaselinePath(
-                scenarios[i].yearlyReturns, yearsToRun,
+                pairedDraws(scenarios[i]), yearsToRun,
                 accounts, incomes, expenses, baselineAssumptions, taxState, ruler,
             ));
             const progress = ((config.numScenarios + i + 1) / totalRuns) * 100;
@@ -406,7 +451,7 @@ export function runMonteCarloSimulationSync(
     if (config.compareToBaseline) {
         const baselineAssumptions = stdDedBaselineAssumptions(assumptions);
         baselinePaths = scenarios.map(s => runBaselinePath(
-            s.yearlyReturns, yearsToRun,
+            pairedDraws(s), yearsToRun,
             accounts, incomes, expenses, baselineAssumptions, taxState, ruler,
         ));
     }
@@ -430,6 +475,19 @@ export function validateConfig(config: MonteCarloConfig): string | null {
     }
     if (config.returnStdDev > 100) {
         return 'Volatility (standard deviation) cannot exceed 100%';
+    }
+    // #208
+    if (config.bondReturnStdDev !== undefined) {
+        if (config.bondReturnStdDev < 0) {
+            return 'Bond volatility (standard deviation) cannot be negative';
+        }
+        if (config.bondReturnStdDev > 100) {
+            return 'Bond volatility (standard deviation) cannot exceed 100%';
+        }
+    }
+    if (config.stockBondCorrelation !== undefined
+        && (config.stockBondCorrelation < -1 || config.stockBondCorrelation > 1)) {
+        return 'Stock/bond correlation must be between -1 and 1';
     }
     return null;
 }
