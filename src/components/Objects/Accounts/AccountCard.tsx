@@ -61,8 +61,14 @@ function GainLossCell({ label, gain, basis }: { label: string; gain: number; bas
 }
 
 /** Paystub-style one-liner for the collapsed Growth & Fees section. */
-function getGrowthFeesSummary(customROR: number | undefined, expenseRatio: number): string {
-    const ror = customROR !== undefined ? `${customROR}% custom` : "Global return";
+function getGrowthFeesSummary(customROR: number | undefined, expenseRatio: number, stockPct?: number): string {
+    // #207: customROR bypasses the allocation blend, so it's reported alone — showing both
+    // would imply the allocation still moves the rate.
+    const ror = customROR !== undefined
+        ? `${customROR}% custom`
+        : stockPct !== undefined
+            ? `${stockPct}/${100 - stockPct} stock/bond`
+            : "Global return";
     return `${ror} · ${expenseRatio}% ER`;
 }
 
@@ -399,7 +405,7 @@ function InvestedAccountFields({ account, onFieldUpdate }: InvestedAccountFields
             <CardSection
                 id={`${account.id}-section-growth`}
                 title="Growth & Fees"
-                summary={getGrowthFeesSummary(account.customROR, account.expenseRatio)}
+                summary={getGrowthFeesSummary(account.customROR, account.expenseRatio, account.stockPct)}
                 gridClassName={CARD_SECTION_GRID}
             >
                 <PercentageInput
@@ -427,6 +433,31 @@ function InvestedAccountFields({ account, onFieldUpdate }: InvestedAccountFields
                         max={30}
                         tooltip="Expected annual return rate for this account. Overrides the global assumption."
                     />
+                )}
+                {/* #207: allocation only matters when the blend is actually consulted —
+                    a custom rate bypasses it entirely, so hide it rather than show a
+                    control that silently does nothing. */}
+                {account.customROR === undefined && (
+                    <>
+                        <ToggleInput
+                            id={`${account.id}-use-custom-allocation`}
+                            label="Custom Allocation"
+                            enabled={account.stockPct !== undefined}
+                            setEnabled={(checked) => {
+                                onFieldUpdate("stockPct", checked ? 60 : undefined);
+                            }}
+                            tooltip="Override the global stock/bond mix for this account. Also opts this account out of the glidepath."
+                        />
+                        {account.stockPct !== undefined && (
+                            <PercentageInput
+                                id={`${account.id}-stock-pct`}
+                                label="Stock %"
+                                value={account.stockPct}
+                                onChange={(val) => onFieldUpdate("stockPct", Math.min(100, Math.max(0, val)))}
+                                tooltip="Stock share of this account. The rest is bonds — 60 means 60% stock / 40% bonds."
+                            />
+                        )}
+                    </>
                 )}
             </CardSection>
             {(account.taxType === 'Roth 401k' || account.taxType === 'Traditional 401k') && (

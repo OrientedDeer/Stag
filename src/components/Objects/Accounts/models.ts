@@ -1,4 +1,5 @@
 import { type AssumptionsState } from "../Assumptions/AssumptionsContext";
+import { blendedRoR, blendedMonteCarloReturn } from "../../../services/simulation/allocation";
 import { parseDate, hasClassName, extractBaseFields } from "../modelUtils";
 
 // 1. Interface
@@ -112,6 +113,9 @@ export class InvestedAccount extends BaseAccount {
     public conversionHistory: { year: number; amount: number }[] = [],
     // Simulation-internal lot tracking for brokerage accounts (not persisted)
     public lots: BrokerageLot[] = [],
+    // #207: per-account stock share (0-100). undefined means inherit the global default
+    // allocation / glidepath. Ignored entirely when customROR is set.
+    public stockPct?: number,
   ) {
     super(id, name, amount);
   }
@@ -230,12 +234,16 @@ export class InvestedAccount extends BaseAccount {
       // balance to 0, never below. Matches the DP policy solve, which floors at 0.
       // (Byte-safe for default configs: only reachable via the high-volatility MC
       // tail; the deterministic engine never takes this override branch.)
-      returnRate = Math.max(0, 1 + (overrideReturnRate - this.expenseRatio) / 100);
+      // #207: the drawn series is the STOCK return; blend it against the (inflation-adjusted)
+      // bond rate at this account's allocation. A 100% stock account is untouched.
+      const blended = blendedMonteCarloReturn(this, assumptions, overrideReturnRate, currentYear);
+      returnRate = Math.max(0, 1 + (blended - this.expenseRatio) / 100);
     } else if (this.customROR !== undefined) {
       // Use per-account custom ROR (already a percentage, e.g., 7 for 7%)
       returnRate = 1 + (this.customROR + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) - this.expenseRatio) / 100;
     } else {
-      returnRate = 1 + (assumptions.investments.returnRates.ror + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) - this.expenseRatio) / 100;
+      // #207: allocation-blended stock/bond rate. Collapses to `ror` at 100% stock.
+      returnRate = 1 + (blendedRoR(this, assumptions, currentYear) + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0) - this.expenseRatio) / 100;
     }
 
     // 2. BOY timing: Apply contributions/withdrawals BEFORE growth
@@ -424,7 +432,8 @@ export class InvestedAccount extends BaseAccount {
       finalCostBasis,
       this.customROR,
       newConversionHistory,
-      newLots
+      newLots,
+      this.stockPct
     );
   }
 }
@@ -1400,7 +1409,11 @@ export function reconstituteAccount(data: unknown): AnyAccount | null {
                 Number(data.vestedPerYear ?? 0.2),
                 costBasis,
                 parseOptionalFiniteNumber(data.customROR),
-                conversionHistory
+                conversionHistory,
+                // `lots` is simulation-internal and never persisted — pass the default so
+                // the #207 stockPct lands in the right positional slot.
+                [],
+                parseOptionalFiniteNumber(data.stockPct)
             );
         }
 

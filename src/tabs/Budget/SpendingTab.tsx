@@ -4,6 +4,7 @@ import {
     keyColumn,
 } from 'react-datasheet-grid';
 import 'react-datasheet-grid/dist/style.css';
+import { effectiveRoR } from '../../services/simulation/allocation';
 import { BudgetContext, type Transaction } from '../../components/Objects/Budget/BudgetContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
@@ -274,7 +275,8 @@ export default function SpendingTab() {
             return (account.apr || 0) / 100;
         }
         if (account instanceof InvestedAccount) {
-            const ror = account.customROR ?? assumptions.investments.returnRates.ror;
+            // #207: falls back to the allocation blend, not the bare global stock rate.
+            const ror = effectiveRoR(account, assumptions);
             const inflation = assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0;
             return (ror + inflation - (account.expenseRatio || 0)) / 100;
         }

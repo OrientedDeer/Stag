@@ -1,5 +1,6 @@
 import { type AnyAccount, ESPPAccount, InvestedAccount, RSUAccount } from '../../../components/Objects/Accounts/models';
 import { type SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
+import { defaultBlendedRoR } from '../../../services/simulation/allocation';
 import { type AssumptionsState, getBirthYear } from '../../../components/Objects/Assumptions/AssumptionsContext';
 import { type TaxState, resolveTaxEventsForYear } from '../../../components/Objects/Taxes/TaxContext';
 import { getProjectedRMDMarginalRate } from '../../../services/TaxOptimizationService';
@@ -213,7 +214,8 @@ export function buildTradValuation(
     // the optimizer toward under-conversion in taxed states. No-tax states (or an
     // unknown residency) resolve to undefined → fed-only, unchanged.
     const stateParams = TaxService.getTaxParameters(last.year, effTax.filingStatus, 'state', effTax.stateResidency, assumptions) ?? null;
-    const g = (assumptions.investments.returnRates.ror ?? 7) / 100
+    // #207: the default allocation blend for the terminal year, not the bare stock rate.
+    const g = (defaultBlendedRoR(assumptions, last.year) ?? 7) / 100
         + (assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0);
     const ss = TaxService.getSocialSecurityBenefits(last.incomes, last.year);
     const fixed = Math.max(0, TaxService.getGrossIncome(last.incomes, last.year) - ss);

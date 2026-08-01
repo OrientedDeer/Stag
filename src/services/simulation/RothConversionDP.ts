@@ -69,6 +69,7 @@ import { getDistributionPeriod, getRMDStartAge } from "../../data/RMDData";
 import { getAcaCliffThreshold } from "./TaxOptimizedWithdrawal";
 import { getIRMAASchedule, computeIrmaaMAGI, MEDICARE_ELIGIBILITY_AGE, IRMAA_LOOKBACK_YEARS } from "../../data/IRMAAData";
 import { InvestedAccount } from "../../components/Objects/Accounts/models";
+import { effectiveRoR, defaultBlendedRoR } from "./allocation";
 
 // =============================================================================
 // CONSTANTS
@@ -491,16 +492,19 @@ function getNetGrowthRate(simYear: SimulationYear, assumptions: AssumptionsState
         acc instanceof InvestedAccount &&
         (acc.taxType === 'Traditional 401k' || acc.taxType === 'Traditional IRA')
     );
-    const globalRoR = assumptions.investments.returnRates.ror ?? 7;
     const inflationAdjustment = assumptions.macro.inflationAdjusted
         ? assumptions.macro.inflationRate
         : 0;
     const totalBalance = tradAccounts.reduce((s, a) => s + a.vestedAmount, 0);
     if (totalBalance <= 0) {
-        return (globalRoR + inflationAdjustment) / 100;
+        // No trad balance to weight: fall back to the year's DEFAULT allocation blend
+        // (which is just `ror` for an all-stock plan, matching the pre-#207 fallback).
+        return (defaultBlendedRoR(assumptions, simYear.year) + inflationAdjustment) / 100;
     }
     const weightedRatePct = tradAccounts.reduce((sum, a) => {
-        const ror = a.customROR ?? globalRoR;
+        // #207: effectiveRoR is the single source of the `customROR > allocation`
+        // precedence — the same expression InvestedAccount.increment evaluates.
+        const ror = effectiveRoR(a, assumptions, simYear.year);
         const accountRatePct = ror + inflationAdjustment - a.expenseRatio;
         return sum + accountRatePct * a.vestedAmount;
     }, 0) / totalBalance;
@@ -518,16 +522,19 @@ function getRothGrowthRate(simYear: SimulationYear, assumptions: AssumptionsStat
     const rothAccounts = simYear.accounts.filter((acc): acc is InvestedAccount =>
         acc instanceof InvestedAccount && acc.taxType === 'Roth IRA'
     );
-    const globalRoR = assumptions.investments.returnRates.ror ?? 7;
     const inflationAdjustment = assumptions.macro.inflationAdjusted
         ? assumptions.macro.inflationRate
         : 0;
     const totalBalance = rothAccounts.reduce((s, a) => s + a.vestedAmount, 0);
     if (totalBalance <= 0) {
-        return (globalRoR + inflationAdjustment) / 100;
+        // No Roth balance to weight: fall back to the year's DEFAULT allocation blend
+        // (which is just `ror` for an all-stock plan, matching the pre-#207 fallback).
+        return (defaultBlendedRoR(assumptions, simYear.year) + inflationAdjustment) / 100;
     }
     const weightedRatePct = rothAccounts.reduce((sum, a) => {
-        const ror = a.customROR ?? globalRoR;
+        // #207: effectiveRoR is the single source of the `customROR > allocation`
+        // precedence — the same expression InvestedAccount.increment evaluates.
+        const ror = effectiveRoR(a, assumptions, simYear.year);
         const accountRatePct = ror + inflationAdjustment - a.expenseRatio;
         return sum + accountRatePct * a.vestedAmount;
     }, 0) / totalBalance;
@@ -1775,11 +1782,17 @@ export interface DPObjectiveOptions {
      * (DECIMAL, default 0) re-centers the per-account rates on the Monte Carlo
      * mean: `meanShift = (mcReturnMean − (ror + inflation))/100`, so the policy is
      * optimal for the returns MC actually draws (which can differ from the
-     * deterministic projection RoR). `nodes` ∈ {5,7,9}, default 7. Omitted ⇒
+     * deterministic projection RoR).
+     *
+     * #207: `meanShift` may instead be an ARRAY indexed by year offset t. An allocation
+     * glidepath makes the deterministic drift vary year to year, so a single scalar can no
+     * longer equal `(mcMean − base)` in every year; the array carries the per-year gap and
+     * keeps the re-centering exact across the whole horizon. A shorter array clamps to its
+     * last entry. `nodes` ∈ {5,7,9}, default 7. Omitted ⇒
      * deterministic per-account transition, no policy (byte-for-byte the legacy
      * behavior); `stdDev=0, meanShift=0` reproduces it exactly.
      */
-    returnDistribution?: { stdDev: number; meanShift?: number; nodes?: QuadratureNodes };
+    returnDistribution?: { stdDev: number; meanShift?: number | number[]; nodes?: QuadratureNodes };
 }
 
 /**
@@ -1817,7 +1830,20 @@ export function planConversionsViaDP(
         ? buildShockQuadrature(opts.returnDistribution.stdDev, opts.returnDistribution.nodes)
         : null;
     const stochastic = quad !== null;
-    const meanShift = opts?.returnDistribution?.meanShift ?? 0;
+    // #207: the shift may be a per-year schedule (glidepath). `meanShiftAt` is the single
+    // accessor — every consumer below resolves through it at its own year offset so a
+    // scalar and a constant array behave identically.
+    const meanShiftSpec = opts?.returnDistribution?.meanShift ?? 0;
+    const meanShiftAt = (t: number): number => {
+        if (typeof meanShiftSpec === 'number') return meanShiftSpec;
+        if (meanShiftSpec.length === 0) return 0;
+        return meanShiftSpec[Math.min(t, meanShiftSpec.length - 1)];
+    };
+    /** Debug rendering: a scalar prints as one number, a schedule as its first→last range. */
+    const fmtMeanShift = (): string =>
+        typeof meanShiftSpec === 'number' || meanShiftSpec.length <= 1
+            ? `${(meanShiftAt(0) * 100).toFixed(2)}%`
+            : `${(meanShiftAt(0) * 100).toFixed(2)}%→${(meanShiftAt(meanShiftSpec.length - 1) * 100).toFixed(2)}% (per-year)`;
 
     // Single source of truth for the per-year objective accumuland (#12), so the
     // backward sweep, forward extract, and debug curve can't drift apart. Max-wealth:
@@ -1926,7 +1952,13 @@ export function planConversionsViaDP(
     // the fixed-bucket grid resolution to uselessness. The rare outermost node can
     // still clamp — bounded, low-weight. Deterministic solve (quad null) passes 0 /
     // BALANCE_HEADROOM_FACTOR → grid byte-for-byte unchanged.
-    const gridDrift = stochastic ? meanShift : 0;
+    // #207: with a per-year schedule the grid is one fixed structure for the whole
+    // horizon, so size it to the LARGEST drift any year applies — under-sizing silently
+    // clamps balances at the grid edge (the under-conversion failure this headroom exists
+    // to prevent), while over-sizing only costs a little resolution.
+    const gridDrift = stochastic
+        ? (typeof meanShiftSpec === 'number' ? meanShiftSpec : Math.max(0, ...meanShiftSpec))
+        : 0;
     const STOCH_HEADROOM_SIGMA_K = 2;       // σ multiplier (per √year)
     const STOCH_HEADROOM_SIGMA_CAP = 1.5;   // max σ-buffer added on top of BALANCE_HEADROOM_FACTOR
     const gridHeadroom = quad
@@ -2105,7 +2137,8 @@ export function planConversionsViaDP(
         // single-rate proxy choice (meanShift re-centers on the MC mean). The
         // denominator is floored (#5) so a pathological meanShift < −1 can't make
         // df ±Infinity/negative and corrupt the sweep.
-        const meanGrowthDenom = Math.max(0.01, 1 + ctx.growthRate + meanShift);
+        const meanShiftT = meanShiftAt(t);
+        const meanGrowthDenom = Math.max(0.01, 1 + ctx.growthRate + meanShiftT);
         // Deterministic max-wealth denominator floored the same way (#5) so a
         // pathological net rate ≤ −100% (e.g. a hand-edited customROR=-100, or
         // -95 with a 6% ER) can't make df +Infinity (at −100%) or negative
@@ -2124,9 +2157,9 @@ export function planConversionsViaDP(
         const invDBNext = 1 / dB_next;
         const invDRothNext = 1 / dRoth_next;
         const facTradIdx = quad
-            ? buildNodeGrowthFactors(ctx.growthRate, quad, meanShift).map(f => f * invDBNext) : null;
+            ? buildNodeGrowthFactors(ctx.growthRate, quad, meanShiftT).map(f => f * invDBNext) : null;
         const facRothIdx = quad
-            ? buildNodeGrowthFactors(ctx.rothGrowthRate, quad, meanShift).map(f => f * invDRothNext) : null;
+            ? buildNodeGrowthFactors(ctx.rothGrowthRate, quad, meanShiftT).map(f => f * invDRothNext) : null;
 
         for (let bi = 0; bi <= TRAD_BUCKETS; bi++) {
             const b = bi * dB_t;
@@ -2288,8 +2321,8 @@ export function planConversionsViaDP(
     ): number => {
         const Vnext = V[t + 1];
         if (quad) {
-            const facT = buildNodeGrowthFactors(ctx.growthRate, quad, meanShift);
-            const facR = buildNodeGrowthFactors(ctx.rothGrowthRate, quad, meanShift);
+            const facT = buildNodeGrowthFactors(ctx.growthRate, quad, meanShiftAt(t));
+            const facR = buildNodeGrowthFactors(ctx.rothGrowthRate, quad, meanShiftAt(t));
             const invDBNext = 1 / dBByYear[t + 1];
             const invDRothNext = 1 / dRothByYear[t + 1];
             let fc = 0;
@@ -2314,12 +2347,12 @@ export function planConversionsViaDP(
     // negative. These post-growth balances are both next year's entering state
     // and the trace's tradNext/rothNext.
     const centralStep = (
-        tradPre: number, rothPre: number, ctx: DPYearContext,
+        tradPre: number, rothPre: number, ctx: DPYearContext, t: number,
     ): { tradNext: number; rothNext: number } =>
         stochastic
             ? {
-                tradNext: tradPre * Math.max(0, 1 + ctx.growthRate + meanShift),
-                rothNext: rothPre * Math.max(0, 1 + ctx.rothGrowthRate + meanShift),
+                tradNext: tradPre * Math.max(0, 1 + ctx.growthRate + meanShiftAt(t)),
+                rothNext: rothPre * Math.max(0, 1 + ctx.rothGrowthRate + meanShiftAt(t)),
             }
             : growBalance(tradPre, rothPre, ctx);
 
@@ -2403,7 +2436,7 @@ export function planConversionsViaDP(
         // built with. Stochastic discounts at the (shifted) mean rate, floored
         // (#5), matching the backward sweep's meanGrowthDenom.
         const df = stochastic
-            ? 1 / Math.max(0.01, 1 + ctx.growthRate + meanShift)
+            ? 1 / Math.max(0.01, 1 + ctx.growthRate + meanShiftAt(t))
             // Floored the same way as the backward sweep (#5) — see detGrowthDenom there.
             : (isMaxWealth ? 1 / Math.max(0.01, 1 + ctx.growthRate) : discountFactor);
 
@@ -2414,7 +2447,7 @@ export function planConversionsViaDP(
         const sel = selectConversion(ctx, t, df, cMax, taxBaseline);
         const chosenC = sel.c;
         const cell = sel.cell;
-        const { tradNext, rothNext } = centralStep(cell.tradPre, cell.rothPre, ctx);
+        const { tradNext, rothNext } = centralStep(cell.tradPre, cell.rothPre, ctx, t);
 
         conversionsByYear.set(ctx.year, chosenC);
         perYearAmounts.push({
@@ -2439,7 +2472,7 @@ export function planConversionsViaDP(
             `[DEBUG ${solverTag}] year=${ctx.year} age=${ctx.age}: ` +
             `tradEntering=${fmt$(trad)}, rmdAtB=${fmt$(rmdAtB)}, cMax=${fmt$(cMax)}, ` +
             `taxBaseline=${fmt$(taxBaseline)}` +
-            (stochastic ? ` (policy lookup along mean path, meanShift=${(meanShift * 100).toFixed(2)}%)` : ''),
+            (stochastic ? ` (policy lookup along mean path, meanShift=${(meanShiftAt(t) * 100).toFixed(2)}%)` : ''),
         );
         debugLines.push(
             `[DEBUG ${solverTag}] year=${ctx.year}: chose c=${fmt$(chosenC)} ` +
@@ -2489,7 +2522,7 @@ export function planConversionsViaDP(
             // step the chosen cell takes), so deterministic uses growBalance and
             // stochastic uses the mean-rate step — consistent with the displayed
             // walk. The future-cost uses the strategy's expectation.
-            const { tradNext: sTradNext, rothNext: sRothNext } = centralStep(r.tradPre, r.rothPre, ctx);
+            const { tradNext: sTradNext, rothNext: sRothNext } = centralStep(r.tradPre, r.rothPre, ctx, t);
             const fc = transitionExpectation(r.tradPre, r.rothPre, ctx, t);
             const yc = yearAccumuland(r); // shared accumuland (#12)
             const dFut = df * fc;
@@ -2611,7 +2644,7 @@ export function planConversionsViaDP(
     const yearsConverting = Array.from(conversionsByYear.values()).filter(a => a > 0).length;
     summaryLogs.push(
         `[DEBUG DP] result: totalConverted=${fmt$(totalConverted)} across ${yearsConverting}/${horizonYears} years, ` +
-        `elapsed=${elapsedMs.toFixed(1)}ms` + (quad ? ` (stochastic policy; nodes=${quad.weights.length}, meanShift=${(meanShift * 100).toFixed(2)}%)` : ''),
+        `elapsed=${elapsedMs.toFixed(1)}ms` + (quad ? ` (stochastic policy; nodes=${quad.weights.length}, meanShift=${fmtMeanShift()})` : ''),
     );
 
     // `policy` was assembled above (before the forward extract) so the central

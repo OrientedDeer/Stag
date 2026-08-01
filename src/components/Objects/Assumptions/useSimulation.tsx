@@ -5,6 +5,7 @@ import { type AnyAccount, InvestedAccount, SavedAccount, DebtAccount, DeficitDeb
 import { type AnyIncome } from '../Income/models';
 import { type AnyExpense, MortgageExpense, CLASS_TO_CATEGORY } from '../Expense/models';
 import { buildCashflowDetail } from '../../../services/simulation/CashflowDetailBuilder';
+import { effectiveRoR, blendedMonteCarloReturn, defaultBlendedRoR, resolveStockPct, defaultStockPctForYear } from '../../../services/simulation/allocation';
 import { type CashflowDetail } from '../../../services/simulation/types';
 import { type AssumptionsState, getLifeExpectancy, getBirthYear, getRetirementAge } from './AssumptionsContext';
 import { resolveRothConversionStrategy } from './rothConversionStrategy';
@@ -699,7 +700,7 @@ export const runSimulation = (
                     acc.id, acc.name, newAmount, newEmployerBalance,
                     acc.tenureYears, acc.expenseRatio, acc.taxType,
                     acc.isContributionEligible, acc.vestedPerYear, newCostBasis, acc.customROR,
-                    acc.conversionHistory
+                    acc.conversionHistory, acc.lots, acc.stockPct
                 );
             }
 
@@ -718,7 +719,7 @@ export const runSimulation = (
                         acc.id, acc.name, acc.amount + extra, acc.employerBalance,
                         acc.tenureYears, acc.expenseRatio, acc.taxType,
                         acc.isContributionEligible, acc.vestedPerYear, acc.costBasis + extra, acc.customROR,
-                        acc.conversionHistory
+                        acc.conversionHistory, acc.lots, acc.stockPct
                     );
                 }
                 if (acc instanceof SavedAccount) {
@@ -1013,35 +1014,70 @@ export const buildMcConversionPolicy = (
     // applies overrideReturnRate as (R − ER)/100.
     //
     // CRITICAL (#98 review): `ctx.growthRate` is the TRADITIONAL-BALANCE-WEIGHTED
-    // average of per-account `(customROR ?? globalRoR) + inflation − expenseRatio`
+    // average of per-account `effectiveRoR + inflation − expenseRatio`
     // (see getNetGrowthRate in RothConversionDP.ts). Monte Carlo's
-    // InvestedAccount.increment grows every account at `(returnMean − ER)/100`,
+    // InvestedAccount.increment grows every account at `(drawn − ER)/100`,
     // IGNORING customROR when an override is present. So a flat `rorBase` built
     // from the GLOBAL ror would center the policy on the wrong drift whenever any
     // Traditional account carries a customROR ≠ global. Instead build `rorBase`
-    // as the Traditional-balance-weighted average of `(customROR ?? globalRoR)`
+    // as the Traditional-balance-weighted average of `effectiveRoR`
     // (+ inflation), using the SAME tax-type filter and balance weighting as
     // getNetGrowthRate but WITHOUT subtracting ER (ER stays inside ctx.growthRate).
-    // Then `ctx.growthRate + meanShift == (returnMean − weighted-ER)/100` exact on
-    // the Traditional axis. The Roth axis reuses this same scalar meanShift, so a
-    // residual remains only when the Roth accounts' customROR blend differs from
+    // Then `ctx.growthRate + meanShift == (mcMean − weighted-ER)/100` exact on
+    // the Traditional axis. The Roth axis reuses this same meanShift, so a
+    // residual remains only when the Roth accounts' rate blend differs from
     // the Traditional accounts' — an accepted second-order approximation.
-    const globalRoR = assumptions.investments.returnRates.ror ?? 7;
+    //
+    // #207 (asset allocation) changes TWO things here:
+    //  1. Both sides of the gap are now allocation-aware. The deterministic side uses
+    //     `effectiveRoR` (customROR, else the stock/bond blend); the MC side uses
+    //     `blendedMonteCarloReturn`, since MC now applies only `stockPct` of the drawn
+    //     return and tops up with the bond rate.
+    //  2. A glidepath makes the deterministic drift VARY BY YEAR, so a single scalar
+    //     meanShift cannot equal the gap in every year. We therefore emit a per-year
+    //     SCHEDULE (planConversionsViaDP accepts `number | number[]`), preserving the
+    //     exactness property across the whole horizon rather than only at year 0.
+    // Balances are the year-0 vested amounts in every year's weighting — the same
+    // approximation the scalar version made; only the RATES vary by year here.
     const inflation = assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0;
     const tradAccounts = accounts.filter((a): a is InvestedAccount =>
         a instanceof InvestedAccount &&
         (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA'));
     const tradTotal = tradAccounts.reduce((s, a) => s + a.vestedAmount, 0);
-    const weightedRoR = tradTotal > 0
-        ? tradAccounts.reduce((sum, a) => sum + (a.customROR ?? globalRoR) * a.vestedAmount, 0) / tradTotal
-        : globalRoR;
-    const rorBase = weightedRoR + inflation;
+    const shiftStartYear = new Date().getFullYear();
+    const weightedBy = (rateOf: (a: InvestedAccount) => number, fallback: number): number =>
+        tradTotal > 0
+            ? tradAccounts.reduce((sum, a) => sum + rateOf(a) * a.vestedAmount, 0) / tradTotal
+            : fallback;
+    const meanShiftSchedule = Array.from({ length: Math.max(1, yearsToRun) }, (_, t) => {
+        const year = shiftStartYear + t;
+        // Deterministic drift the DP's ctx.growthRate is built from (ER excluded).
+        const rorBase = weightedBy(
+            a => effectiveRoR(a, assumptions, year),
+            defaultBlendedRoR(assumptions, year),
+        ) + inflation;
+        // What MC's mean draw actually becomes per account after the allocation blend.
+        const mcMean = weightedBy(
+            a => blendedMonteCarloReturn(a, assumptions, returnMean, year),
+            blendedMonteCarloReturn({}, assumptions, returnMean, year),
+        );
+        return (mcMean - rorBase) / 100;
+    });
+    // #207: MC applies only `stockPct` of the drawn shock to each account, so the shock the
+    // Traditional axis actually experiences is the balance-weighted stock fraction of the
+    // configured vol. Solving against the unscaled vol would make the policy conservative
+    // (wider shock than reality) for any bond-bearing allocation. Year-0 allocation is used
+    // as the single grid-wide vol; a glidepath's drift is handled by the schedule above.
+    const weightedStockFraction = weightedBy(
+        a => resolveStockPct(a, assumptions, shiftStartYear),
+        defaultStockPctForYear(assumptions, shiftStartYear),
+    ) / 100;
     // Solve the stochastic closed-loop policy — the #98 table each MC path looks up.
     const stochasticPlan = planConversionsViaDP(dpInputs, {
         ...effectiveDpObjective,
         returnDistribution: {
-            stdDev: returnStdDev / 100,
-            meanShift: (returnMean - rorBase) / 100,
+            stdDev: (returnStdDev * weightedStockFraction) / 100,
+            meanShift: meanShiftSchedule,
             nodes,
         },
     });

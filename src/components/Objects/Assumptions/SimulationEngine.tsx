@@ -329,6 +329,7 @@ function simulateOneYearWithNewEngine(
                     acc.customROR,
                     acc.conversionHistory,
                     acc.lots,
+                    acc.stockPct,
                 );
             }
             return acc;

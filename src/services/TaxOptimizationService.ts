@@ -21,6 +21,7 @@ import {
     calculateContributionTaxSavings
 } from '../data/ContributionLimits';
 import { getRMDStartAge, getDistributionPeriod, PEAK_RMD_DIVISOR } from '../data/RMDData';
+import { defaultBlendedRoR } from './simulation/allocation';
 
 // ============================================================================
 // Constants
@@ -1004,7 +1005,9 @@ function findSwitchoverYear(
     rmdStartAge: number
 ): { year: number | null; age: number | null; estimatedTaxImpact: number | null; redirectedContributions: number | null } {
     const birthYear = getBirthYear(assumptions.milestones);
-    const ror = (assumptions.investments?.returnRates?.ror ?? (FALLBACK_GROWTH_RATE * 100)) / 100;
+    // #207: the default allocation blend, so this advisory projection matches the engine
+    // for a bond-bearing portfolio instead of always assuming the all-stock rate.
+    const ror = (defaultBlendedRoR(assumptions) ?? (FALLBACK_GROWTH_RATE * 100)) / 100;
 
     // Collect Traditional 401k contributions per working year
     const contributions: { year: number; age: number; amount: number; fvAtRMD: number }[] = [];

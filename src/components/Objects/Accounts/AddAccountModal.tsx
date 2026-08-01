@@ -64,6 +64,9 @@ interface AccountFormState {
     isContributionEligible: boolean;
     useCustomROR: boolean;
     customROR: number;
+    // #207: per-account stock/bond mix (InvestedAccount only)
+    useCustomAllocation: boolean;
+    stockPct: number;
     // Property fields
     ownershipType: 'Financed' | 'Owned';
     loanAmount: number;
@@ -90,6 +93,8 @@ const INITIAL_FORM_STATE: AccountFormState = {
     isContributionEligible: true,
     useCustomROR: false,
     customROR: 7.0,
+    useCustomAllocation: false,
+    stockPct: 60,
     ownershipType: 'Owned',
     loanAmount: 0,
     startingLoanAmount: 0,
@@ -178,7 +183,10 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
             newAccount = new InvestedAccount(
                 id, form.name.trim(), form.amount, form.employerBalance, finalTenure,
                 form.expenseRatio, form.taxType, form.isContributionEligible,
-                finalVestedPerYear, form.amount, finalCustomROR
+                finalVestedPerYear, form.amount, finalCustomROR,
+                [], [],
+                // A custom rate bypasses the blend, so an allocation alongside it would be dead state.
+                form.useCustomAllocation && !form.useCustomROR ? form.stockPct : undefined
             );
         } else if (selectedType === ESPPAccount) {
             const finalCustomROR = form.useCustomROR ? form.customROR : undefined;
@@ -357,6 +365,29 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({
                                         max={30}
                                         tooltip="Expected annual return rate for this account. Overrides the global assumption."
                                     />
+                                )}
+                                {/* #207: allocation only applies when the blend is consulted —
+                                    a custom rate bypasses it. InvestedAccount only; ESPP/RSU are
+                                    single-stock holdings by construction. */}
+                                {!form.useCustomROR && (
+                                    <>
+                                        <ToggleInput
+                                            id={`${id}-use-custom-allocation`}
+                                            label="Custom Allocation"
+                                            enabled={form.useCustomAllocation}
+                                            setEnabled={(val) => updateForm('useCustomAllocation', val)}
+                                            tooltip="Override the global stock/bond mix for this account. Also opts this account out of the glidepath."
+                                        />
+                                        {form.useCustomAllocation && (
+                                            <PercentageInput
+                                                id={`${id}-stock-pct`}
+                                                label="Stock %"
+                                                value={form.stockPct}
+                                                onChange={(val) => updateForm('stockPct', Math.min(100, Math.max(0, val)))}
+                                                tooltip="Stock share of this account. The rest is bonds — 60 means 60% stock / 40% bonds."
+                                            />
+                                        )}
+                                    </>
                                 )}
                             </CardSection>
                             {(form.taxType === 'Roth 401k' || form.taxType === 'Traditional 401k') && (

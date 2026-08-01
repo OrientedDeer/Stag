@@ -166,6 +166,11 @@ export function getSimulationInputHash(
             ...(a instanceof InvestedAccount
                 ? {
                     customROR: a.customROR,
+                    // #207: the per-account stock/bond split feeds increment()'s blended
+                    // rate, so changing it must invalidate the cached simulation. (The
+                    // GLOBAL allocation/bond fields need no entry here — the hash already
+                    // covers all of `assumptions.investments` wholesale below.)
+                    stockPct: a.stockPct,
                     expenseRatio: a.expenseRatio,
                     costBasis: a.costBasis,
                     employerBalance: a.employerBalance,

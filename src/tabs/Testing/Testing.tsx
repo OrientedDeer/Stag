@@ -78,6 +78,7 @@ import {
     PENSION_SYSTEM_COMPARISON
 } from '../../data/PensionData';
 import { getFicaTaxableBase } from '../../components/Objects/Taxes/taxService/ficaTax';
+import { effectiveRoR, defaultBlendedRoR } from '../../services/simulation/allocation';
 import { isSSCoveredForFica } from '../../components/Objects/Taxes/taxService/incomeAggregation';
 import { SavedAccount, InvestedAccount, DebtAccount, DeficitDebtAccount, PropertyAccount, ESPPAccount, RSUAccount, type AnyAccount } from '../../components/Objects/Accounts/models';
 import { formatCompactCurrency } from '../Future/tabs/FutureUtils';
@@ -5355,14 +5356,18 @@ function AccountsDebugTab() {
                 const vestedPct = Math.min(1, tenure * acc.vestedPerYear);
                 const unvested = acc.employerBalance * (1 - vestedPct);
                 const prevEmployer = prevAcc?.employerBalance || 0;
-                const ror = assumptions.investments.returnRates.ror / 100;
+                // #207: back out growth at the account's own blended rate, else a
+                // bond-bearing account's inferred match is wrong.
+                const ror = effectiveRoR(acc, assumptions, simYear.year) / 100;
                 const matchContrib = Math.max(0, acc.employerBalance - prevEmployer * (1 + ror));
                 matchAccounts.push({ name: acc.name, employerBal: acc.employerBalance, vestedPct, unvested, matchContrib });
             });
 
             return { year: simYear.year, age, matchAccounts };
         }).filter(d => d.matchAccounts.length > 0);
-    }, [simulation, startAge, assumptions.investments.returnRates.ror]);
+        // #207: the blended rate depends on the whole investments section (rates,
+        // allocation, glidepath), not just `ror`.
+    }, [simulation, startAge, assumptions]);
 
     if (simulation.length === 0) return <div className="text-content-muted p-4">No simulation data available. Run the simulation first.</div>;
 
@@ -6521,10 +6526,12 @@ function ValidationDebugTab() {
             issues.push({ type: 'warning', title: 'No withdrawal strategy configured', detail: 'No accounts in withdrawal order. Retirement withdrawals may not function.', section: 'Assumptions' });
         }
 
-        const ror = assumptions.investments.returnRates.ror;
+        // #207: check the blended portfolio rate — an all-bond allocation can sit below
+        // inflation even when the headline stock rate does not.
+        const ror = defaultBlendedRoR(assumptions);
         const inflation = assumptions.macro.inflationRate;
         if (ror < inflation) {
-            issues.push({ type: 'warning', title: 'Rate of return below inflation', detail: `ROR ${ror}% < inflation ${inflation}% = negative real returns (${(ror - inflation).toFixed(1)}%)`, section: 'Assumptions' });
+            issues.push({ type: 'warning', title: 'Rate of return below inflation', detail: `Blended return ${ror.toFixed(1)}% < inflation ${inflation}% = negative real returns (${(ror - inflation).toFixed(1)}%)`, section: 'Assumptions' });
         }
 
         if (assumptions.macro.healthcareInflation < assumptions.macro.inflationRate) {

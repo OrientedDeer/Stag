@@ -19,7 +19,11 @@ import { Button } from "../../Layout/Primitives";
 type EditableAssumptions = {
     macro?: { inflationRate?: number };
     expenses?: { housingAppreciation?: number };
-    investments?: { returnRates?: { ror?: number }; withdrawalRate?: number };
+    investments?: {
+        returnRates?: { ror?: number; bondRor?: number };
+        defaultAllocation?: { stockPct?: number };
+        withdrawalRate?: number;
+    };
     milestones?: CustomMilestone[];
 } & Record<string, unknown>;
 
@@ -156,12 +160,32 @@ const ScenarioAssumptionsModal: React.FC<{
                         <h4 className="text-sm font-medium text-content-default mb-2">Investment Assumptions</h4>
                         <div className="grid grid-cols-2 gap-3">
                             <div>
-                                <label className="block text-xs text-content-muted mb-1">Return Rate (%)</label>
+                                <label className="block text-xs text-content-muted mb-1">Stock Return (%)</label>
                                 <input
                                     type="number"
                                     step="0.1"
                                     value={investments?.returnRates?.ror ?? 5.9}
                                     onChange={(e) => handleNestedChange('investments', 'returnRates', 'ror', parseFloat(e.target.value))}
+                                    className="w-full bg-surface-overlay border border-border-default rounded px-3 py-2 text-white text-sm"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs text-content-muted mb-1">Bond Return (%)</label>
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    value={investments?.returnRates?.bondRor ?? 2.0}
+                                    onChange={(e) => handleNestedChange('investments', 'returnRates', 'bondRor', parseFloat(e.target.value))}
+                                    className="w-full bg-surface-overlay border border-border-default rounded px-3 py-2 text-white text-sm"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs text-content-muted mb-1">Stock Allocation (%)</label>
+                                <input
+                                    type="number"
+                                    step="1"
+                                    value={investments?.defaultAllocation?.stockPct ?? 100}
+                                    onChange={(e) => handleNestedChange('investments', 'defaultAllocation', 'stockPct', parseFloat(e.target.value))}
                                     className="w-full bg-surface-overlay border border-border-default rounded px-3 py-2 text-white text-sm"
                                 />
                             </div>

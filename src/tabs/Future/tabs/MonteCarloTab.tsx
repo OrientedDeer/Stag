@@ -17,6 +17,7 @@ import { PercentageInput } from '../../../components/Layout/InputFields/Percenta
 import { NumberInput } from '../../../components/Layout/InputFields/NumberInput';
 import { ToggleInput } from '../../../components/Layout/InputFields/ToggleInput';
 import { AlertBanner } from '../../../components/Layout/AlertBanner';
+import { InvestedAccount } from '../../../components/Objects/Accounts/models';
 import { McHeadlineTiles } from './McHeadlineTiles';
 import { McConversionCard } from './McConversionCard';
 
@@ -92,6 +93,21 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
     // Uses config.lastInflationAdjusted (persisted to localStorage) instead of a ref,
     // so the change is detected even if the component unmounts and remounts (tab switching).
     const inflationRate = assumptions.macro?.inflationRate ?? 0;
+    // #207: true when anything in the plan is below 100% stock — drives the disclosure
+    // banner about the single-stream (deterministic-bond) approximation below.
+    const hasBondAllocation =
+        (assumptions.investments?.defaultAllocation?.stockPct ?? 100) < 100 ||
+        (assumptions.investments?.allocationGlidepath?.enabled === true &&
+            Math.min(
+                assumptions.investments.allocationGlidepath.startStockPct,
+                assumptions.investments.allocationGlidepath.endStockPct,
+            ) < 100) ||
+        accounts.some(a => a instanceof InvestedAccount && a.stockPct !== undefined && a.stockPct < 100);
+
+    // #207: deliberately the STOCK rate, not the blended default. Monte Carlo draws ONE
+    // series and each account treats it as its stock return, blending in the bond rate at
+    // its own allocation (see blendedMonteCarloReturn). Syncing this to the blend would
+    // apply the bond drag twice.
     const ror = assumptions.investments?.returnRates?.ror ?? 0;
     useEffect(() => {
         if (normalizedPreset !== 'custom') {
@@ -441,6 +457,17 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                             off-center of the median band for conversion-strategy reasons as well
                             as market volatility.
                         </AlertBanner>
+                        {/* #207: honest disclosure of the single-stream approximation. The bond
+                            leg is deterministic (no bond volatility, no stock/bond correlation),
+                            so a bond-heavy plan's bands are tighter here than in reality. */}
+                        {hasBondAllocation && (
+                            <AlertBanner severity="info" size="sm" className="mt-3">
+                                Part of your portfolio is allocated to bonds. Simulated paths vary
+                                the stock return only and apply your bond return as a fixed rate,
+                                so the percentile bands are somewhat narrower than a model with
+                                independent bond volatility would produce.
+                            </AlertBanner>
+                        )}
                     </>
                 ) : (
                     <div className="flex flex-col items-center justify-center h-96 text-center">

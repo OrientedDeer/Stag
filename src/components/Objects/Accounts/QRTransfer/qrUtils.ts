@@ -52,7 +52,7 @@ const KEY_MAP: Record<string, string> = {
     taxBracketShiftPct: 'tb', taxBracketShiftStartYear: 'ts',
     salaryGrowth: 'sg', qualifiesForSocialSecurity: 'ss', socialSecurityFundingPercent: 'sp',
     lifestyleCreep: 'lc', housingAppreciation: 'ha', rentInflation: 'ri',
-    ror: 'rr', withdrawalStrategy: 'ws', withdrawalRate: 'wr', withdrawalRateMode: 'wm',
+    ror: 'rr', bondRor: 'br', stockPct: 'sk', allocationGlidepath: 'ag', withdrawalStrategy: 'ws', withdrawalRate: 'wr', withdrawalRateMode: 'wm',
     gkUpperGuardrail: 'gu', gkLowerGuardrail: 'gl', gkAdjustmentPercent: 'ga', autoRothConversions: 'ar',
     retirementAge: 'ra', lifeExpectancy: 'le', birthYear: 'by', priorYearMode: 'pm',
     useCompactCurrency: 'cc', showExperimentalFeatures: 'ef', hsaEligible: 'he', showDevTools: 'dt',
@@ -137,6 +137,13 @@ const ASSUMPTIONS_DEFAULTS: Record<string, unknown> = {
     rentInflation: 1.2,
     // Investments
     ror: 5.9,
+    // #207: 100 = all stock. Matching this default strips the key from the QR payload, so
+    // a plan that never touched allocation costs zero extra bytes — absent is read as 100.
+    stockPct: 100,
+    // NOTE: `bondRor` is deliberately NOT listed as a strippable default. stockPct and
+    // bondRor strip independently, so a 60/40 plan sitting on the default bond rate would
+    // export stockPct=60 with bondRor stripped — and an absent bondRor blends bonds at the
+    // STOCK rate on import. Carrying it always costs a few bytes and keeps the blend honest.
     withdrawalStrategy: 'Fixed Real',
     withdrawalRate: 4.0,
     gkUpperGuardrail: 1.2,
@@ -310,6 +317,13 @@ export function flattenAssumptions(assumptions: Record<string, unknown>): Record
                 // Handle nested returnRates.ror
                 if (key === 'returnRates' && typeof value === 'object' && value !== null) {
                     flat['ror'] = (value as Record<string, unknown>).ror;
+                    const bondRor = (value as Record<string, unknown>).bondRor;
+                    if (bondRor !== undefined) flat['bondRor'] = bondRor;
+                } else if (key === 'defaultAllocation' && typeof value === 'object' && value !== null) {
+                    // #207: flattened to a bare `stockPct` so it shares the strip-defaults
+                    // path; rebuilt into the nested object on import.
+                    const stockPct = (value as Record<string, unknown>).stockPct;
+                    if (stockPct !== undefined) flat['stockPct'] = stockPct;
                 } else {
                     // Includes demographics.priorEarnings and the investments flags
                     flat[key] = value;
@@ -364,7 +378,20 @@ export function expandAssumptions(flat: Record<string, unknown>): Record<string,
             rentInflation: flat.rentInflation ?? ASSUMPTIONS_DEFAULTS.rentInflation,
         },
         investments: {
-            returnRates: { ror: flat.ror ?? ASSUMPTIONS_DEFAULTS.ror },
+            returnRates: {
+                ror: flat.ror ?? ASSUMPTIONS_DEFAULTS.ror,
+                // Absent ⇒ a pre-#207 code; leave it unset so the state stays byte-identical
+                // to what that code described (all-stock, bond rate never consulted).
+                ...(flat.bondRor !== undefined ? { bondRor: flat.bondRor } : {}),
+            },
+            ...(flat.stockPct !== undefined
+                ? { defaultAllocation: { stockPct: flat.stockPct } }
+                : {}),
+            // Restore only when present — an absent glidepath must stay absent rather than
+            // materialize a disabled one (migrateAssumptions distinguishes the two).
+            ...(flat.allocationGlidepath !== undefined
+                ? { allocationGlidepath: flat.allocationGlidepath }
+                : {}),
             // This is the investments STRING (Fixed Real / Guardrails / ...), distinct
             // from the top-level `withdrawalStrategy` Burn-Order array restored below.
             withdrawalStrategy: flat.withdrawalStrategy ?? ASSUMPTIONS_DEFAULTS.withdrawalStrategy,

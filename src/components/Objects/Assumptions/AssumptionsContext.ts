@@ -200,7 +200,39 @@ export interface AssumptionsState {
   };
   investments: {
     returnRates: {
+      /**
+       * The STOCK (equity) return. Kept under the legacy key `ror` — it predates
+       * the stock/bond split (#207) and is referenced by every saved plan, the QR
+       * short-key table, and ~120 test files, so only the UI label was renamed.
+       */
       ror: number;   // e.g., 10.0
+      /**
+       * The BOND (fixed income) return, same units/real-vs-nominal treatment as `ror`.
+       * Optional: absent means a pre-#207 plan, where the allocation is all-stock and the
+       * bond rate is never consulted. `DEFAULTS`/`migrateAssumptions` always populate it.
+       */
+      bondRor?: number; // e.g., 2.0
+    };
+    /**
+     * Portfolio mix applied to accounts that don't carry their own `stockPct`.
+     * Bond share is `100 - stockPct`. Defaults to 100 (all stock) — and absent is read as
+     * 100 — so plans saved before #207 keep producing byte-identical projections.
+     */
+    defaultAllocation?: {
+      stockPct: number; // 0-100
+    };
+    /**
+     * Optional age-anchored glidepath for the DEFAULT allocation: stock share moves
+     * linearly from `startStockPct` at `startAge` to `endStockPct` at `endAge`, and
+     * is clamped flat outside that band. When absent or disabled, `defaultAllocation`
+     * applies to every year. An account with an explicit `stockPct` ignores this.
+     */
+    allocationGlidepath?: {
+      enabled: boolean;
+      startAge: number;
+      endAge: number;
+      startStockPct: number;
+      endStockPct: number;
     };
     withdrawalStrategy: WithdrawalStrategy;
     withdrawalRate: number; // e.g., 4.0
@@ -293,7 +325,9 @@ export const defaultAssumptions: AssumptionsState = {
     rentInflation: 1.2,
   },
   investments: {
-    returnRates: { ror: 5.9 },
+    returnRates: { ror: 5.9, bondRor: 2.0 },
+    // 100 = all stock, so the blend collapses to `ror` and pre-#207 plans are unchanged.
+    defaultAllocation: { stockPct: 100 },
     withdrawalStrategy: 'Fixed Real',
     withdrawalRate: 4.0,
     withdrawalRateMode: 'auto', // GK derives the initial rate from the plan by default
@@ -383,6 +417,28 @@ export function migrateAssumptions(saved: unknown, defaults: AssumptionsState): 
         (data.investments as Record<string, unknown>)?.returnRates,
         defaults.investments.returnRates
       ),
+      // #207: same treatment — a nested object whose typeof matches would otherwise be
+      // taken wholesale, so a pre-#207 save (no bondRor/stockPct) needs the key-by-key merge.
+      defaultAllocation: mergeSection(
+        (data.investments as Record<string, unknown>)?.defaultAllocation,
+        defaults.investments.defaultAllocation ?? { stockPct: 100 }
+      ),
+      // `allocationGlidepath` is optional and therefore absent from `defaults.investments`.
+      // mergeSection only walks the DEFAULT object's keys, so a saved glidepath would be
+      // dropped on load — restore it explicitly against a shape default.
+      ...(function () {
+        const saved = (data.investments as Record<string, unknown>)?.allocationGlidepath;
+        if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return {};
+        return {
+          allocationGlidepath: mergeSection(saved, {
+            enabled: false,
+            startAge: 40,
+            endAge: 65,
+            startStockPct: 100,
+            endStockPct: 100,
+          }),
+        };
+      })(),
     },
     demographics: mergeSection(data.demographics, defaults.demographics),
     display: mergeSection(data.display, defaults.display),

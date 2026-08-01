@@ -537,7 +537,13 @@ function buildCurrentStateSheet(data: ExportData): SheetContent {
     rows.push(['Growth Rates']);
     rows.push(['Setting', 'Value']);
     rows.push(['Inflation Rate', `${assumptions.macro.inflationRate}%`]);
-    rows.push(['Investment Return', `${assumptions.investments.returnRates.ror}%`]);
+    rows.push(['Stock Return', `${assumptions.investments.returnRates.ror}%`]);
+    rows.push(['Bond Return', `${assumptions.investments.returnRates.bondRor ?? 0}%`]);
+    rows.push(['Default Allocation', `${assumptions.investments.defaultAllocation?.stockPct ?? 100}% stock`]);
+    if (assumptions.investments.allocationGlidepath?.enabled) {
+        const g = assumptions.investments.allocationGlidepath;
+        rows.push(['Allocation Glidepath', `${g.startStockPct}% stock at age ${g.startAge} → ${g.endStockPct}% at age ${g.endAge}`]);
+    }
     rows.push(['Salary Growth', `${assumptions.income.salaryGrowth}%`]);
     rows.push(['Healthcare Inflation', `${assumptions.macro.healthcareInflation}%`]);
     rows.push([]);

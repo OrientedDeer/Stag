@@ -16,6 +16,7 @@
  */
 
 import { type AnyAccount, InvestedAccount } from "../../components/Objects/Accounts/models";
+import { effectiveRoR, defaultBlendedRoR } from "./allocation";
 import { type AnyIncome, FERSPensionIncome, type PassiveIncome, isSocialSecurity } from "../../components/Objects/Income/models";
 import { type AnyExpense, LoanExpense } from "../../components/Objects/Expense/models";
 import { isOfferableDebt, DEBT_PAYOFF_EPSILON } from "./SurplusAllocator";
@@ -630,16 +631,22 @@ function computeCeilingContext(
         pensionCola
     );
 
-    const grossRoR = input.assumptions.investments.returnRates.ror ?? (DEFAULT_GROWTH_RATE * 100);
     const tradAccounts = input.accounts.filter(a =>
         a instanceof InvestedAccount &&
         (a.taxType === 'Traditional 401k' || a.taxType === 'Traditional IRA')
     ) as InvestedAccount[];
     const totalTradBalance = tradAccounts.reduce((sum, a) => sum + a.vestedAmount, 0);
-    const weightedER = totalTradBalance > 0
-        ? tradAccounts.reduce((sum, a) => sum + a.expenseRatio * a.vestedAmount, 0) / totalTradBalance
-        : 0;
-    const growthRate = (grossRoR - weightedER) / 100;
+    // #207: the gross rate is now per-account (allocation blend, or customROR when set),
+    // so it is balance-weighted alongside the expense ratio rather than read as one global
+    // number. An all-stock plan with no overrides reduces to the previous `ror − weightedER`.
+    const defaultRoR = defaultBlendedRoR(input.assumptions, input.year) || (DEFAULT_GROWTH_RATE * 100);
+    const weightedNetPct = totalTradBalance > 0
+        ? tradAccounts.reduce(
+            (sum, a) => sum + (effectiveRoR(a, input.assumptions, input.year) - a.expenseRatio) * a.vestedAmount,
+            0,
+        ) / totalTradBalance
+        : defaultRoR;
+    const growthRate = weightedNetPct / 100;
 
     let acaOptions: ACAOptions | undefined;
     if (input.acaAware && input.currentAge < 65) {
