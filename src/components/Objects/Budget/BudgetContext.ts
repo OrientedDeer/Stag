@@ -5,6 +5,7 @@ export {
     INCOME_CATEGORIES,
     TRANSFER_CATEGORY_ID,
     getFrequencyDivisor,
+    isTransferRule,
 } from './BudgetTypes';
 
 export type {
@@ -24,6 +25,7 @@ import type {
     MonthlySnapshot,
     BudgetState,
 } from './BudgetTypes';
+import { isTransferRule } from './BudgetTypes';
 
 // Shared id minter (utils/id) so CSVImportService and backupMerge mint ids the same way.
 import { generateId } from '../../../utils/id';
@@ -400,13 +402,22 @@ export function budgetReducer(state: BudgetState, action: BudgetAction): BudgetS
                 && !t.targetAccountId
                 && !(t.amount > 0 && !t.isReimbursement && t.incomeCategory);
 
+            // A transfer rule (#209) carries the TRANSFER_CATEGORY_ID sentinel as its
+            // expenseId. Applying it must flag the transaction as a transfer and leave
+            // expenseId unset — writing the sentinel through as an expenseId would
+            // invent a '__TRANSFER__' spending category.
+            const applyRule = (t: Transaction): Transaction =>
+                isTransferRule(rule)
+                    ? { ...t, isTransfer: true, expenseId: undefined }
+                    : { ...t, expenseId: rule.expenseId };
+
             return {
                 ...state,
                 months: state.months.map(month => ({
                     ...month,
                     transactions: month.transactions.map(t =>
                         isCategorizable(t) && matchesRule(t.description) && isActiveForMonth(month.month, month.year)
-                            ? { ...t, expenseId: rule.expenseId }
+                            ? applyRule(t)
                             : t
                     ),
                 })),

@@ -1,6 +1,11 @@
 import { useContext, useState, useCallback } from 'react';
 import { List, type RowComponentProps } from 'react-window';
-import { BudgetContext, type CategoryMapping } from '../../components/Objects/Budget/BudgetContext';
+import {
+    BudgetContext,
+    TRANSFER_CATEGORY_ID,
+    isTransferRule,
+    type CategoryMapping,
+} from '../../components/Objects/Budget/BudgetContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import { type AnyExpense } from '../../components/Objects/Expense/models';
 
@@ -146,6 +151,7 @@ export default function SettingsTab() {
                                     className="w-full bg-surface-overlay border border-border-default rounded-lg px-3 py-2 text-white text-sm focus:border-positive-soft focus:outline-none"
                                 >
                                     <option value="">Select category...</option>
+                                    <option value={TRANSFER_CATEGORY_ID}>Transfer</option>
                                     {expenses.map(exp => (
                                         <option key={exp.id} value={exp.id}>{exp.name}</option>
                                     ))}
@@ -363,7 +369,7 @@ function RuleListRow({
                 )}
             </div>
             <div className="px-3 py-1.5 text-content-muted min-w-0 truncate">
-                {expense?.name || 'Unknown'}
+                {isTransferRule(rule) ? 'Transfer' : (expense?.name || 'Unknown')}
             </div>
             <div className="px-3 py-1.5 text-right">
                 <button
@@ -414,6 +420,7 @@ function EditRuleForm({
                 onChange={(e) => setExpenseId(e.target.value)}
                 className="bg-surface-overlay border border-border-default rounded px-2 py-1 text-white text-sm focus:border-positive-soft focus:outline-none"
             >
+                <option value={TRANSFER_CATEGORY_ID}>Transfer</option>
                 {expenses.map(exp => (
                     <option key={exp.id} value={exp.id}>{exp.name}</option>
                 ))}
