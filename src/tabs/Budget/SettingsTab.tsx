@@ -1,4 +1,4 @@
-import { useContext, useState, useCallback } from 'react';
+import { useContext, useState, useCallback, useMemo } from 'react';
 import { List, type RowComponentProps } from 'react-window';
 import {
     BudgetContext,
@@ -8,12 +8,31 @@ import {
 } from '../../components/Objects/Budget/BudgetContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import { type AnyExpense } from '../../components/Objects/Expense/models';
+import { AlertBanner } from '../../components/Layout/AlertBanner';
+import { DropdownInput } from '../../components/Layout/InputFields/DropdownInput';
+import { ToggleInput } from '../../components/Layout/InputFields/ToggleInput';
 
 import { Button } from "../../components/Layout/Primitives";
 const RULE_ROW_HEIGHT = 36;
 const RULE_EDIT_ROW_HEIGHT = 52;
 const RULE_LIST_MAX_HEIGHT = 480;
 const RULE_GRID_COLS = 'grid grid-cols-[1fr_1fr_80px] items-center';
+
+/** A rule's target expense, as far as the rule list is concerned. */
+type RuleTargetStatus = 'active' | 'ended' | 'missing';
+
+interface RuleGroup {
+    expenseId: string;
+    name: string;
+    count: number;
+    status: RuleTargetStatus;
+}
+
+const pluralRules = (n: number) => `${n} rule${n !== 1 ? 's' : ''}`;
+
+function isEnded(expense: AnyExpense, today: Date): boolean {
+    return !!expense.endDate && new Date(expense.endDate) < today;
+}
 
 export default function SettingsTab() {
     const { importSettings, dispatch } = useContext(BudgetContext);
@@ -22,6 +41,10 @@ export default function SettingsTab() {
     const [showRules, setShowRules] = useState(false);
     const [showFormats, setShowFormats] = useState(false);
     const [showAddRule, setShowAddRule] = useState(false);
+    const [showReassign, setShowReassign] = useState(false);
+    const [reassignFrom, setReassignFrom] = useState('');
+    const [reassignTo, setReassignTo] = useState('');
+    const [reassignReapply, setReassignReapply] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [formData, setFormData] = useState({
         pattern: '',
@@ -78,6 +101,93 @@ export default function SettingsTab() {
     const rules = importSettings.categoryMappings;
     const savedFormats = importSettings.savedCSVFormats || [];
 
+    // Rules grouped by the expense they point at, so the reassign picker can show
+    // "Misc (ended) — 12 rules" and the warning banner can surface rules stranded
+    // on an ended or deleted category (#209).
+    const ruleGroups = useMemo<RuleGroup[]>(() => {
+        const today = new Date();
+        const counts = new Map<string, number>();
+        rules.forEach(r => counts.set(r.expenseId, (counts.get(r.expenseId) || 0) + 1));
+
+        return Array.from(counts.entries())
+            .map(([expenseId, count]) => {
+                if (expenseId === TRANSFER_CATEGORY_ID) {
+                    return { expenseId, count, name: 'Transfers', status: 'active' as const };
+                }
+                const expense = expenses.find(e => e.id === expenseId);
+                if (!expense) {
+                    return { expenseId, count, name: 'Deleted category', status: 'missing' as const };
+                }
+                return {
+                    expenseId,
+                    count,
+                    name: expense.name,
+                    status: isEnded(expense, today) ? ('ended' as const) : ('active' as const),
+                };
+            })
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [rules, expenses]);
+
+    const staleGroups = useMemo(() => ruleGroups.filter(g => g.status !== 'active'), [ruleGroups]);
+
+    const sourceOptions = useMemo(() => [
+        { value: '', label: 'Select current category…' },
+        ...ruleGroups.map(g => ({
+            value: g.expenseId,
+            label: `${g.name}${g.status === 'ended' ? ' (ended)' : ''} — ${pluralRules(g.count)}`,
+        })),
+    ], [ruleGroups]);
+
+    const targetOptions = useMemo(() => {
+        const today = new Date();
+        return [
+            { value: '', label: 'Select new category…' },
+            ...expenses
+                .filter(e => e.id !== reassignFrom)
+                .map(e => ({ value: e.id, label: isEnded(e, today) ? `${e.name} (ended)` : e.name })),
+        ];
+    }, [expenses, reassignFrom]);
+
+    const reassignCount = ruleGroups.find(g => g.expenseId === reassignFrom)?.count ?? 0;
+    const canReassign = !!reassignFrom && !!reassignTo && reassignFrom !== reassignTo && reassignCount > 0;
+
+    const closeReassign = useCallback(() => {
+        setShowReassign(false);
+        setReassignFrom('');
+        setReassignTo('');
+    }, []);
+
+    const handleReassign = useCallback(() => {
+        if (!reassignFrom || !reassignTo || reassignFrom === reassignTo) return;
+        const moved = rules.filter(r => r.expenseId === reassignFrom);
+        if (moved.length === 0) return;
+
+        dispatch({
+            type: 'REASSIGN_CATEGORY_MAPPINGS',
+            payload: { fromExpenseId: reassignFrom, toExpenseId: reassignTo },
+        });
+
+        if (reassignReapply) {
+            // Re-run just the rules we moved, against the NEW expense's active window.
+            // APPLY_CATEGORY_RULE only fills in transactions that have no expenseId yet,
+            // so history already booked to the old category is never rewritten.
+            const target = expenses.find(e => e.id === reassignTo);
+            moved.forEach(rule => {
+                dispatch({
+                    type: 'APPLY_CATEGORY_RULE',
+                    payload: {
+                        ...rule,
+                        expenseId: reassignTo,
+                        expenseStart: target?.startDate,
+                        expenseEnd: target?.endDate,
+                    },
+                });
+            });
+        }
+
+        closeReassign();
+    }, [reassignFrom, reassignTo, reassignReapply, rules, expenses, dispatch, closeReassign]);
+
     return (
         <div className="space-y-6">
             {/* Header */}
@@ -112,12 +222,20 @@ export default function SettingsTab() {
                 {showRules && <>
                 <div className="flex items-center justify-end gap-2 mt-4 mb-4">
                     {rules.length > 0 && (
-                        <button
-                            onClick={handleReapplyAllRules}
-                            className="px-3 py-1.5 bg-surface-input hover:bg-surface-hover text-content-emphasis rounded-lg text-sm font-medium transition-colors"
-                        >
-                            Re-apply All
-                        </button>
+                        <>
+                            <button
+                                onClick={handleReapplyAllRules}
+                                className="px-3 py-1.5 bg-surface-input hover:bg-surface-hover text-content-emphasis rounded-lg text-sm font-medium transition-colors"
+                            >
+                                Re-apply All
+                            </button>
+                            <button
+                                onClick={() => setShowReassign(true)}
+                                className="px-3 py-1.5 bg-surface-input hover:bg-surface-hover text-content-emphasis rounded-lg text-sm font-medium transition-colors"
+                            >
+                                Reassign Rules
+                            </button>
+                        </>
                     )}
                     <Button
                         onClick={() => setShowAddRule(true)}
@@ -126,6 +244,75 @@ export default function SettingsTab() {
                         Add Rule
                     </Button>
                 </div>
+
+                {/* Rules stranded on an ended/deleted category — the #209 scenario */}
+                {staleGroups.length > 0 && !showReassign && (
+                    <AlertBanner severity="warning" size="sm" title="Rules point at categories you no longer use" className="mb-4">
+                        <div>
+                            {staleGroups.map(g => (
+                                <div key={g.expenseId}>
+                                    {g.name}{g.status === 'missing' ? '' : ' (ended)'}: {pluralRules(g.count)}
+                                </div>
+                            ))}
+                            <button
+                                onClick={() => {
+                                    setReassignFrom(staleGroups[0].expenseId);
+                                    setShowReassign(true);
+                                }}
+                                className="mt-2 underline hover:no-underline"
+                            >
+                                Reassign them to another category
+                            </button>
+                        </div>
+                    </AlertBanner>
+                )}
+
+                {/* Bulk reassign form */}
+                {showReassign && (
+                    <div className="bg-surface-raised rounded-lg p-4 mb-4 border border-border-default">
+                        <h5 className="font-medium text-white mb-1">Reassign Rules</h5>
+                        <p className="text-xs text-content-muted mb-3">
+                            Move every rule from one category to another — for example after ending an
+                            expense and recreating it.
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <DropdownInput
+                                label="From category"
+                                value={reassignFrom}
+                                onChange={setReassignFrom}
+                                options={sourceOptions}
+                            />
+                            <DropdownInput
+                                label="To category"
+                                value={reassignTo}
+                                onChange={setReassignTo}
+                                options={targetOptions}
+                            />
+                        </div>
+                        <p className="text-sm text-content-muted mt-3" data-testid="reassign-count">
+                            {reassignFrom
+                                ? `${pluralRules(reassignCount)} will be repointed.`
+                                : 'Pick the category whose rules should move.'}
+                        </p>
+                        <div className="mt-3 max-w-md">
+                            <ToggleInput
+                                label="Also re-apply to uncategorized transactions"
+                                enabled={reassignReapply}
+                                setEnabled={setReassignReapply}
+                                id="reassign-reapply"
+                                tooltip="Runs the moved rules against transactions that have no category yet. Transactions already assigned to the old category are left alone."
+                            />
+                        </div>
+                        <div className="flex gap-2 mt-4">
+                            <Button onClick={handleReassign} variant="positive" disabled={!canReassign}>
+                                {reassignFrom ? `Reassign ${pluralRules(reassignCount)}` : 'Reassign'}
+                            </Button>
+                            <Button onClick={closeReassign} variant="secondary">
+                                Cancel
+                            </Button>
+                        </div>
+                    </div>
+                )}
 
                 {/* Add Rule Form */}
                 {showAddRule && (
