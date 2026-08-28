@@ -32,6 +32,9 @@ import { generateId } from '../../../utils/id';
 // `new Date('YYYY-MM-DD')` UTC constructor shifts them a day earlier for west-of-UTC
 // users, ratcheting every transaction date one day per export/import cycle (#182).
 import { parseDate } from '../modelUtils';
+// `spending` is derived from the month's categorized transactions, so every
+// reducer that removes or re-categorizes a transaction has to refresh it (#210).
+import { recomputeSpendingForCategories } from './budgetUtils';
 
 const now = new Date();
 
@@ -167,19 +170,31 @@ export function budgetReducer(state: BudgetState, action: BudgetAction): BudgetS
         case 'UPDATE_TRANSACTION':
             return {
                 ...state,
-                months: state.months.map(m =>
-                    m.id === action.payload.monthId
-                        ? {
-                            ...m,
-                            transactions: m.transactions.map(t =>
-                                t.id === action.payload.transactionId
-                                    ? { ...t, ...action.payload.updates }
-                                    : t
-                            ),
-                            updatedAt: new Date(),
-                        }
-                        : m
-                ),
+                months: state.months.map(m => {
+                    if (m.id !== action.payload.monthId) return m;
+
+                    const previous = m.transactions.find(t => t.id === action.payload.transactionId);
+                    if (!previous) return m;
+
+                    const updated = { ...previous, ...action.payload.updates };
+                    const transactions = m.transactions.map(t =>
+                        t.id === action.payload.transactionId ? updated : t
+                    );
+
+                    return {
+                        ...m,
+                        transactions,
+                        // Re-derive both the category it left and the one it joined:
+                        // re-categorizing (or un-categorizing) the last transaction of
+                        // a category must not leave that category's total behind.
+                        spending: recomputeSpendingForCategories(
+                            transactions,
+                            m.spending,
+                            [previous.expenseId, updated.expenseId],
+                        ),
+                        updatedAt: new Date(),
+                    };
+                }),
             };
 
         case 'MOVE_TRANSACTION': {
@@ -197,6 +212,23 @@ export function budgetReducer(state: BudgetState, action: BudgetAction): BudgetS
             let targetMonth = state.months.find(m => m.month === toMonth && m.year === toYear);
             const targetMonthId = targetMonth?.id;
 
+            // Moving a transaction out of a month makes that month's stored total
+            // for the category stale — recompute it from what's left behind.
+            const withoutMoved = (m: MonthlySnapshot): MonthlySnapshot => {
+                const transactions = m.transactions.filter(t => t.id !== transactionId);
+                return {
+                    ...m,
+                    transactions,
+                    // The category it was counted under HERE is its pre-update one.
+                    spending: recomputeSpendingForCategories(
+                        transactions,
+                        m.spending,
+                        [transaction.expenseId],
+                    ),
+                    updatedAt: new Date(),
+                };
+            };
+
             // If target month doesn't exist, we need to create it
             if (!targetMonth) {
                 const newMonthId = generateId('MONTH');
@@ -204,7 +236,11 @@ export function budgetReducer(state: BudgetState, action: BudgetAction): BudgetS
                     id: newMonthId,
                     month: toMonth,
                     year: toYear,
-                    spending: {},
+                    spending: recomputeSpendingForCategories(
+                        [updatedTransaction],
+                        {},
+                        [updatedTransaction.expenseId],
+                    ),
                     accountBalances: {},
                     contributions: {},
                     transactions: [updatedTransaction],
@@ -217,15 +253,7 @@ export function budgetReducer(state: BudgetState, action: BudgetAction): BudgetS
                 return {
                     ...state,
                     months: [
-                        ...state.months.map(m =>
-                            m.id === fromMonthId
-                                ? {
-                                    ...m,
-                                    transactions: m.transactions.filter(t => t.id !== transactionId),
-                                    updatedAt: new Date(),
-                                }
-                                : m
-                        ),
+                        ...state.months.map(m => (m.id === fromMonthId ? withoutMoved(m) : m)),
                         targetMonth,
                     ],
                 };
@@ -236,16 +264,18 @@ export function budgetReducer(state: BudgetState, action: BudgetAction): BudgetS
                 ...state,
                 months: state.months.map(m => {
                     if (m.id === fromMonthId) {
-                        return {
-                            ...m,
-                            transactions: m.transactions.filter(t => t.id !== transactionId),
-                            updatedAt: new Date(),
-                        };
+                        return withoutMoved(m);
                     }
                     if (m.id === targetMonthId) {
+                        const transactions = [...m.transactions, updatedTransaction];
                         return {
                             ...m,
-                            transactions: [...m.transactions, updatedTransaction],
+                            transactions,
+                            spending: recomputeSpendingForCategories(
+                                transactions,
+                                m.spending,
+                                [updatedTransaction.expenseId],
+                            ),
                             updatedAt: new Date(),
                         };
                     }
@@ -257,29 +287,43 @@ export function budgetReducer(state: BudgetState, action: BudgetAction): BudgetS
         case 'DELETE_TRANSACTION':
             return {
                 ...state,
-                months: state.months.map(m =>
-                    m.id === action.payload.monthId
-                        ? {
-                            ...m,
-                            transactions: m.transactions.filter(t => t.id !== action.payload.transactionId),
-                            updatedAt: new Date(),
-                        }
-                        : m
-                ),
+                months: state.months.map(m => {
+                    if (m.id !== action.payload.monthId) return m;
+
+                    const removed = m.transactions.find(t => t.id === action.payload.transactionId);
+                    if (!removed) return m;
+
+                    const transactions = m.transactions.filter(t => t.id !== action.payload.transactionId);
+                    return {
+                        ...m,
+                        transactions,
+                        // Drop the deleted row's contribution to the derived total,
+                        // otherwise the month keeps reporting spending that no longer
+                        // has a transaction behind it (#210).
+                        spending: recomputeSpendingForCategories(transactions, m.spending, [removed.expenseId]),
+                        updatedAt: new Date(),
+                    };
+                }),
             };
 
         case 'CLEAR_ALL_TRANSACTIONS':
             return {
                 ...state,
-                months: state.months.map(m =>
-                    m.id === action.payload.monthId
-                        ? {
-                            ...m,
-                            transactions: [],
-                            updatedAt: new Date(),
-                        }
-                        : m
-                ),
+                months: state.months.map(m => {
+                    if (m.id !== action.payload.monthId) return m;
+                    return {
+                        ...m,
+                        transactions: [],
+                        // Every category that was tracked from transactions goes with
+                        // them; hand-entered totals for other categories stay.
+                        spending: recomputeSpendingForCategories(
+                            [],
+                            m.spending,
+                            m.transactions.map(t => t.expenseId),
+                        ),
+                        updatedAt: new Date(),
+                    };
+                }),
             };
 
         case 'BULK_ADD_TRANSACTIONS':

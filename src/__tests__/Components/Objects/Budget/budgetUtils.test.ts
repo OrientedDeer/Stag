@@ -17,6 +17,8 @@ import {
   getCategorySpending,
   getAccountBalances,
   calculateCategoryTotalsFromTransactions,
+  recomputeSpendingForCategories,
+  snapshotHasData,
   formatCurrency,
 } from '../../../../components/Objects/Budget/budgetUtils';
 import { type Transaction, type MonthlySnapshot } from '../../../../components/Objects/Budget/BudgetContext';
@@ -1057,6 +1059,85 @@ describe('budgetUtils', () => {
 
       expect(result['misc'].gross).toBe(1000);
       expect(result['misc'].reimbursements).toBe(300);
+    });
+  });
+
+  // #210: a month snapshot outlives the transaction that created it, so
+  // "does this month exist" is not the same question as "does it hold data".
+  describe('snapshotHasData', () => {
+    const emptySnapshot = (): MonthlySnapshot => ({
+      id: 'm1',
+      month: 12,
+      year: 2026,
+      spending: {},
+      accountBalances: {},
+      contributions: {},
+      transactions: [],
+      reconciled: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    it('should be false for a missing snapshot', () => {
+      expect(snapshotHasData(undefined)).toBe(false);
+    });
+
+    it('should be false for a snapshot left behind by a deleted transaction', () => {
+      // getOrCreateMonth made this month; the transaction that prompted it is
+      // gone and the reducer cleaned up its derived spending entry.
+      expect(snapshotHasData(emptySnapshot())).toBe(false);
+    });
+
+    it('should be false when every spending entry is zero', () => {
+      const snapshot = { ...emptySnapshot(), spending: { food: 0, rent: 0 } };
+      expect(snapshotHasData(snapshot)).toBe(false);
+    });
+
+    it('should be true for a non-zero spending entry', () => {
+      const snapshot = { ...emptySnapshot(), spending: { food: 250 } };
+      expect(snapshotHasData(snapshot)).toBe(true);
+    });
+
+    it('should be true when the month has transactions, even uncategorized ones', () => {
+      const snapshot = {
+        ...emptySnapshot(),
+        transactions: [
+          { id: 't1', date: new Date(2026, 11, 4), description: 'Coffee', amount: -4.5 },
+        ] as Transaction[],
+      };
+      expect(snapshotHasData(snapshot)).toBe(true);
+    });
+  });
+
+  describe('recomputeSpendingForCategories', () => {
+    it('should delete the entry when the category has no transactions left', () => {
+      const result = recomputeSpendingForCategories([], { food: 250 }, ['food']);
+      expect(result).toEqual({});
+    });
+
+    it('should rewrite the entry to the remaining net total', () => {
+      const remaining: Transaction[] = [
+        { id: 't2', date: new Date(2026, 11, 5), description: 'Groceries', amount: -100, expenseId: 'food' },
+        { id: 't3', date: new Date(2026, 11, 6), description: 'Refund', amount: 25, expenseId: 'food', isReimbursement: true },
+      ];
+      const result = recomputeSpendingForCategories(remaining, { food: 350 }, ['food']);
+      expect(result).toEqual({ food: 75 });
+    });
+
+    it('should leave categories it was not asked about alone', () => {
+      // `rent` is hand-entered in the History grid — no transaction backs it.
+      const result = recomputeSpendingForCategories([], { food: 250, rent: 1000 }, ['food']);
+      expect(result).toEqual({ rent: 1000 });
+    });
+
+    it('should ignore undefined ids and return the same record when nothing moved', () => {
+      const spending = { food: 250 };
+      expect(recomputeSpendingForCategories([], spending, [undefined])).toBe(spending);
+
+      const unchanged: Transaction[] = [
+        { id: 't1', date: new Date(2026, 11, 5), description: 'Groceries', amount: -250, expenseId: 'food' },
+      ];
+      expect(recomputeSpendingForCategories(unchanged, spending, ['food'])).toBe(spending);
     });
   });
 });

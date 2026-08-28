@@ -12,6 +12,7 @@ import {
     getNonDiscretionaryMonthlyBudget,
     getUncategorizedCount,
     getUncategorizedSpending,
+    snapshotHasData,
     MONTH_NAMES,
 } from '../../components/Objects/Budget/budgetUtils';
 import { ToggleInput } from '../../components/Layout/InputFields/ToggleInput';
@@ -63,7 +64,7 @@ export default function OverviewTab() {
     // and the month is in the future), the non-discretionary monthly budget.
     const getEffectiveMonthSpend = useCallback((m: number, y: number) => {
         const snap = months.find(s => s.month === m && s.year === y);
-        if (snap && (Object.keys(snap.spending).length > 0 || snap.transactions.length > 0)) {
+        if (snapshotHasData(snap)) {
             return Object.values(snap.spending).reduce((s, v) => s + v, 0) + getUncategorizedSpending(snap);
         }
         if (projectFuture && isMonthInFuture(m, y)) {
@@ -94,10 +95,7 @@ export default function OverviewTab() {
     // monthly budget as projected spend so the YTD doesn't look artificially low.
     const ytdStats = useMemo(() => {
         const monthsWithData = months
-            .filter(m =>
-                m.year === selectedYear &&
-                (Object.keys(m.spending).length > 0 || m.transactions.length > 0)
-            )
+            .filter(m => m.year === selectedYear && snapshotHasData(m))
             .map(m => m.month);
         const firstMonthWithData = monthsWithData.length > 0 ? Math.min(...monthsWithData) : selectedMonth;
 
@@ -127,10 +125,7 @@ export default function OverviewTab() {
         };
     }, [months, expenses, selectedMonth, selectedYear, getEffectiveMonthSpend]);
 
-    const hasData = currentSnapshot && (
-        Object.keys(currentSnapshot.spending).length > 0 ||
-        currentSnapshot.transactions.length > 0
-    );
+    const hasData = snapshotHasData(currentSnapshot);
 
     const isFutureMonth = isMonthInFuture(selectedMonth, selectedYear);
 
@@ -157,9 +152,7 @@ export default function OverviewTab() {
 
         monthsToCheck.forEach(({ month, year }) => {
             const snapshot = months.find(s => s.month === month && s.year === year);
-            const hasSnapshotData = snapshot && (
-                Object.keys(snapshot.spending).length > 0 || snapshot.transactions.length > 0
-            );
+            const hasSnapshotData = snapshotHasData(snapshot);
             if (hasSnapshotData && snapshot) {
                 expenses.forEach(exp => {
                     if (snapshot.spending[exp.id]) {
@@ -339,9 +332,7 @@ export default function OverviewTab() {
                         const monthSnapshot = months.find(
                             m => m.month === monthNum && m.year === selectedYear
                         );
-                        const hasMonthData = monthSnapshot && (
-                            Object.keys(monthSnapshot.spending).length > 0 || monthSnapshot.transactions.length > 0
-                        );
+                        const hasMonthData = snapshotHasData(monthSnapshot);
                         const isCurrentMonth = monthNum === selectedMonth;
                         const isFuture = isMonthInFuture(monthNum, selectedYear);
                         const isProjected = !hasMonthData && isFuture && projectFuture;
