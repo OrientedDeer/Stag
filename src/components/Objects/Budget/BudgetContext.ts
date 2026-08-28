@@ -66,6 +66,7 @@ export type BudgetAction =
     | { type: 'ADD_CATEGORY_MAPPING'; payload: CategoryMapping }
     | { type: 'UPDATE_CATEGORY_MAPPING'; payload: { id: string; updates: Partial<CategoryMapping> } }
     | { type: 'DELETE_CATEGORY_MAPPING'; payload: { id: string } }
+    | { type: 'REASSIGN_CATEGORY_MAPPINGS'; payload: { fromExpenseId: string; toExpenseId: string } }
     | { type: 'APPLY_CATEGORY_RULE'; payload: CategoryMapping & { expenseStart?: Date | string | null; expenseEnd?: Date | string | null } }
     | { type: 'ADD_CSV_FORMAT'; payload: SavedCSVMapping }
     | { type: 'UPDATE_CSV_FORMAT'; payload: { id: string; updates: Partial<SavedCSVMapping> } }
@@ -324,6 +325,49 @@ export function budgetReducer(state: BudgetState, action: BudgetAction): BudgetS
                     categoryMappings: state.importSettings.categoryMappings.filter(m => m.id !== action.payload.id),
                 },
             };
+
+        case 'REASSIGN_CATEGORY_MAPPINGS': {
+            // Bulk-repoint every rule aimed at one expense to another (#209): the
+            // user ends an expense, recreates it, and every filter still points at
+            // the dead id. Done as ONE action so the whole move is a single undo-able
+            // state transition instead of N UPDATE_CATEGORY_MAPPING dispatches.
+            const { fromExpenseId, toExpenseId } = action.payload;
+            if (!fromExpenseId || !toExpenseId || fromExpenseId === toExpenseId) return state;
+
+            const mappings = state.importSettings.categoryMappings;
+            if (!mappings.some(m => m.expenseId === fromExpenseId)) return state;
+
+            // Repointing can collide with a rule that ALREADY pointed at the target
+            // (same pattern, same regex flag). Matching is case-insensitive and
+            // first-match-wins, so such a moved rule is dead weight — drop it. Only a
+            // MOVED rule is ever dropped: every rule outside the source category is
+            // carried over verbatim, pre-existing duplicates included.
+            const collisionKey = (m: CategoryMapping) =>
+                `${m.isRegex ? 're' : 'txt'} ${m.pattern.toLowerCase()}`;
+            const targetKeys = new Set(
+                mappings.filter(m => m.expenseId === toExpenseId).map(collisionKey)
+            );
+
+            const repointed: CategoryMapping[] = [];
+            for (const m of mappings) {
+                if (m.expenseId !== fromExpenseId) {
+                    repointed.push(m);
+                    continue;
+                }
+                const key = collisionKey(m);
+                if (targetKeys.has(key)) continue; // collapses into the rule already on the target
+                targetKeys.add(key);               // ...and two identical moved rules into the first
+                repointed.push({ ...m, expenseId: toExpenseId });
+            }
+
+            return {
+                ...state,
+                importSettings: {
+                    ...state.importSettings,
+                    categoryMappings: repointed,
+                },
+            };
+        }
 
         case 'APPLY_CATEGORY_RULE': {
             // Apply a category rule to all matching uncategorized transactions
