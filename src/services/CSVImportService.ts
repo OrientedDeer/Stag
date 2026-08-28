@@ -11,6 +11,7 @@ import type {
     CSVImportOptions,
     SavedCSVMapping,
 } from '../components/Objects/Budget/BudgetTypes';
+import { isTransferRule } from '../components/Objects/Budget/BudgetTypes';
 import { generateId } from '../utils/id';
 
 // ============================================================================
@@ -877,7 +878,12 @@ export function applyCategories(
 
             if (matches) {
                 autoCategorizedCount++;
-                return { ...txn, expenseId: rule.expenseId };
+                // A transfer rule (#209) carries the TRANSFER_CATEGORY_ID sentinel;
+                // it flags the row as a transfer instead of assigning an expense —
+                // the sentinel must never land in `expenseId`.
+                return isTransferRule(rule)
+                    ? { ...txn, isTransfer: true, expenseId: undefined }
+                    : { ...txn, expenseId: rule.expenseId };
             }
         }
         return txn;

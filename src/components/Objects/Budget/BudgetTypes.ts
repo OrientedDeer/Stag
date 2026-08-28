@@ -63,8 +63,20 @@ export const TRANSFER_CATEGORY_ID = '__TRANSFER__';
 export interface CategoryMapping {
     id: string;
     pattern: string; // text to match in description
-    expenseId: string; // expense category to assign
+    /**
+     * Category to assign: either a real expense id, or the TRANSFER_CATEGORY_ID
+     * sentinel (#209) — the same value every category dropdown already uses for
+     * "Transfer". Consumers that APPLY a rule must translate the sentinel into
+     * `isTransfer: true` with NO expenseId; a literal '__TRANSFER__' expenseId on
+     * a transaction would leak into the per-category spending totals.
+     */
+    expenseId: string;
     isRegex?: boolean; // treat pattern as regex
+}
+
+/** True when a rule categorizes matches as transfers rather than as an expense. */
+export function isTransferRule(rule: Pick<CategoryMapping, 'expenseId'>): boolean {
+    return rule.expenseId === TRANSFER_CATEGORY_ID;
 }
 
 /**

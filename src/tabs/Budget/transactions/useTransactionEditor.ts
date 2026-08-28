@@ -64,17 +64,20 @@ export function useTransactionEditor(selectedMonth: number, selectedYear: number
     const resetForm = useCallback(() => setFormData(emptyForm()), []);
 
     /**
-     * Auto-create a categorization rule from a single transaction whose
-     * `expenseId` was just set, but only if (a) auto-create is enabled,
-     * (b) no existing rule matches the description, and (c) the caller
-     * supplies the resolved expenseId. Returns true if a rule was created.
+     * Auto-create a categorization rule from a single transaction that was just
+     * categorized, but only if (a) auto-create is enabled, (b) no existing rule
+     * matches the description, and (c) the caller supplies the resolved category.
+     *
+     * `categoryId` is either a real expense id or the TRANSFER_CATEGORY_ID
+     * sentinel — categorizing as "Transfer" mints a rule just like any other
+     * category (#209). Returns true if a rule was created.
      */
     const maybeCreateCategoryRule = useCallback((
         transaction: Transaction | undefined,
-        expenseId: string,
+        categoryId: string,
         skipPatterns?: Set<string>,
     ): boolean => {
-        if (!importSettings.autoCreateRules || !transaction || !expenseId) return false;
+        if (!importSettings.autoCreateRules || !transaction || !categoryId) return false;
 
         const patternLower = transaction.description.toLowerCase();
         if (skipPatterns?.has(patternLower)) return false;
@@ -84,11 +87,12 @@ export function useTransactionEditor(selectedMonth: number, selectedYear: number
         );
         if (existingRule) return false;
 
-        const ruleExpense = expenses.find(e => e.id === expenseId);
+        // A transfer rule has no backing expense, so it carries no active window.
+        const ruleExpense = expenses.find(e => e.id === categoryId);
         const newRule = {
             id: makeId('RULE'),
             pattern: transaction.description,
-            expenseId,
+            expenseId: categoryId,
             isRegex: false,
         };
         dispatch({ type: 'ADD_CATEGORY_MAPPING', payload: newRule });
@@ -198,9 +202,17 @@ export function useTransactionEditor(selectedMonth: number, selectedYear: number
             },
         });
 
-        if (cleanedUpdates.expenseId) {
+        // Categorizing as "Transfer" carries no expenseId, so it needs the sentinel
+        // to mint a rule (#209). Contributions (isTransfer + targetAccountId) are
+        // deliberately excluded: a CategoryMapping can't carry the target account.
+        const ruleCategoryId = cleanedUpdates.expenseId
+            || (cleanedUpdates.isTransfer && !cleanedUpdates.targetAccountId
+                ? TRANSFER_CATEGORY_ID
+                : undefined);
+
+        if (ruleCategoryId) {
             const transaction = currentSnapshot.transactions.find(t => t.id === transactionId);
-            maybeCreateCategoryRule(transaction, cleanedUpdates.expenseId);
+            maybeCreateCategoryRule(transaction, ruleCategoryId);
         }
     }, [currentSnapshot, dispatch, selectedMonth, selectedYear, maybeCreateCategoryRule]);
 
@@ -256,9 +268,12 @@ export function useTransactionEditor(selectedMonth: number, selectedYear: number
                 },
             });
 
-            if (expenseId) {
+            // Bulk "Transfer" mints rules too (#209) — the sentinel stands in for the
+            // expenseId the transfer branch doesn't have. Bulk "Uncategorized" doesn't.
+            const ruleCategoryId = expenseId || (isTransfer ? TRANSFER_CATEGORY_ID : undefined);
+            if (ruleCategoryId) {
                 const transaction = currentSnapshot.transactions.find(t => t.id === transactionId);
-                maybeCreateCategoryRule(transaction, expenseId, createdRulePatterns);
+                maybeCreateCategoryRule(transaction, ruleCategoryId, createdRulePatterns);
             }
         });
     }, [currentSnapshot, dispatch, maybeCreateCategoryRule]);
