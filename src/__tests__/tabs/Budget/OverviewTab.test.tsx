@@ -88,6 +88,7 @@ describe('OverviewTab — non-discretionary projection for empty future months (
         renderOverviewTab({ months: [] });
 
         expect(thisMonthTotals()).toBe('$1,000/ $1,000');
+        expect(screen.getAllByText('(non-discretionary projected)').length).toBeGreaterThan(0);
         expect(decemberTileTitle()).toContain('$1,000 projected');
     });
 
@@ -112,5 +113,22 @@ describe('OverviewTab — non-discretionary projection for empty future months (
 
         expect(thisMonthTotals()).toBe('$640/ $1,000');
         expect(decemberTileTitle()).toContain('$640 spent');
+    });
+
+    it('does not replace a tracked zero-dollar month with a projection', () => {
+        renderOverviewTab({
+            months: [makeSnapshot(12, 2026, {
+                transactions: [{
+                    id: 'transfer',
+                    date: new Date(2026, 11, 5),
+                    description: 'Transfer',
+                    amount: -100,
+                    isTransfer: true,
+                }],
+            })],
+        });
+
+        expect(thisMonthTotals()).toBe('$0/ $1,000');
+        expect(decemberTileTitle()).toContain('$0 spent');
     });
 });

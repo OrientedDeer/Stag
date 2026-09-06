@@ -59,6 +59,9 @@ export default function OverviewTab() {
         months.find(m => m.month === selectedMonth && m.year === selectedYear),
         [months, selectedMonth, selectedYear]
     );
+    const hasData = snapshotHasData(currentSnapshot);
+    const isFutureMonth = isMonthInFuture(selectedMonth, selectedYear);
+    const isProjectedMonth = !!projectFuture && isFutureMonth && !hasData;
 
     // Effective spend for a given month: actual snapshot if available; otherwise (if projecting
     // and the month is in the future), the non-discretionary monthly budget.
@@ -76,7 +79,7 @@ export default function OverviewTab() {
     const budgetSummary = useMemo(() => {
         const base = calculateBudgetSummary(expenses, currentSnapshot, selectedMonth, selectedYear);
         // Override totalSpent when projecting a future month with no data.
-        if (projectFuture && isMonthInFuture(selectedMonth, selectedYear) && base.totalSpent === 0) {
+        if (isProjectedMonth) {
             const projected = getNonDiscretionaryMonthlyBudget(expenses, selectedMonth, selectedYear);
             const remaining = base.totalBudget - projected;
             return {
@@ -88,7 +91,7 @@ export default function OverviewTab() {
             };
         }
         return base;
-    }, [expenses, currentSnapshot, selectedMonth, selectedYear, projectFuture, isMonthInFuture]);
+    }, [expenses, currentSnapshot, selectedMonth, selectedYear, isProjectedMonth]);
 
     // Calculate year-to-date stats (from first month with data to selected month).
     // When projectFuture is on, future months in the range contribute their non-discretionary
@@ -124,10 +127,6 @@ export default function OverviewTab() {
             firstMonth: firstMonthWithData,
         };
     }, [months, expenses, selectedMonth, selectedYear, getEffectiveMonthSpend]);
-
-    const hasData = snapshotHasData(currentSnapshot);
-
-    const isFutureMonth = isMonthInFuture(selectedMonth, selectedYear);
 
     // Category spending data for bar chart (average of 6 months ending at selected month)
     const categoryData = useMemo(() => {
@@ -233,8 +232,15 @@ export default function OverviewTab() {
                 <div className="bg-surface-overlay rounded-xl p-4 border border-border-default">
                     <h3 className="text-sm text-content-muted mb-2 flex items-center gap-1.5">
                         This Month
+                        {isProjectedMonth && (
+                            <span className="text-xs text-content-subtle font-normal ml-1">
+                                (non-discretionary projected)
+                            </span>
+                        )}
                         <Tooltip
-                            text={`${formatCurrency(budgetSummary.totalBudget)} budget = this month's active expenses (non-discretionary + discretionary). Spent ${formatCurrency(budgetSummary.totalSpent)} so far; ${budgetSummary.isUnderBudget ? `${formatCurrency(budgetSummary.remaining)} remaining` : `${formatCurrency(Math.abs(budgetSummary.remaining))} over`}.`}
+                            text={isProjectedMonth
+                                ? `${formatCurrency(budgetSummary.totalBudget)} budget = this month's active expenses (non-discretionary + discretionary). With no tracked transactions, ${formatCurrency(budgetSummary.totalSpent)} of non-discretionary spending is projected; ${formatCurrency(budgetSummary.remaining)} remains unprojected.`
+                                : `${formatCurrency(budgetSummary.totalBudget)} budget = this month's active expenses (non-discretionary + discretionary). Spent ${formatCurrency(budgetSummary.totalSpent)} so far; ${budgetSummary.isUnderBudget ? `${formatCurrency(budgetSummary.remaining)} remaining` : `${formatCurrency(Math.abs(budgetSummary.remaining))} over`}.`}
                         />
                     </h3>
                     <div className="text-2xl font-bold text-white">

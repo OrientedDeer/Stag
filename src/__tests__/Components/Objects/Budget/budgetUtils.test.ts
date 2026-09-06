@@ -17,7 +17,7 @@ import {
   getCategorySpending,
   getAccountBalances,
   calculateCategoryTotalsFromTransactions,
-  recomputeSpendingForCategories,
+  deriveSpendingFromTransactions,
   snapshotHasData,
   formatCurrency,
 } from '../../../../components/Objects/Budget/budgetUtils';
@@ -1109,35 +1109,20 @@ describe('budgetUtils', () => {
     });
   });
 
-  describe('recomputeSpendingForCategories', () => {
-    it('should delete the entry when the category has no transactions left', () => {
-      const result = recomputeSpendingForCategories([], { food: 250 }, ['food']);
-      expect(result).toEqual({});
-    });
-
-    it('should rewrite the entry to the remaining net total', () => {
-      const remaining: Transaction[] = [
-        { id: 't2', date: new Date(2026, 11, 5), description: 'Groceries', amount: -100, expenseId: 'food' },
-        { id: 't3', date: new Date(2026, 11, 6), description: 'Refund', amount: 25, expenseId: 'food', isReimbursement: true },
+  describe('deriveSpendingFromTransactions', () => {
+    it('builds the complete net cache and excludes non-spending rows', () => {
+      const transactions: Transaction[] = [
+        { id: 't1', date: new Date(2026, 11, 5), description: 'Groceries', amount: -100, expenseId: 'food' },
+        { id: 't2', date: new Date(2026, 11, 6), description: 'Refund', amount: 25, expenseId: 'food', isReimbursement: true },
+        { id: 't3', date: new Date(2026, 11, 7), description: 'Rent', amount: -1000, expenseId: 'rent' },
+        { id: 't4', date: new Date(2026, 11, 8), description: 'Transfer', amount: -50, isTransfer: true },
       ];
-      const result = recomputeSpendingForCategories(remaining, { food: 350 }, ['food']);
-      expect(result).toEqual({ food: 75 });
+
+      expect(deriveSpendingFromTransactions(transactions)).toEqual({ food: 75, rent: 1000 });
     });
 
-    it('should leave categories it was not asked about alone', () => {
-      // `rent` is hand-entered in the History grid — no transaction backs it.
-      const result = recomputeSpendingForCategories([], { food: 250, rent: 1000 }, ['food']);
-      expect(result).toEqual({ rent: 1000 });
-    });
-
-    it('should ignore undefined ids and return the same record when nothing moved', () => {
-      const spending = { food: 250 };
-      expect(recomputeSpendingForCategories([], spending, [undefined])).toBe(spending);
-
-      const unchanged: Transaction[] = [
-        { id: 't1', date: new Date(2026, 11, 5), description: 'Groceries', amount: -250, expenseId: 'food' },
-      ];
-      expect(recomputeSpendingForCategories(unchanged, spending, ['food'])).toBe(spending);
+    it('returns an empty cache when the final transaction is removed', () => {
+      expect(deriveSpendingFromTransactions([])).toEqual({});
     });
   });
 });

@@ -20,8 +20,17 @@ import type { SimulationYear } from '../../../components/Objects/Assumptions/Sim
 // The spending grid itself isn't under test — stub out react-datasheet-grid
 // (it doesn't render meaningfully in jsdom). keyColumn/floatColumn/textColumn
 // are also consumed by DataSheetColumns.
+interface CapturedGridProps {
+    value: Array<{ id: string; actual: number | null }>;
+    columns: Array<{ key: string; title: string }>;
+}
+let capturedGridProps: CapturedGridProps | undefined;
+
 vi.mock('react-datasheet-grid', () => ({
-    DataSheetGrid: () => <div data-testid="datasheet-grid" />,
+    DataSheetGrid: (props: CapturedGridProps) => {
+        capturedGridProps = props;
+        return <div data-testid="datasheet-grid" />;
+    },
     keyColumn: (key: string, column: object) => ({ key, ...column }),
     floatColumn: {},
     textColumn: {},
@@ -30,7 +39,8 @@ vi.mock('react-datasheet-grid', () => ({
 const makeSnapshot = (
     month: number,
     year: number,
-    accountBalances: Record<string, number>
+    accountBalances: Record<string, number>,
+    overrides: Partial<MonthlySnapshot> = {},
 ): MonthlySnapshot => ({
     id: `${year}-${month}`,
     month,
@@ -42,6 +52,7 @@ const makeSnapshot = (
     reconciled: false,
     createdAt: new Date(),
     updatedAt: new Date(),
+    ...overrides,
 });
 
 interface HarnessOptions {
@@ -103,6 +114,7 @@ describe('SpendingTab pacing "why" tooltip', () => {
     beforeEach(() => {
         // Fake only Date (not timers) so React/RTL scheduling is untouched.
         vi.useFakeTimers({ toFake: ['Date'] });
+        capturedGridProps = undefined;
     });
 
     afterEach(() => {
@@ -250,6 +262,78 @@ describe('SpendingTab pacing "why" tooltip', () => {
         const row = screen.getByText('House Fund').closest('tr') as HTMLElement;
         // 5,000 / 20,000 = 25%, $15,000 to go.
         expect(within(row).getByText(/25% · \$15,000 to go/)).toBeInTheDocument();
+    });
+});
+
+describe('SpendingTab future projections', () => {
+    const rent = new OtherExpense('rent', 'Rent', 1000, 'Monthly', new Date(2024, 0, 1));
+
+    beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date(2026, 8, 6));
+        capturedGridProps = undefined;
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('labels an empty future month as projected rather than actual', () => {
+        renderSpendingTab({
+            budget: { selectedMonth: 12, selectedYear: 2026, projectFuture: true },
+            expenses: [rent],
+            accounts: [],
+        });
+
+        expect(capturedGridProps?.columns.find(c => c.key === 'actual')?.title).toBe('Projected');
+        expect(capturedGridProps?.value.find(r => r.id === 'rent')?.actual).toBe(1000);
+    });
+
+    it('projects over a leftover zero, which carries no information', () => {
+        // A stored 0 is not a measurement: a category whose charges are fully
+        // offset by a reimbursement nets 0, and the History grid writes 0 when a
+        // cell is cleared. `?? null` only catches undefined, so such an entry used
+        // to render $0 and opt that one category out of the projection while every
+        // other row projected — the row stopped responding to the toggle.
+        const zeroed = makeSnapshot(12, 2026, {}, { spending: { rent: 0 } });
+        renderSpendingTab({
+            budget: {
+                selectedMonth: 12,
+                selectedYear: 2026,
+                projectFuture: true,
+                months: [zeroed],
+            },
+            expenses: [rent],
+            accounts: [],
+        });
+
+        expect(capturedGridProps?.columns.find(c => c.key === 'actual')?.title).toBe('Projected');
+        expect(capturedGridProps?.value.find(r => r.id === 'rent')?.actual).toBe(1000);
+    });
+
+    it('does not mix projections into a future month that has tracked transactions', () => {
+        const tracked = makeSnapshot(12, 2026, {}, {
+            transactions: [{
+                id: 'transfer',
+                date: new Date(2026, 11, 5),
+                description: 'Transfer',
+                amount: -100,
+                isTransfer: true,
+            }],
+        });
+        renderSpendingTab({
+            budget: {
+                selectedMonth: 12,
+                selectedYear: 2026,
+                projectFuture: true,
+                months: [tracked],
+            },
+            expenses: [rent],
+            accounts: [],
+        });
+
+        expect(capturedGridProps?.columns.find(c => c.key === 'actual')?.title).toBe('Actual');
+        expect(capturedGridProps?.value.find(r => r.id === 'rent')?.actual).toBeNull();
     });
 });
 

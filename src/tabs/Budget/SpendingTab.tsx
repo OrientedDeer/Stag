@@ -21,6 +21,7 @@ import {
     getExpenseMonthlyBudget,
     formatCurrency,
     MONTH_NAMES,
+    snapshotHasData,
 } from '../../components/Objects/Budget/budgetUtils';
 import { currencyColumn, readOnlyTextColumn } from '../../components/Layout/DataSheetColumns';
 import { ToggleInput } from '../../components/Layout/InputFields/ToggleInput';
@@ -70,6 +71,7 @@ export default function SpendingTab() {
         months.find(m => m.month === selectedMonth && m.year === selectedYear),
         [months, selectedMonth, selectedYear]
     );
+    const isProjectedMonth = isFutureMonth && !!projectFuture && !snapshotHasData(currentSnapshot);
 
     // Long-term goals are funded as savings (a fund account + savings priority),
     // not logged as spending — so they're shown in the savings section, not the
@@ -519,15 +521,23 @@ export default function SpendingTab() {
     const hasPriorityBuckets = priorities.filter(p => p.accountId).length > 0;
     const showTracking = !isFutureMonth && hasPriorityBuckets;
 
-    // Create rows for the spending grid.
-    // When projectFuture is on AND we're on a future month, non-discretionary expenses
-    // show their budgeted amount as "actual" so the grid isn't all zeros.
+    // Create rows for the spending grid. An entirely untracked future month can
+    // show non-discretionary budget amounts as explicitly labeled projections.
     const rows: SpendingRow[] = useMemo(() => {
         return activeExpenses.map(expense => {
             const budget = getExpenseMonthlyBudget(expense, selectedMonth);
             let actual = currentSnapshot?.spending[expense.id] ?? null;
 
-            if (actual === null && isFutureMonth && projectFuture && !expense.isDiscretionary) {
+            // A stored ZERO is an absence here, not a measurement. `?? null` only
+            // catches undefined, so a leftover `spending[id] = 0` used to opt that
+            // one category out of the projection while every other row projected
+            // — the category rendered $0 and stopped responding to the toggle.
+            // `isProjectedMonth` already means the month has no real data
+            // (snapshotHasData treats an all-zero record as empty), so inside it a
+            // zero carries no information. Zeros are written routinely: a category
+            // whose charges are fully offset by a reimbursement nets 0, and the
+            // History grid writes 0 when a cell is cleared.
+            if ((actual === null || actual === 0) && isProjectedMonth && !expense.isDiscretionary) {
                 actual = budget;
             }
 
@@ -540,7 +550,7 @@ export default function SpendingTab() {
                 difference,
             };
         });
-    }, [activeExpenses, currentSnapshot, isFutureMonth, projectFuture, selectedMonth]);
+    }, [activeExpenses, currentSnapshot, isProjectedMonth, selectedMonth]);
 
     // Define columns - use keyColumn and cast to avoid type issues with nullable fields
     const columns = useMemo(() => [
@@ -558,7 +568,7 @@ export default function SpendingTab() {
         },
         {
             ...keyColumn('actual', currencyColumn),
-            title: 'Actual',
+            title: isProjectedMonth ? 'Projected' : 'Actual',
             disabled: true,
             minWidth: 100,
         },
@@ -569,7 +579,7 @@ export default function SpendingTab() {
             minWidth: 100,
         },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ] as any, []);
+    ] as any, [isProjectedMonth]);
 
     if (activeExpenses.length === 0) {
         return (
@@ -593,7 +603,7 @@ export default function SpendingTab() {
                         <h3 className="text-lg font-semibold text-white">Spending by Category</h3>
                         <p className="text-sm text-content-muted mt-1">
                             Spending is automatically calculated from categorized transactions.
-                            {isFutureMonth && projectFuture && (
+                            {isProjectedMonth && (
                                 <> Non-discretionary expenses are projected at budgeted amounts for this future month.</>
                             )}
                         </p>

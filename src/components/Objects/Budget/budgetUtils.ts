@@ -560,53 +560,22 @@ export function calculateCategoryTotalsFromTransactions(
 }
 
 /**
- * Rewrite the `spending` entries for the categories a transaction mutation
- * touched, from the transactions that remain in the month.
+ * Build the complete persisted spending cache for a transaction-backed month.
  *
- * `spending` is a DERIVED cache of the month's categorized transactions, so the
- * transaction reducers (delete / clear / move / update) have to maintain it —
- * `computeSpendingReconciliation` deliberately leaves a month with no
- * transactions alone (those months' totals are hand-entered in the History
- * grid), which is exactly why deleting the last transaction of a month used to
- * strand its spending total in the Overview/Spending/History tabs and make an
- * otherwise-empty future month look tracked (#210).
- *
- * Only the listed categories are recomputed; every other entry is left as-is.
- * Returns the original record unchanged (same reference) when nothing moved.
+ * Transaction mutations use this synchronously so `transactions` and
+ * `spending` are committed as one state change. The app-wide reconciler remains
+ * a compatibility/repair path for older persisted data, not the primary writer.
  */
-export function recomputeSpendingForCategories(
+export function deriveSpendingFromTransactions(
     transactions: Transaction[],
-    spending: Record<string, number>,
-    expenseIds: Iterable<string | undefined>,
 ): Record<string, number> {
-    const affected = new Set<string>();
-    for (const id of expenseIds) {
-        if (id) affected.add(id);
-    }
-    if (affected.size === 0) return spending;
-
     const categoryTotals = calculateCategoryTotalsFromTransactions(transactions);
-    const next = { ...spending };
-    let changed = false;
-
-    affected.forEach(expenseId => {
-        const totals = categoryTotals[expenseId];
-        if (!totals) {
-            // Nothing left in this category — drop the derived entry entirely.
-            if (expenseId in next) {
-                delete next[expenseId];
-                changed = true;
-            }
-            return;
-        }
-        const netSpending = totals.gross - totals.reimbursements;
-        if (next[expenseId] !== netSpending) {
-            next[expenseId] = netSpending;
-            changed = true;
-        }
-    });
-
-    return changed ? next : spending;
+    return Object.fromEntries(
+        Object.entries(categoryTotals).map(([expenseId, totals]) => [
+            expenseId,
+            totals.gross - totals.reimbursements,
+        ]),
+    );
 }
 
 /** One spending correction: `amount: null` means "delete the stale entry". */
@@ -624,10 +593,10 @@ export interface SpendingReconciliationDiff {
  *
  * Mirrors useAutoReconcile exactly: months with no transactions are left alone
  * (their totals are hand-entered in the History grid — clearing those here would
- * eat manual data; removing the last transaction from a month instead cleans up
- * its derived entries in the reducer, see recomputeSpendingForCategories);
- * a category is rewritten when it drifts by more than a cent; a stored non-zero
- * category with no matching transactions is deleted.
+ * eat manual data; transaction mutations instead atomically replace the complete
+ * cache via deriveSpendingFromTransactions, so this path never has to clean up
+ * after them); a category is rewritten when it drifts by more than a cent; a
+ * stored non-zero category with no matching transactions is deleted.
  */
 export function computeSpendingReconciliation(
     transactions: Transaction[] | undefined,

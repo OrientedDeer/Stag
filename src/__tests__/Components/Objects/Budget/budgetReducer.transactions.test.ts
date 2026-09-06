@@ -94,6 +94,9 @@ describe('budgetReducer — transactions keep the derived spending record in syn
                     transaction: makeTransaction('t1', -250, { expenseId: 'groceries' }),
                 },
             });
+            // The reducer writes both sides of the cache invariant atomically;
+            // the reconciler is now only a persisted-data repair path.
+            expect(monthById(state, december.id).spending).toEqual({ groceries: 250 });
             state = reconcile(state);
 
             // The reconciler has cached the transaction's amount as spending...
@@ -152,6 +155,23 @@ describe('budgetReducer — transactions keep the derived spending record in syn
             });
 
             expect(monthById(state, december.id).spending).toEqual({ groceries: 100, gas: 60 });
+        });
+
+        it('drops unrelated orphaned cache entries while deleting', () => {
+            const december = makeMonth(12, 2026, {
+                transactions: [
+                    makeTransaction('t1', -250, { expenseId: 'groceries' }),
+                    makeTransaction('t2', -60, { expenseId: 'gas' }),
+                ],
+                spending: { groceries: 250, gas: 60, orphaned: 999 },
+            });
+
+            const state = budgetReducer(stateWith([december]), {
+                type: 'DELETE_TRANSACTION',
+                payload: { monthId: december.id, transactionId: 't1' },
+            });
+
+            expect(monthById(state, december.id).spending).toEqual({ gas: 60 });
         });
 
         it('nets reimbursements out of the recomputed category total', () => {
@@ -229,13 +249,14 @@ describe('budgetReducer — transactions keep the derived spending record in syn
     });
 
     describe('CLEAR_ALL_TRANSACTIONS', () => {
-        it('clears the totals its transactions produced but keeps hand-entered ones', () => {
+        it('clears the complete cache owned by the month transactions', () => {
             const december = makeMonth(12, 2026, {
                 transactions: [
                     makeTransaction('t1', -250, { expenseId: 'groceries' }),
                     makeTransaction('t2', -60, { expenseId: 'gas' }),
                 ],
-                // `utilities` was typed into the History grid, not derived from a transaction.
+                // `utilities` is an orphan. Once a month has transactions the
+                // reconciler owns the whole cache, so it is not a manual island.
                 spending: { groceries: 250, gas: 60, utilities: 90 },
             });
 
@@ -246,7 +267,21 @@ describe('budgetReducer — transactions keep the derived spending record in syn
 
             const after = monthById(state, december.id);
             expect(after.transactions).toEqual([]);
-            expect(after.spending).toEqual({ utilities: 90 });
+            expect(after.spending).toEqual({});
+        });
+
+        it('leaves a transaction-less month (hand-entered totals) untouched', () => {
+            const december = makeMonth(12, 2026, {
+                spending: { utilities: 90 },
+            });
+            const state = stateWith([december]);
+
+            const next = budgetReducer(state, {
+                type: 'CLEAR_ALL_TRANSACTIONS',
+                payload: { monthId: december.id },
+            });
+
+            expect(monthById(next, december.id)).toBe(december);
         });
     });
 
@@ -296,6 +331,29 @@ describe('budgetReducer — transactions keep the derived spending record in syn
             expect(monthById(state, november.id).spending).toEqual({ groceries: 40 });
             const created = state.months.find(m => m.month === 12 && m.year === 2026);
             expect(created?.spending).toEqual({ groceries: 250 });
+        });
+
+        it('updates in place when a direct caller moves within the same month', () => {
+            const december = makeMonth(12, 2026, {
+                transactions: [makeTransaction('t1', -250, { expenseId: 'groceries' })],
+                spending: { groceries: 250 },
+            });
+
+            const state = budgetReducer(stateWith([december]), {
+                type: 'MOVE_TRANSACTION',
+                payload: {
+                    fromMonthId: december.id,
+                    transactionId: 't1',
+                    toMonth: 12,
+                    toYear: 2026,
+                    updates: { amount: -300 },
+                },
+            });
+
+            const after = monthById(state, december.id);
+            expect(after.transactions).toHaveLength(1);
+            expect(after.transactions[0].amount).toBe(-300);
+            expect(after.spending).toEqual({ groceries: 300 });
         });
     });
 
