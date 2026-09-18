@@ -1,7 +1,7 @@
 import type { ParsedCSV, CSVMapping, CSVImportOptions } from '../../../services/CSVImportService';
 import type { Transaction, SavedCSVMapping } from '../../../components/Objects/Budget/BudgetContext';
 
-export type ImportStage = 'upload' | 'mapping' | 'preview' | 'result';
+type ImportStage = 'upload' | 'mapping' | 'preview' | 'result';
 
 export interface CSVImportState {
     stage: ImportStage;

@@ -23,7 +23,7 @@ import type {
 } from '../../../components/Objects/Budget/BudgetContext';
 import type { CSVImportState, CSVImportAction } from './csvImportReducer';
 
-export interface CSVImportActions {
+interface CSVImportActions {
     processFile: (content: string) => void;
     applyMappingAndPreview: () => void;
     handleImport: () => void;
