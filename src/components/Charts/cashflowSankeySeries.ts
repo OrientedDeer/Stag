@@ -132,7 +132,7 @@ export function getNodeSeries(simulationData: SimulationYear[], nodeId: string):
     return series;
 }
 
-export interface SeriesSummary {
+interface SeriesSummary {
     /** Sum across all years. */
     total: number;
     /** Year of the largest value (null when there are no years). */
