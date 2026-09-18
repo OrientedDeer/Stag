@@ -23,7 +23,7 @@ import { getRSUPriceValidationMessageFor, rsuGrantNeedsAccount } from '../income
  * (card only — the modal stays text-only; a <Link> would abandon the in-progress
  * income; see #141).
  */
-export interface RSUFieldValues {
+interface RSUFieldValues {
     rsuVestingSchedule: RSUVestingSchedule;
     rsuGrantShares: number;
     rsuVestFrequency: RSUVestFrequency;
