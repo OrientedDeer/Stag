@@ -11,7 +11,7 @@ import { ChartFrame } from "./ChartFrame";
 const MIN_CHART_WIDTH = 300;
 
 // --- Types ---
-export interface AssetStreamData {
+interface AssetStreamData {
   year: number;
   [key: string]: number;
 }
