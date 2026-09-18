@@ -2,8 +2,8 @@ import React from 'react';
 
 import { WarningTriangleIcon } from './Icons/WarningTriangleIcon';
 
-export type AlertSeverity = 'warning' | 'info' | 'error' | 'success';
-export type AlertSize = 'default' | 'sm';
+type AlertSeverity = 'warning' | 'info' | 'error' | 'success';
+type AlertSize = 'default' | 'sm';
 
 interface AlertBannerProps {
     severity: AlertSeverity;
