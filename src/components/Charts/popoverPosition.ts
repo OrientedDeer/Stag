@@ -17,7 +17,7 @@ export const POPOVER_GAP = 14;
 /** Keep at least this many px between the element and the viewport edge. */
 export const POPOVER_VIEWPORT_MARGIN = 10;
 
-export type AxisMode = 'offset' | 'center';
+type AxisMode = 'offset' | 'center';
 
 interface AxisInput {
     /** Anchor coordinate on this axis (viewport/client space). */
@@ -50,7 +50,7 @@ export function placeAxis({ anchor, size, viewport, mode, gap = POPOVER_GAP, mar
     return start;
 }
 
-export interface PlacePopoverInput {
+interface PlacePopoverInput {
     /** Anchor point in viewport/client coordinates. */
     anchorX: number;
     anchorY: number;
