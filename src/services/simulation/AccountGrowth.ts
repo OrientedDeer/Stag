@@ -8,7 +8,7 @@ import { type WithdrawalState } from "./types";
 import { midYearSaleDate } from "./dates";
 import { type ReturnDraw, stockLegOf } from "./allocation";
 
-export interface InflowResult {
+interface InflowResult {
     totalEmployerMatch: number;
     totalBucketAllocations: number;
     bucketDetail: Record<string, number>;
