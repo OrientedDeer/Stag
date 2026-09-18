@@ -1302,7 +1302,7 @@ export class DeficitDebtAccount extends DebtAccount {
     super(id, name, amount, '', 0); // 0% APR, no linked account
   }
 
-  increment(_assumptions: AssumptionsState, overrideBalance?: number): DeficitDebtAccount {
+  override increment(_assumptions: AssumptionsState, overrideBalance?: number): DeficitDebtAccount {
     const nextAmount = overrideBalance !== undefined ? overrideBalance : this.amount;
     return new DeficitDebtAccount(this.id, this.name, nextAmount);
   }

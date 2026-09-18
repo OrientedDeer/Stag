@@ -29,13 +29,13 @@ export class SankeyErrorBoundary extends Component<
         return { hasError: true, error };
     }
 
-    componentDidUpdate(prevProps: SankeyErrorBoundaryProps) {
+    override componentDidUpdate(prevProps: SankeyErrorBoundaryProps) {
         if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
             this.setState({ hasError: false, error: null });
         }
     }
 
-    render() {
+    override render() {
         if (this.state.hasError) {
             return (
                 <div

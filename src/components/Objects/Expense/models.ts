@@ -504,7 +504,7 @@ export class MortgageExpense extends BaseExpense {
    * Note: like the engine path, this intentionally ignores endDate — a
    * paid-off mortgage still carries escrow (taxes, insurance, HOA).
    */
-  getAnnualAmount(year?: number): number {
+  override getAnnualAmount(year?: number): number {
     if (year !== undefined) {
       return this.calculateAnnualAmortization(year).totalPayment;
     }
@@ -512,7 +512,7 @@ export class MortgageExpense extends BaseExpense {
     return super.getAnnualAmount();
   }
 
-  getMonthlyAmount(year?: number): number {
+  override getMonthlyAmount(year?: number): number {
     return this.getAnnualAmount(year) / 12;
   }
 
@@ -756,7 +756,7 @@ export class LoanExpense extends BaseExpense {
     return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
   }
 
-  getAnnualAmount(year?: number): number {
+  override getAnnualAmount(year?: number): number {
     // Use calculateAnnualAmortization to cap the payment in the payoff year:
     // in the final year the loan balance is paid off mid-year, so the actual
     // payment is less than payment×12. calculateAnnualAmortization already
@@ -768,7 +768,7 @@ export class LoanExpense extends BaseExpense {
     return this.payment * 12;
   }
 
-  getMonthlyAmount(year?: number): number {
+  override getMonthlyAmount(year?: number): number {
     return this.getAnnualAmount(year) / 12;
   }
 

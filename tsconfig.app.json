@@ -25,7 +25,8 @@
     "erasableSyntaxOnly": false,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
-    "allowUnreachableCode": false
+    "allowUnreachableCode": false,
+    "noImplicitOverride": true
   },
   "include": ["src"]
 }
