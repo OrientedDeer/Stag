@@ -229,7 +229,7 @@ export function getRSUPriceValidationMessage(
  * satisfy it, so the shared value-based RSUFields component runs the same
  * validation regardless of which editor drives it.
  */
-export interface RSUValidationConfig {
+interface RSUValidationConfig {
     rsuVestingSchedule: 'NONE' | 'cliff-1yr' | 'graded-3yr' | 'graded-4yr';
     rsuGrantShares: number;
     startDate?: Date;
@@ -321,7 +321,7 @@ export type NonVestingRSUReason = 'no-anchor' | 'no-account' | 'no-price';
  * without minting a full model instance. `end_date` is read only by the
  * income-level reader's ended-job suppression.
  */
-export interface NonVestingRSUConfig {
+interface NonVestingRSUConfig {
     rsuVestingSchedule: RSUValidationConfig['rsuVestingSchedule'];
     rsuGrantShares: number;
     rsuAccountId: string | null;
@@ -431,7 +431,7 @@ export function esppGrantNeedsAccount(
  * satisfy it, so one implementation serves both editors without duplicating the
  * logic per shape.
  */
-export interface DeferralConfig {
+interface DeferralConfig {
     autoMax401k: AutoMax401kOption;
     preTax401k: number;
     roth401k: number;
