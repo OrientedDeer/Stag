@@ -62,7 +62,7 @@ import { type AnyExpense, MortgageExpense, LoanExpense } from '../../components/
  * re-derive them every boot. When nothing is orphaned, the inputs pass through
  * unchanged, `changed` is false, and `notices` is empty.
  */
-export interface OrphanLinkResult {
+interface OrphanLinkResult {
     accounts: AnyAccount[];
     expenses: AnyExpense[];
     /** True if any account was created or any link (back-link / stale reverse claim) was repaired. */
