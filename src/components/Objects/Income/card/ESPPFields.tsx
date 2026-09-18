@@ -23,7 +23,7 @@ import type { ESPPAccount } from '../../Accounts/models';
  * only — inside the modal a <Link> would navigate away and abandon the
  * in-progress income, so the modal stays text-only; see #141).
  */
-export interface ESPPFieldValues {
+interface ESPPFieldValues {
     esppContributionType: ESPPContributionType;
     esppContributionAmount: number;
     esppDiscountPercent: number;
