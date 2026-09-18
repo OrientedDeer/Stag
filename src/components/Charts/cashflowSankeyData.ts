@@ -141,7 +141,7 @@ export type SankeyProvenanceDirection = 'sources' | 'destinations' | 'breakdown'
 /**
  * A node's drill-down breakdown: its direction plus the constituent rows.
  */
-export interface SankeyProvenanceEntry {
+interface SankeyProvenanceEntry {
     direction: SankeyProvenanceDirection;
     items: SankeyProvenanceItem[];
 }
@@ -153,7 +153,7 @@ export interface SankeyProvenanceEntry {
  */
 export type SankeyProvenance = Record<string, SankeyProvenanceEntry>;
 
-export interface BuildCashflowSankeyResult {
+interface BuildCashflowSankeyResult {
     data: { nodes: SankeyNode[]; links: SankeyLink[] };
     error: string | null;
     debugData: { nodes: SankeyNode[]; links: SankeyLink[] } | null;
