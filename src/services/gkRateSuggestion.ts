@@ -7,7 +7,7 @@ import {
 import { sumInvestedAssets } from "../components/Objects/Accounts/accountUtils";
 import { fundingRate } from "./WithdrawalStrategies";
 
-export interface GKRateSuggestion {
+interface GKRateSuggestion {
     /**
      * Which way the configured initial rate is off relative to planned spending,
      * i.e. where it sits versus the rate the plan actually implies:
