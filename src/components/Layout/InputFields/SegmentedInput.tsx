@@ -1,6 +1,6 @@
 import { type ReactElement, type ReactNode } from "react";
 
-export interface SegmentedOption<T extends string | number | boolean> {
+interface SegmentedOption<T extends string | number | boolean> {
     value: T;
     label: string;
     /** Shown under the control while this option is selected. */
