@@ -7,7 +7,7 @@ import { getFRA } from "../../data/SocialSecurityData";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
 import { type SimulationYear } from "./types";
 
-export interface IncomeProjectionResult {
+interface IncomeProjectionResult {
     nextIncomes: AnyIncome[];
     interestIncomes: PassiveIncome[];
     allIncomes: AnyIncome[];
