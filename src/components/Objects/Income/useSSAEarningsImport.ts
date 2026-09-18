@@ -18,7 +18,7 @@ interface UseSSAEarningsImportArgs {
     dispatch: SSAImportDispatch;
 }
 
-export interface SSAEarningsImport {
+interface SSAEarningsImport {
     fileInputRef: React.RefObject<HTMLInputElement | null>;
     onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
