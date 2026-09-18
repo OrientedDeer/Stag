@@ -19,7 +19,7 @@ export interface BalanceRow {
     fetchedAt: string;   // raw FetchedAt value, used only to pick the latest row
 }
 
-export interface ParsedBalances {
+interface ParsedBalances {
     rows: BalanceRow[];  // one row per account, newest snapshot only
     errors: string[];
 }
