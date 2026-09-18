@@ -27,7 +27,7 @@ export function statementDateOf(t: Transaction): Date {
     return new Date(t.postedDate ?? t.date);
 }
 
-export interface StatementCompareInput {
+interface StatementCompareInput {
     /** Source label to match (exact). Empty string matches untagged transactions. */
     source: string;
     /** Inclusive start of the window (date-only). Undefined = no lower bound. */
@@ -36,7 +36,7 @@ export interface StatementCompareInput {
     end?: Date;
 }
 
-export interface StatementCompareResult {
+interface StatementCompareResult {
     /** Matched transactions, sorted by date ascending. */
     transactions: Transaction[];
     /** Sum of charges (spending) as a positive number — |amount| for amount < 0. */
