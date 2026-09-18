@@ -17,7 +17,7 @@ import type {
 
 const fmt = (n: number) => formatCompactCurrency(n, { forceExact: true });
 
-export interface Summary401kInput {
+interface Summary401kInput {
     autoMax401k: AutoMax401kOption;
     preTax401k: number;
     roth401k: number;
@@ -46,7 +46,7 @@ export function get401kSummary(income: Summary401kInput): string {
     return match ? `${contrib} · ${match}` : contrib;
 }
 
-export interface BenefitsSummaryInput {
+interface BenefitsSummaryInput {
     insurance: number;
     hsaContribution: number;
 }
@@ -58,7 +58,7 @@ export function getBenefitsSummary(income: BenefitsSummaryInput): string {
     return parts.length > 0 ? parts.join(' · ') : 'None';
 }
 
-export interface ESPPSummaryInput {
+interface ESPPSummaryInput {
     esppContributionType: ESPPContributionType;
     esppContributionAmount: number;
 }
@@ -70,7 +70,7 @@ export function getESPPSummary(income: ESPPSummaryInput): string {
         : `${fmt(income.esppContributionAmount)}/yr`;
 }
 
-export interface RSUSummaryInput {
+interface RSUSummaryInput {
     rsuVestingSchedule: RSUVestingSchedule;
     rsuGrantShares: number;
 }
