@@ -4,7 +4,7 @@ import { useDebouncedLocalStorage } from './useDebouncedLocalStorage';
 /**
  * Configuration for persisted reducer
  */
-export interface PersistedReducerConfig<S> {
+interface PersistedReducerConfig<S> {
     /** localStorage key for persistence */
     storageKey: string;
     /** Function to transform raw JSON into proper state (e.g., reconstitute classes) */
@@ -93,4 +93,3 @@ export function usePersistedReducer<S, A>(
 
     return [state, dispatch];
 }
-
