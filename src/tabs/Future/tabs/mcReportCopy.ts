@@ -37,7 +37,7 @@ export function describeBuyTheDip(stats: ConversionMcStats, fmt: (n: number) => 
     return `The conversion policy converted ${n}% less in the year after a market loss ${medians}.`;
 }
 
-export interface BaselineVerdict {
+interface BaselineVerdict {
     /** One-sentence lead for the merged conversion-behavior card. */
     sentence: string;
     /** True when success rate AND median after-tax delta are essentially tied
