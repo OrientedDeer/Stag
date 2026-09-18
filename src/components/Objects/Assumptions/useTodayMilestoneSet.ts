@@ -19,7 +19,7 @@ import { type CustomMilestone } from '../../../services/simulation/types';
 /** Per-income predicate: is THIS income's start/end milestone gate unresolvable right
  *  now (sim-dependent milestone + no projection cached)? See
  *  `isIncomeMilestoneGateUnresolved`. */
-export type MilestoneGateUnresolvedFn = (inc: AnyIncome) => boolean;
+type MilestoneGateUnresolvedFn = (inc: AnyIncome) => boolean;
 
 // Stable references returned on the common paths so callers' downstream memos
 // (e.g. PriorityTab's tax/deduction calcs that depend on the active-income set, and
