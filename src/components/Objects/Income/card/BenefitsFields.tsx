@@ -7,7 +7,7 @@ import { CurrencyInput } from '../../../Layout/InputFields/CurrencyInput';
  * value/onUpdate shape as the other shared clusters so the two editors can't drift
  * (#151).
  */
-export interface BenefitsFieldValues {
+interface BenefitsFieldValues {
     insurance: number;
     hsaContribution: number;
 }
