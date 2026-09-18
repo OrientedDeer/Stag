@@ -256,7 +256,7 @@ export function formatCurrency(value: number): string {
     }).format(value || 0);
 }
 
-export interface FormatCurrencyOptions {
+interface FormatCurrencyOptions {
     forceExact?: boolean;
 }
 
