@@ -9,7 +9,7 @@ import { createContext, useContext } from "react";
 
 export type ThemeId = "default" | "elite";
 
-export interface ThemeConfig {
+interface ThemeConfig {
   id: ThemeId;
   label: string;
   /** CSS font-family applied at the root; undefined keeps the app default. */
@@ -46,7 +46,7 @@ export function readStoredTheme(): ThemeId {
   return stored === "elite" || stored === "default" ? stored : "default";
 }
 
-export interface ThemeContextValue {
+interface ThemeContextValue {
   theme: ThemeId;
   config: ThemeConfig;
   setTheme: (id: ThemeId) => void;
