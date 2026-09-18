@@ -77,7 +77,7 @@ interface OverviewPoint {
 /** The four gross net-worth bands the Overview chart plots (Debt is negative), the
  *  unvested employer-match figure used to derive Vested net worth, and the Vested
  *  net-worth value plotted as the emphasis "Net Worth" line (#143). */
-export interface OverviewBuckets {
+interface OverviewBuckets {
     Invested: number;
     Saved: number;
     Property: number;
