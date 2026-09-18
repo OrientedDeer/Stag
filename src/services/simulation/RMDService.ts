@@ -4,7 +4,7 @@ import { type AssumptionsState, getBirthYear } from "../../components/Objects/As
 import { calculateRMD, isAccountSubjectToRMD, isRMDRequired, type RMDCalculation } from "../../data/RMDData";
 import { type SimulationYear, type WithdrawalState } from "./types";
 
-export interface RMDResult {
+interface RMDResult {
     rmdDetails: SimulationYear['rmdDetails'];
     rmdIncomes: PassiveIncome[];
     /**
