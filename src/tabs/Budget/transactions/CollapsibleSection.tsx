@@ -6,7 +6,7 @@ import { ChevronIcon } from '../../../components/Layout/Icons/ChevronIcon';
  * to the original ad-hoc color combos in TransactionsTab, so swapping the
  * abstraction in didn't change any pixels.
  */
-export type SectionTheme =
+type SectionTheme =
     | 'yellow'      // Uncategorized
     | 'green'       // Income
     | 'transfers'   // Transfers (muted gray)
