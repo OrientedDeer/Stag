@@ -157,11 +157,3 @@ export interface RMDCalculation {
   distributionPeriod: number;
   rmdAmount: number;
 }
-
-export interface RMDSummary {
-  totalRMD: number;
-  accountBreakdown: RMDCalculation[];
-  rmdStartAge: number;
-  currentAge: number;
-  isRequired: boolean;
-}
