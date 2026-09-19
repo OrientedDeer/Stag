@@ -104,7 +104,7 @@ export interface FinancialRatios {
   isRetired: boolean;
 }
 
-export interface RatioTrend {
+interface RatioTrend {
   year: number;
   savingsRate: number;
   debtToIncome: number;
