@@ -16,7 +16,7 @@ import { loadAccountMap, saveAccountMap } from '../../../services/simplefinBalan
 import { formatDateForInput, jsonDateReplacer } from '../../../utils/formatters';
 import { useReceiptToast } from '../../Layout/Overlays/ReceiptToast';
 
-export interface FullBackup {
+interface FullBackup {
     version: number;
     accounts: Array<Record<string, unknown>>;
     amountHistory: Record<string, AmountHistoryEntry[]>;
