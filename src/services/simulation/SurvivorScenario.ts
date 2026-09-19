@@ -92,7 +92,7 @@ function ssBenefitLevel(inc: AnyIncome): number {
     return inc.getProratedAnnual(inc.amount);
 }
 
-export interface SurvivorTransitionResult {
+interface SurvivorTransitionResult {
     incomes: AnyIncome[];
     expenses: AnyExpense[];
 }
