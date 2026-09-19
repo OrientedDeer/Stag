@@ -1,6 +1,6 @@
 import { type AnyAccount, DeficitDebtAccount } from "../../components/Objects/Accounts/models";
 
-export interface DeficitDebtResult {
+interface DeficitDebtResult {
     existingDeficitDebt: DeficitDebtAccount | undefined;
     discretionaryCash: number;
     logs: string[];
