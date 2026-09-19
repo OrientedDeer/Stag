@@ -1,7 +1,7 @@
 import { type WithdrawalBucket } from '../components/Objects/Assumptions/AssumptionsContext';
 
 /** The minimal account shape the bucket sync needs. */
-export interface EligibleAccountRef {
+interface EligibleAccountRef {
     id: string;
     name: string;
 }
