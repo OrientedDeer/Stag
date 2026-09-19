@@ -31,7 +31,7 @@ import type { Transaction, CategoryMapping, MonthlySnapshot, BudgetState } from 
 
 // --- The structural subset of a decrypted FullBackup these helpers read/mutate ---
 
-export interface AmountPoint {
+interface AmountPoint {
     date: string; // YYYY-MM-DD
     num: number;
 }
