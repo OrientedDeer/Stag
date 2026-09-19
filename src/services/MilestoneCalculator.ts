@@ -21,7 +21,7 @@ export interface MilestonesSummary {
   progress: number; // 0-100 (current position between birth and life expectancy)
 }
 
-export interface FIResult {
+interface FIResult {
   year: number;
   age: number;
 }
