@@ -2,7 +2,7 @@ import { type AnyAccount, RSUAccount, type RSULot } from "../../components/Objec
 import { type AnyIncome, WorkIncome, PassiveIncome, getIncomeActiveMultiplier } from "../../components/Objects/Income/models";
 import { isActiveRSUGrant } from "../../components/Objects/Income/rsuGrant";
 
-export interface RSUVestingResult {
+interface RSUVestingResult {
     /**
      * Synthetic income objects representing this year's RSU vest value. Modeled
      * as earned (W-2 supplemental) income so they flow through the normal income
