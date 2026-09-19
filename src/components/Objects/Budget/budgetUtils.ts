@@ -109,7 +109,7 @@ export function getNonDiscretionaryMonthlyBudget(
 /**
  * Calculate budget summary for a month
  */
-export interface BudgetSummary {
+interface BudgetSummary {
     totalBudget: number;
     totalSpent: number;
     remaining: number;
