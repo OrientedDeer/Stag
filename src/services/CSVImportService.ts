@@ -41,7 +41,7 @@ export interface ColumnDetection {
     detectedFormat?: string; // For dates: "M/D/YYYY", etc.
 }
 
-export interface FormatMatch {
+interface FormatMatch {
     mapping: SavedCSVMapping;
     confidence: number; // 1.0 = exact match, 0.7-0.99 = fuzzy match
 }
