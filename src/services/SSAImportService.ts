@@ -21,7 +21,7 @@ export interface SSAEarningsImport {
   name?: string;
 }
 
-export interface ValidationResult {
+interface ValidationResult {
   valid: boolean;
   warnings: string[];
 }
