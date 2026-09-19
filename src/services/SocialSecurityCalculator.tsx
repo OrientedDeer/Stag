@@ -39,7 +39,7 @@ export interface EarningsRecord {
 /**
  * Result of AIME calculation with detailed breakdown
  */
-export interface AIMECalculation {
+interface AIMECalculation {
   /** Top 35 years of earnings (may include zeros if < 35 years) */
   topEarnings: EarningsRecord[];
   /** Indexed earnings after wage indexing */
