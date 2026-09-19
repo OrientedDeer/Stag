@@ -5,7 +5,7 @@
  * Used for tax optimization recommendations.
  */
 
-export interface YearlyContributionLimits {
+interface YearlyContributionLimits {
   // 401k limits
   traditional401k: number;      // Also applies to Roth 401k (combined limit)
   catchUp401k: number;          // Additional amount for age 50+
