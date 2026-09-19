@@ -18,7 +18,7 @@ export interface BackupMetadata {
     rev: string | null;
 }
 
-export interface DownloadResult {
+interface DownloadResult {
     plaintext: string;
     rev: string | null;
 }
