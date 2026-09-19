@@ -31,7 +31,7 @@ export interface BaselinePathResult {
 }
 
 /** Optional reporting inputs for {@link summarizeScenarios}. */
-export interface SummarizeExtras {
+interface SummarizeExtras {
     /** After-tax ruler (F4). When present, after-tax percentiles are computed. */
     ruler?: TradValuationRuler;
     /** Same-seed baseline arm results, index-aligned with `scenarios` (F7). */
@@ -400,4 +400,3 @@ export function summarizeScenarios(
         baselineComparison,
     };
 }
-
