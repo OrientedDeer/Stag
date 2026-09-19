@@ -312,7 +312,7 @@ function runSingleScenario(
 /**
  * Progress callback type
  */
-export type ProgressCallback = (progress: number) => void;
+type ProgressCallback = (progress: number) => void;
 
 /**
  * Run Monte Carlo simulation with multiple scenarios
