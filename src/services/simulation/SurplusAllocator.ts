@@ -73,7 +73,7 @@ export function postInterestDebtBalance(debt: DebtAccount): number {
 // TYPES
 // =============================================================================
 
-export interface SurplusAllocationResult {
+interface SurplusAllocationResult {
     allocations: PlannedSurplusAllocation[];
     decisions: DecisionLogEntry[];
     /** Amount allocated to pay down deficit debt */
@@ -535,4 +535,3 @@ export function allocateSurplus(
     };
     return result;
 }
-
