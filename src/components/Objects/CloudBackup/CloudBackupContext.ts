@@ -7,7 +7,7 @@ import { jsonDateReplacer } from '../../../utils/formatters';
 // 'suppressed' = the browser declined to show the prompt at all (FedCM
 // permission blocked or dismissal cooldown) — the UI should say so instead
 // of the button silently doing nothing.
-export type SignInStatus = 'idle' | 'prompting' | 'suppressed';
+type SignInStatus = 'idle' | 'prompting' | 'suppressed';
 
 export interface CloudBackupState {
     enabled: boolean;
