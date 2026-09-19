@@ -71,7 +71,7 @@ export function getFERSMRA(birthYear: number): number {
  * Early retirement (RIF/VERA):
  * - Age 50 with 20+ years, or any age with 25+ years (during RIF/VERA)
  */
-export interface FERSEligibilityResult {
+interface FERSEligibilityResult {
   eligible: boolean;
   reductionPercent: number;
   message: string;
