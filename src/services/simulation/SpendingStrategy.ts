@@ -6,15 +6,6 @@ import { type AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYea
 import { calculateStrategyWithdrawal, type WithdrawalResult } from "../WithdrawalStrategies";
 import { type SimulationYear } from "./types";
 
-export interface SpendingStrategyResult {
-    nextExpenses: AnyExpense[];
-    strategyWithdrawalResult: WithdrawalResult | undefined;
-    strategyAdjustmentResult: SimulationYear['strategyAdjustment'];
-    totalLivingExpenses: number;
-    discretionaryCash: number;
-    logs: string[];
-}
-
 /**
  * Calculate total discretionary expenses.
  */
@@ -156,4 +147,3 @@ export function calculateStrategyTarget(
 
     return result;
 }
-
