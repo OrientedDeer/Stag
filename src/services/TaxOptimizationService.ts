@@ -137,7 +137,7 @@ export interface TaxProjection {
     isLowTaxYear: boolean;  // Good for Roth conversions
 }
 
-export interface RMDPressureAnalysis {
+interface RMDPressureAnalysis {
     /** True if there's a meaningful gap between current and RMD-age federal rates */
     hasPressure: boolean;
     /** Current combined fed+state ordinary marginal rate (excludes FICA — matches the rate that applies to deductible 401k contributions) */
