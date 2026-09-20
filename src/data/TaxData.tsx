@@ -65,7 +65,7 @@ export const max_year = 2026;
 /** * Hierarchical Lookups:
  * AuthorityData: Year -> FilingStatus -> Parameters
  */
-export type YearConfig = Record<FilingStatus, TaxParameters>;
+type YearConfig = Record<FilingStatus, TaxParameters>;
 export type AuthorityData = Record<number, YearConfig>;
 
 export interface GlobalTaxDatabase {
