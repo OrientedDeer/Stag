@@ -57,7 +57,7 @@ export function parseDateRequired(value: unknown): Date {
  * Common base fields shared across all domain models.
  * Used to extract and normalize data during reconstitution.
  */
-export interface BaseModelFields {
+interface BaseModelFields {
   id: string;
   name: string;
   amount: number;
