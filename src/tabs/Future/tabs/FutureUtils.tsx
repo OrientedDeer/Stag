@@ -63,7 +63,7 @@ export function getNetWorthBreakdown(accounts: AnyAccount[]): {
  */
 export const ASSUMED_LTCG_RATE = 0.15;
 
-export interface AfterTaxNetWorth {
+interface AfterTaxNetWorth {
     /** Nominal net worth (assets − liabilities), unchanged. */
     netWorth: number;
     /** Net worth after subtracting estimated taxes still owed to access it. */
