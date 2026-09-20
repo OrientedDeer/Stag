@@ -22,7 +22,7 @@ export function toLocalDateString(d: Date): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-export interface ExpenseCategoryGroup {
+interface ExpenseCategoryGroup {
     expense: AnyExpense | null;
     transactions: Transaction[];
     total: number;
