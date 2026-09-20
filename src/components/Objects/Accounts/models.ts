@@ -1318,7 +1318,7 @@ export const ACCOUNT_CATEGORIES = [
   'Debt',
 ] as const;
 
-export type AccountCategory = typeof ACCOUNT_CATEGORIES[number];
+type AccountCategory = typeof ACCOUNT_CATEGORIES[number];
 
 export const ACCOUNT_COLORS_BACKGROUND: Record<AccountCategory, string> = {
     Cash: "bg-chart-Fuchsia-50",
