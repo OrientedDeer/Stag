@@ -222,7 +222,7 @@ function activeFundedGoals(milestoneFilteredExpenses: AnyExpense[]): AnyExpense[
  * so the trailing optional fields are passed by name and can't silently misalign
  * positionally. Fed straight into YearSolverInput.
  */
-export interface SimulateOneYearOptions {
+interface SimulateOneYearOptions {
     /** Per-year sub-sim baseline projections feeding the conversion ceiling. */
     baselineProjections?: BaselineProjections;
     /** Conversion-decision mode for the rate-match path. Default 'rate-match'. */
