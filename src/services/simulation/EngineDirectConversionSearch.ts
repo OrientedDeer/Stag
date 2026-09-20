@@ -246,7 +246,7 @@ export interface EngineSearchOptions {
     onCandidate?: (label: string, afterTaxNW: number, plan: Map<number, number>) => void;
 }
 
-export interface EngineSearchDiagnostics {
+interface EngineSearchDiagnostics {
     /** Number of full forward sims the search consumed (excludes the pre-scored baseline). */
     sims: number;
     bestHeadroom: number | null;
