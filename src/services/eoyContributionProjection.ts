@@ -32,7 +32,7 @@ export interface EOYContributionRow {
  * for each liability (DebtAccount linked to LoanExpense, or MortgageExpense)
  * was computed for the remainder of the year.
  */
-export interface EOYDebtRow {
+interface EOYDebtRow {
     /** For 'account' rows: the DebtAccount id. For 'mortgage-expense' rows: the MortgageExpense id. */
     targetId: string;
     targetType: 'account' | 'mortgage-expense';
