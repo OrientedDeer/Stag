@@ -301,7 +301,7 @@ export function calculateEffectiveConversionTax(
 /**
  * Result of projecting fixed income to RMD age
  */
-export interface FixedIncomeAtRMDResult {
+interface FixedIncomeAtRMDResult {
     /** Projected Social Security income at RMD age (with COLA) */
     ssAtRMD: number;
     /** Projected pension income at RMD age (with COLA) */
@@ -401,4 +401,3 @@ export function estimateFixedIncomeAtRMD(
         yearsProjected: yearsUntilRMD
     };
 }
-
