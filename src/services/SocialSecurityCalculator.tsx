@@ -61,7 +61,7 @@ interface AIMECalculation {
 /**
  * Result of Social Security earnings test calculation
  */
-export interface EarningsTestResult {
+interface EarningsTestResult {
   /** Original benefit amount before earnings test */
   originalBenefit: number;
   /** Reduced benefit amount after earnings test */
