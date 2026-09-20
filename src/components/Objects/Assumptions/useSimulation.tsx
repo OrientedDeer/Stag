@@ -480,7 +480,7 @@ function runSimulationLoop(args: {
  * option can't silently shift an existing one into the wrong slot (#97). Threaded
  * down through `runSimulationLoop` → `simulateOneYear` to the solver.
  */
-export interface RunSimulationOptions {
+interface RunSimulationOptions {
     referenceDate?: Date;
     /** Conversion-decision mode for the rate-match path. Default 'rate-match'. */
     conversionMode?: 'rate-match' | 'std-ded-only';
