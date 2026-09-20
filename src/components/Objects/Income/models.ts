@@ -1045,7 +1045,7 @@ export const INCOME_CATEGORIES = [
   'Windfall',
 ] as const;
 
-export type IncomeCategory = typeof INCOME_CATEGORIES[number];
+type IncomeCategory = typeof INCOME_CATEGORIES[number];
 
 export const INCOME_COLORS_BACKGROUND: Record<IncomeCategory, string> = {
     Work: "bg-chart-Fuchsia-50",
