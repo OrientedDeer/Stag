@@ -1146,7 +1146,7 @@ export const EXPENSE_CATEGORIES = [
   'Other'
 ] as const;
 
-export type ExpenseCategory = typeof EXPENSE_CATEGORIES[number];
+type ExpenseCategory = typeof EXPENSE_CATEGORIES[number];
 
 export const EXPENSE_COLORS_BACKGROUND: Record<ExpenseCategory, string> = {
   Rent: "bg-chart-Fuchsia-50",
