@@ -47,7 +47,7 @@ export interface BacktestResult {
 /**
  * Snapshot of portfolio state at end of each year
  */
-export interface YearlySnapshot {
+interface YearlySnapshot {
   year: number;
   balance: number;
   nominalReturn: number;
