@@ -266,7 +266,7 @@ export function calculateGuytonKlingerWithdrawal(
 }
 
 /** Result of a plan-anchored Guyton-Klinger guardrail evaluation. */
-export interface GKGuardrailEvaluation {
+interface GKGuardrailEvaluation {
   /** Which guardrail (if any) the plan's withdrawal rate breached this year. */
   guardrailTriggered: GuardrailTrigger;
   /** The plan's effective withdrawal rate (%) = plannedSpending / portfolio × 100. */
