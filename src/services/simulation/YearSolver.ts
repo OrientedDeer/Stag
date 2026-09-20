@@ -248,7 +248,7 @@ export interface ConversionPlan {
  * implementations precompute a per-year plan and look it up. Both must satisfy
  * the same input/output contract.
  */
-export type ConversionStrategy = (
+type ConversionStrategy = (
     input: YearSolverInput,
     baseOrdinaryIncome: number,
     socialSecurityBenefits: number,
