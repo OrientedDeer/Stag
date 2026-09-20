@@ -272,7 +272,7 @@ export function calculateCSRSBasicBenefit(
  * Early retirement (voluntary):
  * - Age 50 with 20+ years, or any age with 25+ years (reduced 2% per year under 55)
  */
-export interface CSRSEligibilityResult {
+interface CSRSEligibilityResult {
   eligible: boolean;
   reductionPercent: number;
   message: string;
