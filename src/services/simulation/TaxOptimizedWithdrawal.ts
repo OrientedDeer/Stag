@@ -77,7 +77,7 @@ export interface ConversionCeilingResult {
 /**
  * Result of coarse-to-fine search for max conversion amount
  */
-export interface CoarseToFineSearchResult {
+interface CoarseToFineSearchResult {
     /** Maximum conversion amount before exceeding target rate */
     amount: number;
 
@@ -1038,4 +1038,3 @@ export function calculateDynamicConversionCeiling(
         rateMatchWalk: rateMatchResult.walk,
     };
 }
-
