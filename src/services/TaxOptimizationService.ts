@@ -105,7 +105,7 @@ export interface TaxAnalysis {
 }
 
 export type RecommendationCategory = 'contribution' | 'conversion' | 'timing' | 'withdrawal';
-export type RecommendationImpact = 'high' | 'medium' | 'low';
+type RecommendationImpact = 'high' | 'medium' | 'low';
 
 export interface TaxRecommendation {
     id: string;
