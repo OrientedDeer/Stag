@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 /** Minimum width below which a Projection chart is too narrow to render usefully. */
-export const MIN_CHART_WIDTH = 300;
+const MIN_CHART_WIDTH = 300;
 
 /**
  * Track a chart container's width via ResizeObserver. `isMeasured` gates the
