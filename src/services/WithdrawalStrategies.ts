@@ -331,7 +331,7 @@ export function evaluateGuytonKlingerGuardrail(params: {
 }
 
 /** How a Guyton-Klinger guardrail adjustment lands on discretionary spending. */
-export interface GKDiscretionaryAdjustment {
+interface GKDiscretionaryAdjustment {
   /** Multiply each discretionary expense by this (1 = no change). */
   ratio: number;
   /** The intended adjustment: adjustmentPercent% of TOTAL spending (canonical GK). */
