@@ -3,7 +3,7 @@ import { type FilingStatus, type TaxParameters } from "../../data/TaxData";
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
 import { computeIrmaaMAGI } from "../../data/IRMAAData";
 
-export type TaxCategory = 'tax-deferred' | 'tax-free' | 'taxable' | 'mixed';
+type TaxCategory = 'tax-deferred' | 'tax-free' | 'taxable' | 'mixed';
 
 /**
  * Classify an account by its tax treatment for withdrawal ordering.
