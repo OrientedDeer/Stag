@@ -260,7 +260,7 @@ export function getExpectedMonthlyContribution(
  * TODO: This function is exported and tested but not used in the app.
  * Either wire it up to the budget tracking UI or delete it.
  */
-export interface VarianceResult {
+interface VarianceResult {
     actual: number;
     expected: number;
     difference: number;
