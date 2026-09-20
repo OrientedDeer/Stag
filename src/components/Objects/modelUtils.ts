@@ -84,7 +84,7 @@ export function extractBaseFields(data: Record<string, unknown>, defaultName: st
  * `startDate`/`endDate` are date-only values built at LOCAL midnight
  * (the parseDate convention) — always read them with local getters.
  */
-export interface ActiveDateWindow {
+interface ActiveDateWindow {
   startDate?: Date | null;
   endDate?: Date | null;
 }
