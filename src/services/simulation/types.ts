@@ -508,7 +508,7 @@ export interface PlannedConversion {
 /**
  * Planned contribution (working years).
  */
-export interface PlannedContribution {
+interface PlannedContribution {
     /** Account ID */
     accountId: string;
     /** Amount contributed */
