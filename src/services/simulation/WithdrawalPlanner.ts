@@ -686,7 +686,7 @@ export function grossUpBrokerage(
  *                    (underwater); ESPP carries only its LTCG appreciation here.
  *  - isLongTerm:     long-term iff true, else short-term (taxed at ordinary).
  */
-export interface NormalizedLot {
+interface NormalizedLot {
     value: number;
     ordinaryIncome: number;
     gain: number;
