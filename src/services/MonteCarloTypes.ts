@@ -403,13 +403,3 @@ export type MonteCarloAction =
     | { type: 'RESTORE_SUMMARY'; payload: MonteCarloSummary }
     | { type: 'SIMULATION_ERROR'; payload: string }
     | { type: 'RESET' };
-
-/**
- * Helper type for net worth calculation
- */
-export interface NetWorthSnapshot {
-    year: number;
-    netWorth: number;
-    totalAssets: number;
-    totalLiabilities: number;
-}
