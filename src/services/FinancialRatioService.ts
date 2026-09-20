@@ -66,7 +66,7 @@ const MONTHS_PER_YEAR = 12;
 // ============================================================================
 
 // Rating levels for benchmarks
-export type RatingLevel = 'excellent' | 'good' | 'fair' | 'poor' | 'critical';
+type RatingLevel = 'excellent' | 'good' | 'fair' | 'poor' | 'critical';
 
 export interface RatioResult {
   value: number;
