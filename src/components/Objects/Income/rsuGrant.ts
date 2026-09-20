@@ -13,7 +13,7 @@
 // RSU vesting schedules (v1). Mirrors `RSUVestingSchedule` in models.tsx; inlined
 // here as a value-free string union so this stays a true leaf with no import of
 // the model graph. Kept in sync with models.tsx (both define the same literals).
-export type RSUVestingScheduleKind = 'NONE' | 'cliff-1yr' | 'graded-3yr' | 'graded-4yr';
+type RSUVestingScheduleKind = 'NONE' | 'cliff-1yr' | 'graded-3yr' | 'graded-4yr';
 
 /**
  * True when a WorkIncome has an RSU grant worth vesting: a real schedule and a
