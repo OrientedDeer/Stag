@@ -11,8 +11,6 @@
  * - OPM FERS Supplement: https://www.opm.gov/retirement-center/fers-information/types-of-retirement/#annuity-supplement
  */
 
-export type PensionSystem = 'FERS' | 'CSRS';
-
 /**
  * FERS Minimum Retirement Age (MRA) by Birth Year
  *
