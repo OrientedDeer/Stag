@@ -46,13 +46,6 @@ interface FormatMatch {
     confidence: number; // 1.0 = exact match, 0.7-0.99 = fuzzy match
 }
 
-export interface ImportResult {
-    transactions: Transaction[];
-    autoCategorized: number;
-    duplicates: Transaction[];
-    errors: string[];
-}
-
 // ============================================================================
 // Date Pattern Detection
 // ============================================================================
