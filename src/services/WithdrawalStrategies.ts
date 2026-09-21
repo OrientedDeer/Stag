@@ -65,7 +65,7 @@ export function fundingRate(impliedRate: number): number {
   return Math.ceil(impliedRate * 10 - 1e-9) / 10;
 }
 
-export interface GuytonKlingerParams {
+interface GuytonKlingerParams {
   currentPortfolio: number;
   baseWithdrawal: number;     // Last year's withdrawal (or initial if year 1)
   withdrawalRate: number;     // Target rate (e.g., 4 for 4%)
