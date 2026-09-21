@@ -357,7 +357,7 @@ export interface MonteCarloSummary {
  * Run phase (#98). 'solving' = the one-time stochastic-DP policy solve (the
  * per-scenario progress bar doesn't move during it); 'running' = the path loop.
  */
-export type MonteCarloPhase = 'idle' | 'solving' | 'running';
+type MonteCarloPhase = 'idle' | 'solving' | 'running';
 
 export interface MonteCarloState {
     /** Current configuration */
