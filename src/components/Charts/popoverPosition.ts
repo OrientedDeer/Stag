@@ -13,7 +13,7 @@
  */
 
 /** Default gap (px) between the anchor point and the floating element. */
-export const POPOVER_GAP = 14;
+const POPOVER_GAP = 14;
 /** Keep at least this many px between the element and the viewport edge. */
 export const POPOVER_VIEWPORT_MARGIN = 10;
 
