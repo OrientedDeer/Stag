@@ -287,7 +287,7 @@ export function stdDedOnlyPlan(scenario: Scenario): ConversionPlan {
 // feasibilityFloor — candidate ≥ baseline on the objective?
 // ---------------------------------------------------------------------------
 
-export interface FeasibilityResult {
+interface FeasibilityResult {
     /** terminalAfterTaxNW of the candidate plan (scored with the shared ruler). */
     candidateScore: number;
     /** terminalAfterTaxNW of the std-ded-only floor (same ruler). */
