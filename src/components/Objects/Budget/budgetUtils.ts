@@ -524,7 +524,7 @@ export function calculateNetCashFlow(transactions: Transaction[]): {
 /**
  * Category totals for auto-reconciliation
  */
-export interface CategoryTotals {
+interface CategoryTotals {
     gross: number;
     reimbursements: number;
 }
