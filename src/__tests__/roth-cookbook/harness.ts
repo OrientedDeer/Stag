@@ -338,7 +338,7 @@ export function feasibilityFloor(
 // scalingSweep — interior-peak diagnostic
 // ---------------------------------------------------------------------------
 
-export interface SweepPoint {
+interface SweepPoint {
     factor: number;
     score: number;       // terminalAfterTaxNW
     totalConverted: number;
