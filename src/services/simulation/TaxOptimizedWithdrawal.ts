@@ -35,11 +35,6 @@ export type Phase =
     | 'ROTH_DEPLETED';         // No Roth either; Traditional is primary source, no conversions
 
 /**
- * How conversion taxes will be funded
- */
-export type TaxPaymentSource = 'BROKERAGE' | 'SAVINGS' | 'WITHHOLD' | 'NONE';
-
-/**
  * What caused the effective rate limit to be reached
  */
 export type EdgeType =
