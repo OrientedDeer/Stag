@@ -10,7 +10,7 @@ export type ExpenseFrequency = 'Weekly' | 'Monthly' | 'Annually';
  * Only meaningful when `frequency === 'Annually'`. Ignored by the simulation
  * engine, which is year-granular.
  */
-export type AnnualBudgetMode = 'lump' | 'sinkingFund';
+type AnnualBudgetMode = 'lump' | 'sinkingFund';
 
 /**
  * A long-term savings goal — the "Longer term" cadence. Either:
