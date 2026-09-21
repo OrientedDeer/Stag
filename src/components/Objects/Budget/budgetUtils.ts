@@ -292,7 +292,7 @@ export function calculateVariance(
  * TODO: This function is exported and tested but not used in the app.
  * Either wire it up to the budget tracking UI or delete it.
  */
-export interface CategorySpending {
+interface CategorySpending {
     expenseId: string;
     expenseName: string;
     budget: number;
