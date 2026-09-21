@@ -15,7 +15,7 @@
 
 import { type EarningsRecord } from './SocialSecurityCalculator';
 
-export interface SSAEarningsImport {
+interface SSAEarningsImport {
   earnings: EarningsRecord[];
   dateOfBirth?: string;
   name?: string;
