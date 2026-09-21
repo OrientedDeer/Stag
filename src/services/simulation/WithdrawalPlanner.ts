@@ -693,7 +693,7 @@ interface NormalizedLot {
     isLongTerm: boolean;
 }
 
-export interface LotSaleRates {
+interface LotSaleRates {
     /** Ordinary marginal rate (federal + state) for STCG and bargain-element income. */
     ordinaryRate: number;
     /** Long-term capital-gains rate. */
