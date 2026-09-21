@@ -188,7 +188,7 @@ export function groupContributionsByPriority(
     return groups;
 }
 
-export interface IncomeGroupTotals {
+interface IncomeGroupTotals {
     transactions: Transaction[];
     total: number;
 }
