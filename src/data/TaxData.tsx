@@ -68,7 +68,7 @@ export const max_year = 2026;
 type YearConfig = Record<FilingStatus, TaxParameters>;
 export type AuthorityData = Record<number, YearConfig>;
 
-export interface GlobalTaxDatabase {
+interface GlobalTaxDatabase {
   federal: AuthorityData;
   states: Record<string, AuthorityData>;
 }
