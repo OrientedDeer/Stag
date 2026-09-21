@@ -52,7 +52,7 @@ export interface MonteCarloConfig {
  */
 export type ReturnPresetKey = 'historical' | 'conservative' | 'custom';
 
-export interface ReturnPreset {
+interface ReturnPreset {
     key: ReturnPresetKey;
     label: string;
     description: string;
