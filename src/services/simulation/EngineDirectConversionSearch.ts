@@ -212,7 +212,7 @@ export function applyChosenWithdrawalOrder<
 
 export type ConversionPlanScore = { afterTaxNW: number; timeline: SimulationYear[] };
 /** Run a candidate conversion plan through the real engine and return its after-tax terminal NW + timeline. */
-export type ConversionPlanScorer = (plan: Map<number, number>) => ConversionPlanScore;
+type ConversionPlanScorer = (plan: Map<number, number>) => ConversionPlanScore;
 
 export interface EngineSearchOptions {
     /**
