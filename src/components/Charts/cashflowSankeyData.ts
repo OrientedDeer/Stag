@@ -151,7 +151,7 @@ interface SankeyProvenanceEntry {
  * like Gross Pay, Taxes, an expense category) get an entry; leaf source nodes
  * are omitted because they have no breakdown.
  */
-export type SankeyProvenance = Record<string, SankeyProvenanceEntry>;
+type SankeyProvenance = Record<string, SankeyProvenanceEntry>;
 
 interface BuildCashflowSankeyResult {
     data: { nodes: SankeyNode[]; links: SankeyLink[] };
