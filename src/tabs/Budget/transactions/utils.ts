@@ -127,7 +127,7 @@ export function computeStartingBalances(
     return balances;
 }
 
-export interface ContributionGroup {
+interface ContributionGroup {
     accountId: string;
     accountName: string;
     bucketName: string;
