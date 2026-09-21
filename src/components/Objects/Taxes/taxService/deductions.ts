@@ -15,7 +15,7 @@ function hasTaxDeductible(exp: AnyExpense): exp is AnyExpense & { tax_deductible
  * loans). Single-user simplification — a flat $750k with NO pre-2018 $1M
  * grandfathering.
  */
-export const MORTGAGE_ACQUISITION_DEBT_LIMIT = 750_000;
+const MORTGAGE_ACQUISITION_DEBT_LIMIT = 750_000;
 
 /**
  * Proration factor to apply to itemized mortgage interest for the $750k
