@@ -331,7 +331,7 @@ export function getCategorySpending(
  * TODO: This function is exported and tested but not used in the app.
  * Either wire it up to the budget tracking UI or delete it.
  */
-export interface AccountBalance {
+interface AccountBalance {
     accountId: string;
     accountName: string;
     previousBalance: number | null;
