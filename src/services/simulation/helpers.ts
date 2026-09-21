@@ -54,7 +54,7 @@ export interface IRMAAConversionOptions {
     nextThresholdAbove: (magi: number) => number | null;
 }
 
-export interface ConversionTaxBreakdown {
+interface ConversionTaxBreakdown {
     federalOrdinaryTaxCost: number;
     ssTorpedoCost: number;
     ltcgBumpCost: number;
