@@ -1328,7 +1328,7 @@ export function analyzeRothPreTaxAllocation(
 // Conversion Plan Diagnostic
 // ============================================================================
 
-export interface ConversionScheduleEntry {
+interface ConversionScheduleEntry {
     year: number;
     age: number;
     amount: number;
