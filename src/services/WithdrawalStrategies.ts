@@ -396,7 +396,7 @@ export function computeGKDiscretionaryAdjustment(params: {
 /**
  * Extended parameters for withdrawal calculation
  */
-export interface WithdrawalParams {
+interface WithdrawalParams {
   strategy: 'Fixed Real' | 'Percentage' | 'Guyton Klinger';
   withdrawalRate: number;
   currentPortfolio: number;
