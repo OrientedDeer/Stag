@@ -700,7 +700,7 @@ interface LotSaleRates {
     ltcgRate: number;
 }
 
-export interface LotSaleResult {
+interface LotSaleResult {
     gross: number;
     stcg: number;
     ltcg: number;
