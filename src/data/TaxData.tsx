@@ -12,7 +12,7 @@ export type SocialSecurityTreatment = 'exempt' | 'taxable' | 'income-based';
 export type LTCGTreatment = 'ordinary' | 'preferential' | 'exempt';
 
 // Social Security exemption phaseout thresholds
-export interface SSExemptionPhaseout {
+interface SSExemptionPhaseout {
   start: number;
   end: number;
 }
