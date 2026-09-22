@@ -420,7 +420,7 @@ export function formatCurrency(amount: number, options?: { cents?: boolean }): s
 /**
  * Category spending with gross, reimbursements, and net amounts
  */
-export interface CategorySpendingWithReimbursements {
+interface CategorySpendingWithReimbursements {
     expenseId: string;
     gross: number;         // Total expenses (absolute value)
     reimbursements: number; // Total reimbursements
