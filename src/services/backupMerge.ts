@@ -67,7 +67,7 @@ interface TransactionMergeReport {
     byMonth: Record<string, number>;
 }
 
-export interface BalanceUpdate {
+interface BalanceUpdate {
     id: string;
     name: string;
     amount: number;
