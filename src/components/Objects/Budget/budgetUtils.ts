@@ -610,7 +610,7 @@ export function recomputeSpendingForCategories(
 }
 
 /** One spending correction: `amount: null` means "delete the stale entry". */
-export interface SpendingReconciliationDiff {
+interface SpendingReconciliationDiff {
     expenseId: string;
     amount: number | null;
 }
