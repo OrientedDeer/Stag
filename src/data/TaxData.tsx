@@ -9,7 +9,7 @@ export interface TaxBracket {
 type SocialSecurityTreatment = 'exempt' | 'taxable' | 'income-based';
 
 // State-specific long-term capital gains treatment
-export type LTCGTreatment = 'ordinary' | 'preferential' | 'exempt';
+type LTCGTreatment = 'ordinary' | 'preferential' | 'exempt';
 
 // Social Security exemption phaseout thresholds
 interface SSExemptionPhaseout {
