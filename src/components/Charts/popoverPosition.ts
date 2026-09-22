@@ -15,7 +15,7 @@
 /** Default gap (px) between the anchor point and the floating element. */
 const POPOVER_GAP = 14;
 /** Keep at least this many px between the element and the viewport edge. */
-export const POPOVER_VIEWPORT_MARGIN = 10;
+const POPOVER_VIEWPORT_MARGIN = 10;
 
 type AxisMode = 'offset' | 'center';
 
