@@ -11,7 +11,7 @@ import { getActiveExpenses } from '../components/Objects/Budget/budgetUtils';
  * One row in the EOY contribution projection — used by the debug tab to
  * explain how the Projected Dec balances were computed for each priority.
  */
-export interface EOYContributionRow {
+interface EOYContributionRow {
     accountId: string;
     accountName: string;
     priorityName: string;
