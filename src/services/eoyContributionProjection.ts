@@ -44,7 +44,7 @@ interface EOYDebtRow {
     skipped?: 'deficit' | 'no-linked-expense' | 'zero-principal' | 'paid-off';
 }
 
-export interface EOYContributionProjection {
+interface EOYContributionProjection {
     /** accountId → extra dollars to add to that account's EOY balance */
     additions: Record<string, number>;
     /** debtAccountId → principal $ to subtract from that DebtAccount's EOY balance */
