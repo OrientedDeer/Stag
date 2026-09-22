@@ -6,7 +6,7 @@ export interface TaxBracket {
 }
 
 // State-specific Social Security treatment
-export type SocialSecurityTreatment = 'exempt' | 'taxable' | 'income-based';
+type SocialSecurityTreatment = 'exempt' | 'taxable' | 'income-based';
 
 // State-specific long-term capital gains treatment
 export type LTCGTreatment = 'ordinary' | 'preferential' | 'exempt';
