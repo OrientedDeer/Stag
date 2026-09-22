@@ -789,28 +789,6 @@ export interface AccountBalanceSnapshot {
 }
 
 /**
- * Input for withdrawal planning.
- */
-export interface WithdrawalPlannerInput {
-    /** Net amount needed after taxes */
-    netNeeded: number;
-    /** Ordered list of accounts to tap (in priority order) */
-    accountOrder: AccountBalanceSnapshot[];
-    /** Current age for penalty calculations */
-    currentAge: number;
-    /** Current year */
-    year: number;
-    /** Current ordinary income (for marginal rate calculation) */
-    currentOrdinaryIncome: number;
-    /** Filing status */
-    filingStatus: 'single' | 'married_filing_jointly' | 'married_filing_separately' | 'head_of_household';
-    /** Federal tax parameters */
-    fedParams: { brackets: { threshold: number; rate: number }[]; standardDeduction: number };
-    /** State tax parameters (null if no state tax) */
-    stateParams: { brackets: { threshold: number; rate: number }[]; standardDeduction: number } | null;
-}
-
-/**
  * Result from income classification.
  */
 export interface IncomeClassificationResult {
