@@ -36,7 +36,7 @@ interface AmountPoint {
     num: number;
 }
 
-export interface MergeableAccount {
+interface MergeableAccount {
     id: string;
     name: string;
     amount?: number;
