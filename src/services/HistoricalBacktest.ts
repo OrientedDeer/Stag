@@ -23,7 +23,7 @@ import {
 /**
  * Result of a single historical backtest starting in a specific year
  */
-export interface BacktestResult {
+interface BacktestResult {
   /** Year the retirement started */
   startYear: number;
   /** Year the simulation ended (either depleted or reached end) */
