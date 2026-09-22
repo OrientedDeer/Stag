@@ -76,7 +76,7 @@ const RMD_PRESSURE_MIN_BALANCE = 50000;
 // Types
 // ============================================================================
 
-export interface MarginalRateBreakdown {
+interface MarginalRateBreakdown {
     federal: number;
     state: number;
     fica: number;
