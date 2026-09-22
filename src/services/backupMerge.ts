@@ -55,7 +55,7 @@ export interface MergeBlob {
 
 // --- Reports ---
 
-export interface TransactionMergeReport {
+interface TransactionMergeReport {
     added: number;
     duplicatesSkipped: number;
     autoCategorized: number;
