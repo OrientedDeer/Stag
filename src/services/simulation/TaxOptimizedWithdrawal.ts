@@ -46,7 +46,7 @@ type EdgeType =
 /**
  * Result of dynamic conversion ceiling calculation
  */
-export interface ConversionCeilingResult {
+interface ConversionCeilingResult {
     /** The tax bracket rate to convert up to (e.g., 0.22 for 22%) */
     conversionCeiling: number;
 
