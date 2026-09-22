@@ -231,7 +231,7 @@ export interface YearSolverInput {
     skipDisplayRefinement?: boolean;
 }
 
-export interface ConversionPlan {
+interface ConversionPlan {
     conversion: PlannedConversion | null;
     conversionTax: number;
     taxSource: ConversionTaxSource;
