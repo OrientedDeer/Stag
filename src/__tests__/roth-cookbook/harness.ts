@@ -345,7 +345,7 @@ interface SweepPoint {
     ranOutOfMoney: boolean;
 }
 
-export interface SweepResult {
+interface SweepResult {
     points: SweepPoint[];
     /** Factor with the highest terminalAfterTaxNW. */
     argmaxFactor: number;
