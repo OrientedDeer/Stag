@@ -65,7 +65,7 @@ interface ConversionTaxBreakdown {
     irmaaSurchargeIncrease: number;
 }
 
-export interface EffectiveConversionTaxResult {
+interface EffectiveConversionTaxResult {
     taxBefore: number;
     taxAfter: number;
     taxIncrease: number;
