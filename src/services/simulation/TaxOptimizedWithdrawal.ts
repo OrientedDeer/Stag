@@ -37,7 +37,7 @@ export type Phase =
 /**
  * What caused the effective rate limit to be reached
  */
-export type EdgeType =
+type EdgeType =
     | 'SS_TORPEDO'        // Social Security taxation caused >25% rate jump
     | 'LTCG_BUMP'         // Long-term capital gains pushed from 0% to 15%
     | 'BRACKET_EDGE'      // Normal tax bracket boundary
