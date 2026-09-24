@@ -104,7 +104,7 @@ export interface TaxAnalysis {
     };
 }
 
-export type RecommendationCategory = 'contribution' | 'conversion' | 'timing' | 'withdrawal';
+type RecommendationCategory = 'contribution' | 'conversion' | 'timing' | 'withdrawal';
 type RecommendationImpact = 'high' | 'medium' | 'low';
 
 export interface TaxRecommendation {
