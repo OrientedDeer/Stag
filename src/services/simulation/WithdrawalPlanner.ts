@@ -56,7 +56,7 @@ export function grossUpDivisor(effectiveRate: number): number {
 // TYPES
 // =============================================================================
 
-export interface WithdrawalPlanResult {
+interface WithdrawalPlanResult {
     withdrawals: PlannedWithdrawal[];
     totalGross: number;
     totalNet: number;
