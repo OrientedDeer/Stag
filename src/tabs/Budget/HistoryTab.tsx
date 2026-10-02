@@ -209,9 +209,9 @@ export default function HistoryTab() {
         });
 
         rows.filter(row => row.monthNum !== 0).forEach(row => {
-            result.total += row.total;
-            result.budget += row.budget;
-            result.difference += row.difference;
+            result['total'] += row.total;
+            result['budget'] += row.budget;
+            result['difference'] += row.difference;
             expenses.forEach(exp => {
                 result[`exp_${exp.id}`] += (row[`exp_${exp.id}`] as number) || 0;
             });
@@ -274,16 +274,16 @@ export default function HistoryTab() {
                     <span className="text-sm text-content-muted">Year Totals:</span>
                     <div className="flex items-center gap-1">
                         <span className="text-xs text-content-subtle">Spent</span>
-                        <span className="text-sm font-bold text-white">{formatCurrency(totals.total)}</span>
+                        <span className="text-sm font-bold text-white">{formatCurrency(totals['total'])}</span>
                     </div>
                     <div className="flex items-center gap-1">
                         <span className="text-xs text-content-subtle">Budget</span>
-                        <span className="text-sm font-bold text-white">{formatCurrency(totals.budget)}</span>
+                        <span className="text-sm font-bold text-white">{formatCurrency(totals['budget'])}</span>
                     </div>
                     <div className="flex items-center gap-1">
                         <span className="text-xs text-content-subtle">+/-</span>
-                        <span className={`text-sm font-bold ${totals.difference >= 0 ? 'text-positive' : 'text-warning'}`}>
-                            {totals.difference >= 0 ? '+' : ''}{formatCurrency(totals.difference)}
+                        <span className={`text-sm font-bold ${totals['difference'] >= 0 ? 'text-positive' : 'text-warning'}`}>
+                            {totals['difference'] >= 0 ? '+' : ''}{formatCurrency(totals['difference'])}
                         </span>
                     </div>
                 </div>
