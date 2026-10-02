@@ -61,7 +61,7 @@ export function getNetWorthBreakdown(accounts: AnyAccount[]): {
  * estimating after-tax net worth. A representative long-term rate — most
  * retirees realizing gains land in the 15% LTCG bracket.
  */
-export const ASSUMED_LTCG_RATE = 0.15;
+const ASSUMED_LTCG_RATE = 0.15;
 
 interface AfterTaxNetWorth {
     /** Nominal net worth (assets − liabilities), unchanged. */
