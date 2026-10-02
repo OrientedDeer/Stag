@@ -23,7 +23,7 @@ const MIN_BIRTH_YEAR = 1900;
  * they're plain inputs on the Assumptions tab, and the modal manages only
  * custom milestones.
  */
-export const PlanBasicsSection: React.FC<PlanBasicsSectionProps> = ({ className = "", onOpenMilestones }) => {
+const PlanBasicsSection: React.FC<PlanBasicsSectionProps> = ({ className = "", onOpenMilestones }) => {
     const { state, dispatch } = useContext(AssumptionsContext);
     const milestones = state.milestones || [];
 
