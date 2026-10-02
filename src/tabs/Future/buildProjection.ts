@@ -17,7 +17,7 @@ import { runJointSearchInWorker, JointSearchSupersededError } from '../../servic
  * supplies the "remainder goals already funded this year" lookup; pass the latest
  * cached timeline (or [] before the first run).
  */
-export function buildProjection(
+function buildProjection(
     assumptions: AssumptionsState,
     accounts: AnyAccount[],
     incomes: AnyIncome[],
