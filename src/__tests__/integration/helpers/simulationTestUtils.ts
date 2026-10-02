@@ -8,7 +8,7 @@
 import { type SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { type AnyAccount, InvestedAccount, SavedAccount, PropertyAccount, DebtAccount, DeficitDebtAccount } from '../../../components/Objects/Accounts/models';
 import { type AnyExpense } from '../../../components/Objects/Expense/models';
-import { type AnyIncome, WorkIncome, FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
+import { WorkIncome, FutureSocialSecurityIncome } from '../../../components/Objects/Income/models';
 
 /**
  * Calculate age for a given simulation year
@@ -82,13 +82,6 @@ export function getAccountById(year: SimulationYear, accountId: string): AnyAcco
  */
 export function getAccountByName(year: SimulationYear, accountName: string): AnyAccount | undefined {
     return year.accounts.find(acc => acc.name === accountName);
-}
-
-/**
- * Get income by ID from a simulation year
- */
-export function getIncomeById(year: SimulationYear, incomeId: string): AnyIncome | undefined {
-    return year.incomes.find(inc => inc.id === incomeId);
 }
 
 /**
