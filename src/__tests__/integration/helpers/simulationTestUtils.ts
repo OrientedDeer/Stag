@@ -111,15 +111,6 @@ export function getWithdrawalByName(year: SimulationYear, accountName: string): 
 }
 
 /**
- * Get total invested account balance
- */
-export function getTotalInvestedBalance(accounts: AnyAccount[]): number {
-    return accounts
-        .filter(acc => acc instanceof InvestedAccount)
-        .reduce((sum, acc) => sum + acc.amount, 0);
-}
-
-/**
  * Get accounts by tax type
  */
 export function getAccountsByTaxType(accounts: AnyAccount[], taxType: string): InvestedAccount[] {
