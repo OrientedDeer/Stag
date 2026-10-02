@@ -1,5 +1,5 @@
 import { type AnyAccount, RSUAccount, type RSULot } from "../../components/Objects/Accounts/models";
-import { type AnyIncome, WorkIncome, PassiveIncome, getIncomeActiveMultiplier } from "../../components/Objects/Income/models";
+import { type AnyIncome, WorkIncome, PassiveIncome } from "../../components/Objects/Income/models";
 import { isActiveRSUGrant } from "../../components/Objects/Income/rsuGrant";
 
 interface RSUVestingResult {
@@ -238,12 +238,4 @@ export function processRSUVesting(
     });
 
     return { vestIncomes, rsuLots, totalWithholding, vestWithholdingByIncomeId, vestAccountIdByIncomeId, logs };
-}
-
-/** Sum the active-prorated vest income for the year (used for sanity/tests). */
-export function getTotalRSUVestIncome(vestIncomes: PassiveIncome[], year: number): number {
-    return vestIncomes.reduce((sum, inc) => {
-        const mult = getIncomeActiveMultiplier(inc, year);
-        return sum + inc.amount * mult;
-    }, 0);
 }
