@@ -216,8 +216,8 @@ export function decodeUserInfo(idToken: string): UserInfo {
     try {
         const payload = decodeJwtPayload(idToken);
         return {
-            email: (payload.email as string) || 'Unknown',
-            sub: (payload.sub as string) || '',
+            email: (payload['email'] as string) || 'Unknown',
+            sub: (payload['sub'] as string) || '',
         };
     } catch {
         return { email: 'Unknown', sub: '' };
@@ -234,7 +234,7 @@ export function decodeUserInfo(idToken: string): UserInfo {
 export function getIdTokenExpiry(idToken: string): number {
     try {
         const payload = decodeJwtPayload(idToken);
-        return typeof payload.exp === 'number' ? payload.exp * 1000 : 0;
+        return typeof payload['exp'] === 'number' ? payload['exp'] * 1000 : 0;
     } catch {
         return 0;
     }
