@@ -530,7 +530,7 @@ export function getOrdinaryAGI(
  * the state base, while federal keeps it. `getOrdinaryAGI` returns the sum; the state
  * marginal in {@link getOrdinaryMarginalRate} reads only `agiExcludingSS` (#184 Bug 2).
  */
-export function getOrdinaryAGIComponents(
+function getOrdinaryAGIComponents(
     simYear: SimulationYear,
     age: number,
     filingStatus: TaxState['filingStatus'],
