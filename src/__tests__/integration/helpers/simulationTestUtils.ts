@@ -143,15 +143,6 @@ export function getRetirementYear(
 }
 
 /**
- * Calculate effective tax rate for a year
- */
-export function getEffectiveTaxRate(year: SimulationYear): number {
-    const totalTax = year.taxDetails.fed + year.taxDetails.state + year.taxDetails.fica;
-    const totalIncome = year.cashflow.totalIncome;
-    return totalIncome > 0 ? totalTax / totalIncome : 0;
-}
-
-/**
  * Check if a log message exists in a simulation year
  */
 export function hasLogMessage(year: SimulationYear, substring: string): boolean {
