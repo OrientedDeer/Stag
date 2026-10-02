@@ -104,17 +104,6 @@ export function getWithdrawalByName(year: SimulationYear, accountName: string): 
 }
 
 /**
- * Get the retirement year from simulation
- */
-export function getRetirementYear(
-    simulation: SimulationYear[],
-    birthYear: number,
-    retirementAge: number
-): SimulationYear | undefined {
-    return getYearByAge(simulation, retirementAge, birthYear);
-}
-
-/**
  * Check if a log message exists in a simulation year
  */
 export function hasLogMessage(year: SimulationYear, substring: string): boolean {
