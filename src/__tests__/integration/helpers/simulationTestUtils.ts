@@ -78,13 +78,6 @@ export function getAccountById(year: SimulationYear, accountId: string): AnyAcco
 }
 
 /**
- * Get account by name from a simulation year
- */
-export function getAccountByName(year: SimulationYear, accountName: string): AnyAccount | undefined {
-    return year.accounts.find(acc => acc.name === accountName);
-}
-
-/**
  * Get work income from a simulation year
  */
 export function getWorkIncome(year: SimulationYear): WorkIncome | undefined {
