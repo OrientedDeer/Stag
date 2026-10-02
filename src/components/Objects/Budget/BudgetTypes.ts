@@ -17,8 +17,7 @@ export type IncomeCategory = typeof INCOME_CATEGORIES[number];
 /**
  * Transaction frequency for recurring items
  */
-export const TRANSACTION_FREQUENCIES = ['one-time', 'monthly', 'quarterly', 'annual'] as const;
-export type TransactionFrequency = typeof TRANSACTION_FREQUENCIES[number];
+export type TransactionFrequency = 'one-time' | 'monthly' | 'quarterly' | 'annual';
 
 /**
  * Get the monthly divisor for a frequency (how many months to spread the amount over)
