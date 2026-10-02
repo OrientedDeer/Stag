@@ -27,7 +27,7 @@ import { buildTradValuation, terminalAfterTaxNetWorth } from '../../../tabs/Futu
  * builder so the DP optimizes against the same future-year tax state the final
  * sim executes.
  */
-export function scopeFutureTaxState(taxState: TaxState): TaxState {
+function scopeFutureTaxState(taxState: TaxState): TaxState {
     return {
         ...taxState,
         fedOverride: null,
