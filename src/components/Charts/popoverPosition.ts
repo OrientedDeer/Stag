@@ -32,7 +32,7 @@ interface AxisInput {
 }
 
 /** Place one axis: returns the top-left coordinate for the floating element. */
-export function placeAxis({ anchor, size, viewport, mode, gap = POPOVER_GAP, margin = POPOVER_VIEWPORT_MARGIN }: AxisInput): number {
+function placeAxis({ anchor, size, viewport, mode, gap = POPOVER_GAP, margin = POPOVER_VIEWPORT_MARGIN }: AxisInput): number {
     let start: number;
     if (mode === 'center') {
         start = anchor - size / 2;
