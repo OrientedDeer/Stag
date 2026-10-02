@@ -41,7 +41,7 @@ function parseColorChannels(color: string): [number, number, number] | null {
 }
 
 /** Lighten a resolved color toward white by `t` (0..1). Pass-through if unparseable. */
-export function lightenColor(color: string, t: number): string {
+function lightenColor(color: string, t: number): string {
   const channels = parseColorChannels(color);
   if (!channels) return color;
   const [r, g, b] = channels.map(c => Math.round(c + (255 - c) * t));
