@@ -59,15 +59,6 @@ export function getTotalDiscretionary(expenses: AnyExpense[], year: number): num
 }
 
 /**
- * Get total non-discretionary expenses for a year
- */
-export function getTotalNonDiscretionary(expenses: AnyExpense[], year: number): number {
-    return expenses
-        .filter(exp => !exp.isDiscretionary)
-        .reduce((sum, exp) => sum + exp.getAnnualAmount(year), 0);
-}
-
-/**
  * Get a simulation year by age
  */
 export function getYearByAge(
