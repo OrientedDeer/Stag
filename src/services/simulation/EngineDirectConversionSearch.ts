@@ -214,7 +214,7 @@ export type ConversionPlanScore = { afterTaxNW: number; timeline: SimulationYear
 /** Run a candidate conversion plan through the real engine and return its after-tax terminal NW + timeline. */
 type ConversionPlanScorer = (plan: Map<number, number>) => ConversionPlanScore;
 
-export interface EngineSearchOptions {
+interface EngineSearchOptions {
     /**
      * The std-ded baseline, already executed and scored with the SAME ruler. Seeded as a
      * candidate with its TRUE score (not re-scored), so when it wins the search returns the
