@@ -173,13 +173,3 @@ export function getEffectiveTaxRate(year: SimulationYear): number {
 export function hasLogMessage(year: SimulationYear, substring: string): boolean {
     return year.logs.some(log => log.toLowerCase().includes(substring.toLowerCase()));
 }
-
-/**
- * Get years where a specific condition is met
- */
-export function getYearsWhere(
-    simulation: SimulationYear[],
-    predicate: (year: SimulationYear) => boolean
-): SimulationYear[] {
-    return simulation.filter(predicate);
-}
