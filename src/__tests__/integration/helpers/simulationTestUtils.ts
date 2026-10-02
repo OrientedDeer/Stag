@@ -99,13 +99,6 @@ export function getSocialSecurityIncome(year: SimulationYear): FutureSocialSecur
 }
 
 /**
- * Get total withdrawals for a year
- */
-export function getTotalWithdrawals(year: SimulationYear): number {
-    return year.cashflow.withdrawals;
-}
-
-/**
  * Get the withdrawal drawn from a named account in a year. `withdrawalDetail`
  * is keyed by account id (#142), so resolve the display name -> id from the
  * year's account snapshots, then read the draw. Returns 0 if the account isn't
