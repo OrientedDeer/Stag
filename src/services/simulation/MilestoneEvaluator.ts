@@ -497,7 +497,7 @@ export function isIncomeActiveToday(
  * projection lands — the same sim-lag every relative-milestone view carries. Only the
  * genuinely sim-bound cases default; everything resolvable from `todaySet` is honored.
  */
-export function isMilestoneActiveToday(
+function isMilestoneActiveToday(
     startMilestoneId: string | undefined,
     endMilestoneId: string | undefined,
     todayMilestoneSet: Set<string>,
