@@ -21,7 +21,7 @@ import * as TaxService from '../../../components/Objects/Taxes/TaxService';
  * Single / 2025 — the Policy-suite profile; the DP suite overrides with its
  * MFJ / 2024 params.
  */
-export const DEFAULT_FED_PARAMS = TaxService.getTaxParameters(2025, 'Single', 'federal')!;
+const DEFAULT_FED_PARAMS = TaxService.getTaxParameters(2025, 'Single', 'federal')!;
 
 /**
  * Build a synthetic `DPYearContext`. `year`/`age` are required (every horizon
