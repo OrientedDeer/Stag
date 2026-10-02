@@ -262,7 +262,7 @@ interface EngineSearchDiagnostics {
     trimAnchorHeadroom?: number | null;
 }
 
-export interface EngineSearchResult {
+interface EngineSearchResult {
     conversionsByYear: Map<number, number>;
     /** The winning candidate's already-computed timeline — reuse it, don't re-sim. */
     winningTimeline: SimulationYear[];
