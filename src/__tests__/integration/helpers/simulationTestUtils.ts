@@ -104,15 +104,6 @@ export function getWithdrawalByName(year: SimulationYear, accountName: string): 
 }
 
 /**
- * Get accounts by tax type
- */
-export function getAccountsByTaxType(accounts: AnyAccount[], taxType: string): InvestedAccount[] {
-    return accounts.filter(
-        acc => acc instanceof InvestedAccount && acc.taxType === taxType
-    ) as InvestedAccount[];
-}
-
-/**
  * Get the retirement year from simulation
  */
 export function getRetirementYear(
