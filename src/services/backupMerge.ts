@@ -88,7 +88,7 @@ export interface BalanceMergeReport {
     flagged: BalanceFlag[];
 }
 
-export interface BalanceRowInput {
+interface BalanceRowInput {
     /** SimpleFIN account key — matches the keys in balanceAccountMap. */
     account: string;
     /** Current balance (may be negative for debts/credit cards). */
