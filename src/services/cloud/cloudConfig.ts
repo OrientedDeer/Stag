@@ -15,8 +15,8 @@ export interface CloudConfig {
 }
 
 export function getCloudConfig(): CloudConfig | null {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-    const apiEndpoint = import.meta.env.VITE_CLOUD_API_ENDPOINT;
+    const clientId = import.meta.env['VITE_GOOGLE_CLIENT_ID'];
+    const apiEndpoint = import.meta.env['VITE_CLOUD_API_ENDPOINT'];
 
     if (!clientId || !apiEndpoint) {
         return null;
