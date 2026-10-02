@@ -214,12 +214,12 @@ export function validateAndTransformScenarioImport(parsed: unknown): SavedScenar
 
     const obj = parsed as Record<string, unknown>;
 
-    if (!obj.metadata || !obj.inputs) {
+    if (!obj['metadata'] || !obj['inputs']) {
         throw new Error('Invalid scenario file: missing metadata or inputs');
     }
 
-    const metadata = obj.metadata as Record<string, unknown>;
-    if (!metadata.id || !metadata.name) {
+    const metadata = obj['metadata'] as Record<string, unknown>;
+    if (!metadata['id'] || !metadata['name']) {
         throw new Error('Invalid scenario file: missing required metadata fields');
     }
 
@@ -229,10 +229,10 @@ export function validateAndTransformScenarioImport(parsed: unknown): SavedScenar
         metadata: {
             ...metadata,
             id: generateScenarioId(),
-            name: `${metadata.name} (Imported)`,
+            name: `${metadata['name']} (Imported)`,
             updatedAt: new Date().toISOString()
         },
-        version: obj.version || SCENARIO_VERSION
+        version: obj['version'] || SCENARIO_VERSION
     } as SavedScenario;
 }
 
