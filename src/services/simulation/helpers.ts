@@ -82,7 +82,7 @@ interface EffectiveConversionTaxResult {
  * pass it in via the optional `baseline` param instead of recomputing it on
  * every probe.
  */
-export interface ConversionTaxBaseline {
+interface ConversionTaxBaseline {
     taxResultBefore: ReturnType<typeof TaxService.calculateTotalFederalTax>;
     taxBeforeManualSS: ReturnType<typeof TaxService.calculateTotalFederalTax>;
     stateTaxBefore: number;
