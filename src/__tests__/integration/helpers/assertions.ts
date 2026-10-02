@@ -450,41 +450,6 @@ export function assertLongHorizonStability(
 // DIFFERENTIAL/PAIRED SCENARIO ASSERTIONS
 // =============================================================================
 
-/**
- * Assert that claiming SS later results in higher late-life benefits.
- */
-export function assertDelayedSSHigherBenefit(
-    earlySim: SimulationYear[],
-    lateSim: SimulationYear[],
-    _earlyClaimYear: number,
-    _lateClaimYear: number,
-    birthYear: number
-): void {
-    // Compare benefits at a common late year (e.g., age 75)
-    const comparisonAge = 75;
-    const comparisonYear = birthYear + comparisonAge;
-
-    const earlyYearData = earlySim.find(y => y.year === comparisonYear);
-    const lateYearData = lateSim.find(y => y.year === comparisonYear);
-
-    if (earlyYearData && lateYearData) {
-        const earlySSIncome = earlyYearData.incomes
-            .filter(i => i.constructor.name.includes('SocialSecurity'))
-            .reduce((sum, i) => sum + i.amount, 0);
-
-        const lateSSIncome = lateYearData.incomes
-            .filter(i => i.constructor.name.includes('SocialSecurity'))
-            .reduce((sum, i) => sum + i.amount, 0);
-
-        // Late claiming should result in higher benefits at age 75
-        // (8% per year delayed from 67 to 70)
-        expect(
-            lateSSIncome,
-            `SS at 75 should be higher with late claiming`
-        ).toBeGreaterThanOrEqual(earlySSIncome * 0.95); // Allow small tolerance
-    }
-}
-
 // =============================================================================
 // LIFETIME CASH-FLOW RECONCILIATION
 // =============================================================================
