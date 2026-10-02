@@ -24,7 +24,7 @@ type AnnualBudgetMode = 'lump' | 'sinkingFund';
  */
 export type GoalType = 'recurring' | 'targetDate';
 
-export interface Expense {
+interface Expense {
   id: string;
   name: string;
   amount: number;
