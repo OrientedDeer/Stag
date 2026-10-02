@@ -4,7 +4,7 @@ import { parseDate, hasClassName, extractBaseFields } from "../modelUtils";
 
 // 1. Interface
 
-export interface Account {
+interface Account {
   id: string;
   name: string;
   amount: number;
