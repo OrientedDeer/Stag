@@ -528,21 +528,6 @@ export function assertLongHorizonStability(
 // =============================================================================
 
 /**
- * Assert that one simulation has higher final net worth than another.
- * Useful for comparing scenarios (e.g., with/without Roth conversions).
- */
-export function assertHigherFinalNetWorth(
-    higherSim: SimulationYear[],
-    lowerSim: SimulationYear[],
-    description: string
-): void {
-    const higherFinal = calculateNetWorth(higherSim[higherSim.length - 1].accounts);
-    const lowerFinal = calculateNetWorth(lowerSim[lowerSim.length - 1].accounts);
-
-    expect(higherFinal, description).toBeGreaterThanOrEqual(lowerFinal);
-}
-
-/**
  * Assert that claiming SS later results in higher late-life benefits.
  */
 export function assertDelayedSSHigherBenefit(
