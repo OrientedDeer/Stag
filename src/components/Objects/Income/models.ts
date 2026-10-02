@@ -30,7 +30,7 @@ export type EmployerMatchType = 'fixed' | 'percent';
 
 export type IncomeFrequency = 'Weekly' | 'Bi-Weekly' | 'Semi-Monthly' | 'Monthly' | 'Annually';
 
-export interface Income {
+interface Income {
   id: string;
   name: string;
   amount: number;
