@@ -38,7 +38,7 @@ export interface CloudBackupContextValue extends CloudBackupState {
     clearJustSignedIn: () => void;
 }
 
-export const BACKUP_META_KEY = 'cloud_backup_meta';
+const BACKUP_META_KEY = 'cloud_backup_meta';
 
 export interface PersistedMeta {
     lastBackupTimestamp: string | null;
