@@ -6,7 +6,7 @@
  */
 
 /** Canonical categorical series palette (12 distinct, themeable slots). */
-export const CHART_SERIES: string[] = Array.from(
+const CHART_SERIES: string[] = Array.from(
   { length: 12 },
   (_, i) => `var(--color-chart-series-${i + 1})`,
 );
@@ -157,4 +157,3 @@ export function resolveColor(value: string | undefined): string {
   if (/^(#|rgb|hsl)/i.test(resolved)) return resolved;
   return oklchToRgb(resolved) ?? canvasNormalize(resolved);
 }
-
