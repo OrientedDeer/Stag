@@ -19,10 +19,10 @@ import {
 function applyTheme(theme: ThemeId) {
   const config = THEMES[theme];
   const root = document.documentElement;
-  root.dataset.theme = theme;
-  root.dataset.glow = String(config.flags.glow);
-  root.dataset.scanlines = String(config.flags.scanlines);
-  root.dataset.angular = String(config.flags.angular);
+  root.dataset["theme"] = theme;
+  root.dataset["glow"] = String(config.flags.glow);
+  root.dataset["scanlines"] = String(config.flags.scanlines);
+  root.dataset["angular"] = String(config.flags.angular);
   if (config.font) {
     root.style.setProperty("--app-font", config.font);
   } else {
