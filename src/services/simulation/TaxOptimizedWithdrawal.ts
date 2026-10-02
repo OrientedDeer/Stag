@@ -553,7 +553,7 @@ export function coarseToFineSearch(
 /**
  * Result of rate-matched conversion calculation.
  */
-export interface RateMatchedConversion {
+interface RateMatchedConversion {
     /** Total dollars to convert this year */
     optimalConversion: number;
     /** Marginal rate of the last bracket converted into (e.g., 0.12 if conversion stopped after filling 12%) */
