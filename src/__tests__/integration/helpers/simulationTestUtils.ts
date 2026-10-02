@@ -71,16 +71,6 @@ export function getYearByAge(
 }
 
 /**
- * Get simulation year by calendar year
- */
-export function getYearByCalendarYear(
-    simulation: SimulationYear[],
-    calendarYear: number
-): SimulationYear | undefined {
-    return simulation.find(y => y.year === calendarYear);
-}
-
-/**
  * Get account by ID from a simulation year
  */
 export function getAccountById(year: SimulationYear, accountId: string): AnyAccount | undefined {
