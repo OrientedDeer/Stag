@@ -562,23 +562,6 @@ export function assertDelayedSSHigherBenefit(
     }
 }
 
-/**
- * Assert directional change: one value is greater/less than another.
- */
-export function assertDirectionalChange(
-    actual: number,
-    reference: number,
-    direction: 'greater' | 'less',
-    description: string,
-    tolerance: number = 0
-): void {
-    if (direction === 'greater') {
-        expect(actual, description).toBeGreaterThanOrEqual(reference - tolerance);
-    } else {
-        expect(actual, description).toBeLessThanOrEqual(reference + tolerance);
-    }
-}
-
 // =============================================================================
 // LIFETIME CASH-FLOW RECONCILIATION
 // =============================================================================
