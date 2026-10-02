@@ -41,7 +41,7 @@ export function loadProjectionHistory(): ProjectionSnapshot[] {
     }
 }
 
-export function saveProjectionHistory(snapshots: ProjectionSnapshot[]): void {
+function saveProjectionHistory(snapshots: ProjectionSnapshot[]): void {
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshots));
     } catch {
