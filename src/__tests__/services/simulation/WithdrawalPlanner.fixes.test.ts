@@ -178,6 +178,19 @@ describe('§1211(b): RSU net capital loss capped at $3,000 on the aggregate', ()
         // ...but the NET reported loss is the §1211 cap, not the raw ~-$27k.
         expect(result.totalSTCG + result.totalLTCG).toBeCloseTo(-3000, 0);
     });
+
+    it('caps the net loss at $1,500 for Married Filing Separately (§1211(b)(1))', () => {
+        const ltLot = { id: 'lt', grantDate: new Date(2022, 0, 1), vestDate: new Date(2023, 0, 1), fmvAtVest: 40, shares: 1000, costBasis: 40000 };
+        const stLot = { id: 'st', grantDate: new Date(2025, 0, 1), vestDate: new Date(2025, 0, 1), fmvAtVest: 40, shares: 1000, costBasis: 40000 };
+        const rsu = new RSUAccount('rsu-1', 'Company RSU', 50000, [ltLot, stLot], null, undefined, 'CO', 25, 'fifo', 0);
+
+        const result = planWithdrawals(
+            45000, [createAccountSnapshot(rsu, new Date(YEAR, 5, 15))], 66, YEAR,
+            { ...taxStateFor('Texas'), filingStatus: 'Married Filing Separately' }, 0, undefined,
+        );
+
+        expect(result.totalSTCG + result.totalLTCG).toBeCloseTo(-1500, 0);
+    });
 });
 
 // =============================================================================
