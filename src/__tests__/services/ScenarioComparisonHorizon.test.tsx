@@ -155,7 +155,7 @@ describe('#183 saved-scenario comparison horizon', () => {
         } as unknown as AssumptionsState;
         // Drop the milestones array to emulate the legacy persisted shape.
         const scenario = makeSavedScenario('legacy-1', legacyAssumptionsBlob);
-        delete (scenario.inputs.assumptions as Record<string, unknown>).milestones;
+        delete (scenario.inputs.assumptions as Record<string, unknown>)['milestones'];
 
         const currentPlan = makeCurrentPlanSimulation();
         const captured = renderProvider();
