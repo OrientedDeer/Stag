@@ -1256,23 +1256,23 @@ export function reconstituteExpense(data: unknown): AnyExpense | null {
     // windows. All startDate consumers here treat a missing start as "now", and the loan
     // constructors still default their own effectiveStartDate, so behavior is unchanged
     // apart from removing the phantom wall-clock stamp. Mirrors reconstituteIncome.
-    const startDate = parseDate(data.startDate);
+    const startDate = parseDate(data['startDate']);
     // Legacy migration: 'targetDate' goals used to store the target in a
     // separate `goalTargetDate` field (a duplicate of endDate that could
     // drift). endDate is now the single source of truth; absorb the old field
     // when endDate is missing so pre-migration backups still load.
-    const endDate = parseDate(data.endDate) ?? parseDate(data.goalTargetDate);
-    const frequency = (data.frequency as ExpenseFrequency) || 'Monthly';
+    const endDate = parseDate(data['endDate']) ?? parseDate(data['goalTargetDate']);
+    const frequency = (data['frequency'] as ExpenseFrequency) || 'Monthly';
     const { id, name, amount } = extractBaseFields(data, 'Unnamed Expense');
-    const isDiscretionary = (data.isDiscretionary as boolean) ?? false;
-    const startMilestoneId = data.startMilestoneId ? String(data.startMilestoneId) : undefined;
-    const endMilestoneId = data.endMilestoneId ? String(data.endMilestoneId) : undefined;
-    const dueMonth = data.dueMonth != null ? Number(data.dueMonth) : undefined;
-    const annualMode: AnnualBudgetMode = data.annualMode === 'sinkingFund' ? 'sinkingFund' : 'lump';
+    const isDiscretionary = (data['isDiscretionary'] as boolean) ?? false;
+    const startMilestoneId = data['startMilestoneId'] ? String(data['startMilestoneId']) : undefined;
+    const endMilestoneId = data['endMilestoneId'] ? String(data['endMilestoneId']) : undefined;
+    const dueMonth = data['dueMonth'] != null ? Number(data['dueMonth']) : undefined;
+    const annualMode: AnnualBudgetMode = data['annualMode'] === 'sinkingFund' ? 'sinkingFund' : 'lump';
     const goalType: GoalType | undefined =
-        data.goalType === 'recurring' || data.goalType === 'targetDate' ? data.goalType : undefined;
-    const intervalYears = data.intervalYears != null ? Number(data.intervalYears) : undefined;
-    const goalAccountId = data.goalAccountId ? String(data.goalAccountId) : undefined;
+        data['goalType'] === 'recurring' || data['goalType'] === 'targetDate' ? data['goalType'] : undefined;
+    const intervalYears = data['intervalYears'] != null ? Number(data['intervalYears']) : undefined;
+    const goalAccountId = data['goalAccountId'] ? String(data['goalAccountId']) : undefined;
 
     let expense: AnyExpense | null = null;
 
@@ -1280,49 +1280,49 @@ export function reconstituteExpense(data: unknown): AnyExpense | null {
         case 'HousingExpense':
         case 'RentExpense':
             expense = new RentExpense(
-                id, name, Number(data.payment) || 0, Number(data.utilities) || 0,
+                id, name, Number(data['payment']) || 0, Number(data['utilities']) || 0,
                 frequency, startDate, endDate, startMilestoneId, endMilestoneId
             );
             break;
         case 'MortgageExpense':
             expense = new MortgageExpense(
                 id, name, frequency,
-                Number(data.valuation) || 0, Number(data.loan_balance) || 0,
-                Number(data.starting_loan_balance) || 0, Number(data.apr) || 0,
-                Number(data.term_length) || 0, Number(data.property_taxes) || 0,
-                Number(data.valuation_deduction) || 0, Number(data.maintenance) || 0,
-                Number(data.utilities) || 0, Number(data.home_owners_insurance) || 0,
-                Number(data.pmi) || 0, Number(data.hoa_fee) || 0,
-                (data.is_tax_deductible as 'Yes' | 'No' | 'Itemized') || 'No',
-                Number(data.tax_deductible) || 0, String(data.linkedAccountId ?? ''),
-                startDate, Number(data.payment) || 0, Number(data.extra_payment) || 0, endDate,
+                Number(data['valuation']) || 0, Number(data['loan_balance']) || 0,
+                Number(data['starting_loan_balance']) || 0, Number(data['apr']) || 0,
+                Number(data['term_length']) || 0, Number(data['property_taxes']) || 0,
+                Number(data['valuation_deduction']) || 0, Number(data['maintenance']) || 0,
+                Number(data['utilities']) || 0, Number(data['home_owners_insurance']) || 0,
+                Number(data['pmi']) || 0, Number(data['hoa_fee']) || 0,
+                (data['is_tax_deductible'] as 'Yes' | 'No' | 'Itemized') || 'No',
+                Number(data['tax_deductible']) || 0, String(data['linkedAccountId'] ?? ''),
+                startDate, Number(data['payment']) || 0, Number(data['extra_payment']) || 0, endDate,
                 startMilestoneId, endMilestoneId
             );
             break;
         case 'LoanExpense':
             expense = new LoanExpense(
-                id, name, amount, frequency, Number(data.apr) || 0,
-                (data.interest_type as 'Compounding' | 'Simple') || 'Simple',
-                Number(data.payment) || 0,
-                (data.is_tax_deductible as 'Yes' | 'No' | 'Itemized') || 'No',
-                Number(data.tax_deductible) || 0, String(data.linkedAccountId ?? ''),
+                id, name, amount, frequency, Number(data['apr']) || 0,
+                (data['interest_type'] as 'Compounding' | 'Simple') || 'Simple',
+                Number(data['payment']) || 0,
+                (data['is_tax_deductible'] as 'Yes' | 'No' | 'Itemized') || 'No',
+                Number(data['tax_deductible']) || 0, String(data['linkedAccountId'] ?? ''),
                 startDate, endDate, startMilestoneId, endMilestoneId,
-                Number(data.extra_payment) || 0 // #60 B
+                Number(data['extra_payment']) || 0 // #60 B
             );
             break;
         case 'DependentExpense':
             expense = new DependentExpense(
                 id, name, amount, frequency,
-                (data.is_tax_deductible as 'Yes' | 'No' | 'Itemized') || 'No',
-                Number(data.tax_deductible) || 0, startDate, endDate,
+                (data['is_tax_deductible'] as 'Yes' | 'No' | 'Itemized') || 'No',
+                Number(data['tax_deductible']) || 0, startDate, endDate,
                 startMilestoneId, endMilestoneId
             );
             break;
         case 'HealthcareExpense':
             expense = new HealthcareExpense(
                 id, name, amount, frequency,
-                (data.is_tax_deductible as 'Yes' | 'No' | 'Itemized') || 'No',
-                Number(data.tax_deductible) || 0, startDate, endDate,
+                (data['is_tax_deductible'] as 'Yes' | 'No' | 'Itemized') || 'No',
+                Number(data['tax_deductible']) || 0, startDate, endDate,
                 startMilestoneId, endMilestoneId
             );
             break;
@@ -1353,8 +1353,8 @@ export function reconstituteExpense(data: unknown): AnyExpense | null {
         case 'CharityExpense':
             expense = new CharityExpense(
                 id, name, amount, frequency,
-                (data.is_tax_deductible as 'Yes' | 'No' | 'Itemized') || 'Itemized',
-                Number(data.tax_deductible) || 0, startDate, endDate,
+                (data['is_tax_deductible'] as 'Yes' | 'No' | 'Itemized') || 'Itemized',
+                Number(data['tax_deductible']) || 0, startDate, endDate,
                 startMilestoneId, endMilestoneId
             );
             break;
