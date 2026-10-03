@@ -176,14 +176,14 @@ describe('OverviewTab', () => {
 
         // Every point carries the year's Unvested figure for the tooltip.
         const point = investedSeries.data[0];
-        expect(point.Unvested).toBe(32000);
+        expect(point['Unvested']).toBe(32000);
 
         // Gross net worth = sum of bands = 100k + 20k + 0 - 0 = 120k.
         // Vested = gross - unvested = 120k - 32k = 88k (what the tooltip headlines).
         const num = (v: number | string | boolean | undefined) => (typeof v === 'number' ? v : 0);
-        const gross = num(point.Invested) + num(point.Saved) + num(point.Property) + num(point.Debt);
+        const gross = num(point['Invested']) + num(point['Saved']) + num(point['Property']) + num(point['Debt']);
         expect(gross).toBe(120000);
-        expect(gross - num(point.Unvested)).toBe(88000);
+        expect(gross - num(point['Unvested'])).toBe(88000);
 
         // The "Net Worth" line plots the Vested figure (88k), so the tooltip headline
         // lands on a visible mark — matching the Dashboard's lead-with-Vested pattern.
