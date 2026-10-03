@@ -186,6 +186,15 @@ describe('PensionData', () => {
       expect(result.eligible).toBe(true);
       expect(result.reductionPercent).toBe(10);
     });
+
+    it('does not cap the early-retirement reduction below age 50 (5 U.S.C. §8339(h))', () => {
+      // 25 years of service qualifies at any age; at 45 that is 10 years under 55,
+      // and §8339(h) reduces by 1/6% per month (2%/yr) with no cap → 20%.
+      const result = checkCSRSEligibility(45, 25);
+      expect(result.eligible).toBe(true);
+      expect(result.reductionPercent).toBe(20);
+      expect(result.message).toContain('20%');
+    });
   });
 
   describe('getCSRSCOLA', () => {

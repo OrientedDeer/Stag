@@ -268,7 +268,7 @@ export function calculateCSRSBasicBenefit(
  * - Age 55 with 30+ years
  *
  * Early retirement (voluntary):
- * - Age 50 with 20+ years, or any age with 25+ years (reduced 2% per year under 55)
+ * - Age 50 with 20+ years, or any age with 25+ years (reduced 2% per year under 55, uncapped)
  */
 interface CSRSEligibilityResult {
   eligible: boolean;
@@ -297,13 +297,14 @@ export function checkCSRSEligibility(
 
   // Early retirement: Age 50 with 20+ years, or any age with 25+ years
   if ((age >= 50 && yearsOfService >= 20) || yearsOfService >= 25) {
+    // 5 U.S.C. §8339(h): 1/6% per month (2%/yr) under 55, with no cap — the any-age
+    // 25-year route can retire well before 50, so the cut can exceed 10%.
     const yearsUnder55 = Math.max(0, 55 - age);
     const reduction = yearsUnder55 * 2;
-    const cappedReduction = Math.min(reduction, 10); // Cap reduction at 10%
     return {
       eligible: true,
-      reductionPercent: cappedReduction,
-      message: `Early retirement with ${cappedReduction}% reduction`
+      reductionPercent: reduction,
+      message: `Early retirement with ${reduction}% reduction`
     };
   }
 

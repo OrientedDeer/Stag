@@ -400,18 +400,17 @@ describe('PR #56 #4 — FERS MRA-to-62 supplement is auto-computed on activation
 });
 
 // ---------------------------------------------------------------------------
-// PR #56 #6 — CSRS early-retirement message must use the CAPPED reduction.
+// PR #56 #6 — CSRS early-retirement message must match reductionPercent.
 //
-// checkCSRSEligibility caps the benefit cut at 10% (reductionPercent) but
-// interpolated the UNCAPPED reduction into the message. age 45 / 25 yrs returns
-// 10% but the message read "20% reduction". The two must agree.
+// The message once interpolated a different reduction than reductionPercent
+// returned. The two must agree. (The former 10% cap was itself wrong:
+// 5 U.S.C. §8339(h) has no cap, so age 45 / 25 yrs is a 20% reduction.)
 // ---------------------------------------------------------------------------
-describe('PR #56 #6 — CSRS eligibility message matches the capped reductionPercent', () => {
-    it('shows the capped 10% in the message, not the uncapped 20%', () => {
+describe('PR #56 #6 — CSRS eligibility message matches reductionPercent', () => {
+    it('shows the same reduction in the message as reductionPercent', () => {
         const result = checkCSRSEligibility(45, 25);
-        expect(result.reductionPercent).toBe(10);
+        expect(result.reductionPercent).toBe(20);
         expect(result.message).toContain(`${result.reductionPercent}%`);
-        expect(result.message).not.toContain('20%');
     });
 });
 

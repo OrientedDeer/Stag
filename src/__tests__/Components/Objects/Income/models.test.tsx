@@ -1300,15 +1300,15 @@ describe('Income Models', () => {
         expect(pension.calculateBenefit()).toBe(52875);
       });
 
-      it('should apply max 10% reduction cap for very early retirement', () => {
+      it('should apply the full uncapped reduction for very early retirement', () => {
         // Age 48 with 25 years qualifies via "any age with 25+ years"
-        // Reduction: (55 - 48) × 2% = 14%, but capped at 10%
+        // Reduction: (55 - 48) × 2% = 14% (5 U.S.C. §8339(h) has no cap)
         // Base: 5×1.5% + 5×1.75% + 15×2% = $7,500 + $8,750 + $30,000 = $46,250
-        // After 10% reduction: $46,250 × 0.90 = $41,625
+        // After 14% reduction: $46,250 × 0.86 = $39,775
         const pension = new CSRSPensionIncome(
           'csrs-calc-8', 'Test CSRS', 25, 100000, 48
         );
-        expect(pension.calculateBenefit()).toBe(41625);
+        expect(pension.calculateBenefit()).toBeCloseTo(39775, 6);
       });
     });
   });
