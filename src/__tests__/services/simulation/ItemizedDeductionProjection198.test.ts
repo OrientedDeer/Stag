@@ -141,9 +141,10 @@ function freshAccounts() {
 }
 function freshMortgage() {
     // $300k @ 6% / 30yr ⇒ ~$17,900 first-year interest, declining as it amortizes.
+    // Property tax 0%: it is itemized SALT, and these tests isolate mortgage interest.
     return new MortgageExpense(
         'exp-mortgage', 'Mortgage', 'Monthly', 400_000, 300_000, 300_000, 6.0, 30,
-        1.5, 0, 1.0, 200, 0.5, 0.5, 200, 'Itemized', 0, 'acc-property',
+        0, 0, 1.0, 200, 0.5, 0.5, 200, 'Itemized', 0, 'acc-property',
         new Date(START_YEAR, 0, 1), 0, 0,
     );
 }

@@ -61,6 +61,32 @@ export function getItemizedDeductions(expenses: AnyExpense[], year: number): num
     }, 0);
 }
 
+/**
+ * Real-property taxes paid on itemized mortgages for the year. These are a
+ * state/local tax under IRC §164(a)(1), so they belong in the federal SALT
+ * deduction and share the §164(b)(6) cap with state income tax — they are NOT
+ * part of getItemizedDeductions, which states also reuse for their own bases.
+ * Prorated to the months owned in the purchase year (matching the escrow months
+ * calculateAnnualAmortization charges); a mortgage with no startDate is treated
+ * as already owned for the full year.
+ */
+export function getItemizedPropertyTaxes(expenses: AnyExpense[], year: number): number {
+    let total = 0;
+    for (const exp of expenses) {
+        if (!(exp instanceof MortgageExpense)) continue;
+        if (exp.is_tax_deductible !== "Itemized" || getExpenseActiveMultiplier(exp, year) <= 0) continue;
+        let months = 12;
+        if (exp.startDate != null) {
+            const purchaseYear = exp.startDate.getFullYear();
+            if (year < purchaseYear) continue;
+            if (year === purchaseYear) months = 12 - exp.startDate.getMonth();
+        }
+        const assessed = Math.max(0, exp.valuation - exp.valuation_deduction);
+        total += assessed * (exp.property_taxes / 100) * (months / 12);
+    }
+    return total;
+}
+
 export function getYesDeductions(expenses: AnyExpense[], year: number): number {
     return expenses
         .filter(

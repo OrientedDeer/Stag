@@ -456,7 +456,8 @@ function simulateOneYearWithNewEngine(
             : TaxService.calculateStateTax(
                 taxState, allIncomes, milestoneFilteredExpenses, year, assumptions,
             );
-        itemizedDeductionTotal = itemizedExpenses + Math.min(stateTaxForSalt, saltCap);
+        const propertyTaxes = TaxService.getItemizedPropertyTaxes(milestoneFilteredExpenses, year);
+        itemizedDeductionTotal = itemizedExpenses + Math.min(stateTaxForSalt + propertyTaxes, saltCap);
     }
 
     // ------------------------------------------------------------------

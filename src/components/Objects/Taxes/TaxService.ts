@@ -5,7 +5,7 @@
  *   - parameters.ts       getTaxParameters, getSALTCap
  *   - incomeAggregation   gross / pre-tax / post-tax / FICA / SS income getters
  *   - socialSecurity      getTaxableSocialSecurityBenefits
- *   - deductions          getItemizedDeductions, getYesDeductions
+ *   - deductions          getItemizedDeductions, getItemizedPropertyTaxes, getYesDeductions
  *   - bracketTax          calculateTax + calculateTotalFederalTax (core engine)
  *   - federalTax          calculateFederalTaxFromIncomes (orchestrator)
  *   - stateTax            calculateStateTax, calculateUnifiedStateTax
@@ -30,7 +30,7 @@ export {
     getSocialSecurityBenefits,
 } from "./taxService/incomeAggregation";
 export { getTaxableSocialSecurityBenefits, getTaxableSocialSecurityFromComponents } from "./taxService/socialSecurity";
-export { getItemizedDeductions, getYesDeductions } from "./taxService/deductions";
+export { getItemizedDeductions, getItemizedPropertyTaxes, getYesDeductions } from "./taxService/deductions";
 export {
     calculateTotalFederalTax,
     calculateTax,
