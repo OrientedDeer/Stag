@@ -871,8 +871,8 @@ describe('Income Models', () => {
       });
 
       it('should cap at 0.70 for ages below 62', () => {
-        expect(SocialSecurityIncome.calculateBenefitAdjustment(60)).toBe(0.70);
-        expect(SocialSecurityIncome.calculateBenefitAdjustment(55)).toBe(0.70);
+        expect(SocialSecurityIncome.calculateBenefitAdjustment(60)).toBeCloseTo(0.70, 10);
+        expect(SocialSecurityIncome.calculateBenefitAdjustment(55)).toBeCloseTo(0.70, 10);
       });
 
       it('should cap at 1.24 for ages above 70', () => {
@@ -881,8 +881,8 @@ describe('Income Models', () => {
       });
 
       it('should calculate intermediate early claiming reductions', () => {
-        // Age 63: 4 years early = 1.0 - (4 * 0.0667) = 0.7332
-        expect(SocialSecurityIncome.calculateBenefitAdjustment(63)).toBeCloseTo(0.7333, 2);
+        // Age 63: 48 months early = 36 × 5/9% + 12 × 5/12% = 25% reduction (20 CFR 404.410)
+        expect(SocialSecurityIncome.calculateBenefitAdjustment(63)).toBeCloseTo(0.75, 4);
         // Age 64: 3 years early = 1.0 - (3 * 0.0667) = 0.7999
         expect(SocialSecurityIncome.calculateBenefitAdjustment(64)).toBeCloseTo(0.7999, 2);
         // Age 65: 2 years early = 1.0 - (2 * 0.0667) = 0.8666

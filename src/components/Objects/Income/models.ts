@@ -9,6 +9,7 @@ import {
   getDisplayedFERSBenefit,
   getDisplayedCSRSBenefit,
 } from '../../../data/PensionData';
+import { getClaimingAdjustment } from '../../../data/SocialSecurityData';
 import { parseDate, hasClassName, extractBaseFields, getActiveWindowMultiplier, isWindowActiveInCurrentMonth, hasWindowEnded } from "../modelUtils";
 // isActiveRSUGrant lives in a leaf .ts module so importing the pure predicate
 // elsewhere doesn't pull in the model graph or trip react-refresh on this .tsx.
@@ -508,25 +509,9 @@ export class SocialSecurityIncome extends BaseIncome {
    * @returns Adjustment factor (e.g., 0.70 for age 62, 1.24 for age 70)
    */
   static calculateBenefitAdjustment(claimingAge: number): number {
-    // Claiming before FRA (67) reduces benefits by ~6.67% per year
-    // Claiming after FRA increases benefits by 8% per year (up to age 70)
-    const FRA = 67;
-
-    if (claimingAge < 62) return 0.70; // Minimum is age 62
-    if (claimingAge >= 70) return 1.24; // Maximum is age 70
-
-    if (claimingAge < FRA) {
-      // Early claiming: ~6.67% reduction per year before FRA
-      // Age 62: 70%, Age 63: 75%, Age 64: 80%, Age 65: 86.7%, Age 66: 93.3%, Age 67: 100%
-      const yearsEarly = FRA - claimingAge;
-      const reductionFactor = 0.0667; // ~6.67% per year (simplified)
-      return Math.max(0.70, 1.0 - (yearsEarly * reductionFactor));
-    } else {
-      // Delayed claiming: 8% increase per year after FRA
-      // Age 68: 108%, Age 69: 116%, Age 70: 124%
-      const yearsDelayed = claimingAge - FRA;
-      return 1.0 + (yearsDelayed * 0.08);
-    }
+    // A flat 6.67%/yr shortcut understates the benefit beyond 36 months early
+    // (age 63 → 73.3% instead of SSA's 75%), so use the 5/9%-then-5/12% monthly rule.
+    return getClaimingAdjustment(claimingAge, 67);
   }
 
   /**
