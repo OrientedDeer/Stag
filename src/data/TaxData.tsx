@@ -230,11 +230,9 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                 // 2025 regular 65+ additional standard deduction: $1,600 (MFS, per spouse).
                 // Single filer (one person) — not doubled.
                 seniorDeduction: 1600,
-                seniorAge: 65,
-                // OBBBA senior bonus: $6,000/person; MFS phaseout threshold is $75k MAGI.
-                seniorBonusDeduction: 6000,
-                seniorBonusPhaseoutThreshold: 75000,
-                seniorBonusPhaseoutRate: 0.06
+                seniorAge: 65
+                // No OBBBA senior bonus: IRC §151(d)(5) allows it to a married
+                // individual only on a joint return.
             }
         },
         2026: {
@@ -317,11 +315,9 @@ export const TAX_DATABASE: GlobalTaxDatabase = {
                 // 2026 regular 65+ additional standard deduction: $1,650 (MFS, per spouse).
                 // Single filer (one person) — not doubled.
                 seniorDeduction: 1650,
-                seniorAge: 65,
-                // OBBBA senior bonus: $6,000/person; MFS phaseout threshold is $75k MAGI.
-                seniorBonusDeduction: 6000,
-                seniorBonusPhaseoutThreshold: 75000,
-                seniorBonusPhaseoutRate: 0.06
+                seniorAge: 65
+                // No OBBBA senior bonus: IRC §151(d)(5) allows it to a married
+                // individual only on a joint return.
             }
         }
     },

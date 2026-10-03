@@ -985,15 +985,15 @@ describe('TaxService: Additional Functions', () => {
                 expect(fedTax).toBeCloseTo(10970, 0);
             });
 
-            it('MFS age 67 (2026): regular $1,650 NOT doubled (single person) + bonus', () => {
+            it('MFS age 67 (2026): regular $1,650 NOT doubled (single person), no bonus', () => {
                 const income = new WorkIncome('w1', 'Job', 90000, 'Annually', 'Yes', 0, 0, 0, 0, 'acc1', 'Traditional 401k', 'FIXED', new Date('2020-01-01'));
                 const taxState = createTaxState({ filingStatus: 'Married Filing Separately', deductionMethod: 'Standard' });
                 const fedTax = calculateFederalTaxFromIncomes(taxState, [income], [], 0, 2026, assumptionsForBirthYear(1959));
-                // MFS regular $1,650 (no per-person doubling). MAGI $90k, threshold $75k →
-                // bonus = 6000 - 6%*(90000-75000) = $5,100. Senior deduction = 1,650 + 5,100 = $6,750.
-                // Total deduction = std $16,100 + $6,750 = $22,850. Taxable = 90,000 - 22,850 = $67,150.
-                // 1,240 + 4,560 + (67,150-50,400)@22% = 1,240 + 4,560 + 3,685 = 9,485.
-                expect(fedTax).toBeCloseTo(9485, 0);
+                // MFS regular $1,650 (no per-person doubling). No OBBBA bonus: IRC §151(d)(5)
+                // allows it to a married individual only on a joint return.
+                // Total deduction = std $16,100 + $1,650 = $17,750. Taxable = 90,000 - 17,750 = $72,250.
+                // 1,240 + 4,560 + (72,250-50,400)@22% = 1,240 + 4,560 + 4,807 = 10,607.
+                expect(fedTax).toBeCloseTo(10607, 0);
             });
 
             it('MFJ both 65+ gets a strictly larger deduction than a single 65+ (per-person doubling)', () => {
