@@ -2,7 +2,7 @@
 // Thin orchestrator - delegates to focused service modules.
 
 import { type AnyAccount } from "../../Objects/Accounts/models";
-import { type AnyExpense, MortgageExpense, LoanExpense, isLongTermGoal, isGoalDueInYear, getGoalFundAnnualSetAside, goalEndsBeforeYear } from "../Expense/models";
+import { type AnyExpense, MortgageExpense, LoanExpense, isLongTermGoal, isGoalDueInYear, getGoalFundAnnualSetAside, goalEndsBeforeYear, withYearStartLoanBalances } from "../Expense/models";
 import { type AnyIncome, WorkIncome, PassiveIncome } from "../../Objects/Income/models";
 import { type AssumptionsState, getBirthYear, getLifeExpectancy, BUILTIN_MILESTONE_IDS } from "./AssumptionsContext";
 import { type TaxState } from "../../Objects/Taxes/TaxContext";
@@ -474,6 +474,10 @@ function simulateOneYearWithNewEngine(
         return next;
     });
     nextExpenses = applyLifestyleCreep(nextExpenses, milestoneFilteredIncomes, assumptions, year, isRetired, logs);
+    // Year-Y cashflow must amortize from the ENTERING loan/mortgage balances (the
+    // same #198 one-year-shift trap as the deductions above); `nextExpenses` stays
+    // the advanced state that is persisted and carried forward.
+    const cashflowView = (list: AnyExpense[]) => withYearStartLoanBalances(list, milestoneFilteredExpenses);
 
     // ------------------------------------------------------------------
     // CALCULATE EXPENSES
@@ -503,7 +507,7 @@ function simulateOneYearWithNewEngine(
     }
     const totalGoalFunding = [...goalFundCredits.values()].reduce((s, v) => s + v, 0);
 
-    let totalLivingExpenses = nextExpenses.reduce((sum, exp) => {
+    let totalLivingExpenses = cashflowView(nextExpenses).reduce((sum, exp) => {
         if (exp instanceof MortgageExpense) {
             return sum + exp.calculateAnnualAmortization(year).totalPayment;
         }
@@ -529,7 +533,7 @@ function simulateOneYearWithNewEngine(
     if (isRetired && withdrawalStrategyName === 'Guyton Klinger') {
         const gkPortfolio = sumInvestedAssets(accounts);
         const yearsRemaining = getLifeExpectancy(assumptions.milestones) - currentAge;
-        const discretionaryBefore = calculateTotalDiscretionary(nextExpenses, year);
+        const discretionaryBefore = calculateTotalDiscretionary(cashflowView(nextExpenses), year);
 
         // AUTO withdrawal-rate mode (default): derive the guardrail band center
         // from the plan itself at the FIRST retirement year — planned (pre-
@@ -583,7 +587,7 @@ function simulateOneYearWithNewEngine(
                 );
                 // Re-total after the discretionary adjustment so the solver funds the
                 // adjusted plan and the downstream fixed/discretionary split matches.
-                totalLivingExpenses = nextExpenses.reduce((sum, exp) => {
+                totalLivingExpenses = cashflowView(nextExpenses).reduce((sum, exp) => {
                     if (exp instanceof MortgageExpense) return sum + exp.calculateAnnualAmortization(year).totalPayment;
                     if (exp instanceof LoanExpense) return sum + exp.calculateAnnualAmortization(year).totalPayment;
                     return sum + exp.getAnnualAmount(year);
@@ -667,7 +671,7 @@ function simulateOneYearWithNewEngine(
     // CALL YEAR SOLVER (Phase 2)
     // ------------------------------------------------------------------
     // Calculate fixed vs discretionary expenses for GK budget handling
-    const discretionaryExpenses = calculateTotalDiscretionary(nextExpenses, year);
+    const discretionaryExpenses = calculateTotalDiscretionary(cashflowView(nextExpenses), year);
     const fixedExpenses = totalLivingExpenses - discretionaryExpenses;
 
     // Legacy cleanup: goals used to create a savings-priority bucket and fund
@@ -775,7 +779,7 @@ function simulateOneYearWithNewEngine(
         strategyAdjustmentResult = gkStrategyAdjustment;
     } else if (yearPlan.totalExpenses < totalLivingExpenses) {
         const trimAmount = totalLivingExpenses - yearPlan.totalExpenses;
-        const totalDiscretionary = calculateTotalDiscretionary(nextExpenses, year);
+        const totalDiscretionary = calculateTotalDiscretionary(cashflowView(nextExpenses), year);
         if (totalDiscretionary > 0) {
             const cutRatio = 1 - Math.min(trimAmount, totalDiscretionary) / totalDiscretionary;
             nextExpenses = nextExpenses.map(exp =>
@@ -1111,9 +1115,9 @@ function simulateOneYearWithNewEngine(
     // the extra principal appears only in the separate "Pay Down" bucket. Only loans
     // actually paid down differ — every other expense (and the PERSISTED `nextExpenses`)
     // is reused untouched, so the reduced balance still sticks where it matters.
-    const cashflowExpenses = prePaydownLoans.size === 0
+    const cashflowExpenses = cashflowView(prePaydownLoans.size === 0
         ? nextExpenses
-        : nextExpenses.map(exp => prePaydownLoans.get(exp.id) ?? exp);
+        : nextExpenses.map(exp => prePaydownLoans.get(exp.id) ?? exp));
     // Use allIncomes so reinvested interest (created in projectIncomes) is
     // included, and so RMD-sourced PassiveIncomes are surfaced as income (they
     // drain the Traditional account via userInflows but are not in

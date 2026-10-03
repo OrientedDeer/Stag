@@ -230,6 +230,41 @@ describe('Simulation Engine', () => {
         expect(result.accounts[0].amount).toBeCloseTo(2186, -1); // Check within a hundred dollars
     });
 
+    describe('loan/mortgage cashflow uses the year-start balance', () => {
+        const income = new WorkIncome('inc-1', 'Job', 60000, 'Annually', 'Yes', 0, 0, 0, 0, '', null, 'FIXED');
+        const taxState2025: TaxState = { ...mockTaxState, year: 2025 };
+
+        it('charges every payment that retires a loan (no free payoff)', () => {
+            const loan = new LoanExpense('loan-1', 'Car Payment', 5000, 'Monthly', 5, 'Compounding', 250, 'No', 0, 'debt-1', new Date(2025, 0, 1));
+            const debt = new DebtAccount('debt-1', 'Car Loan', 5000, 'loan-1', 5.0);
+
+            const y2025 = simulateOneYear(2025, [income], [loan], [debt], cleanAssumptions, taxState2025);
+            const y2026 = simulateOneYear(2026, y2025.incomes, y2025.expenses, y2025.accounts, cleanAssumptions, { ...taxState2025, year: 2026 }, [y2025]);
+
+            // 2025: twelve full $250 payments while the balance drops 5000 -> ~2186.
+            expect(y2025.accounts[0].amount).toBeCloseTo(2186, -1);
+            expect(y2025.cashflow.livingExpenses).toBeCloseTo(3000, 2);
+            // 2026: the ~$2186 remainder plus its interest, paying the loan off.
+            expect(y2026.accounts[0].amount).toBe(0);
+            expect(y2026.cashflow.livingExpenses).toBeCloseTo(loan.increment(cleanAssumptions, 2025).calculateAnnualAmortization(2026).totalPayment, 2);
+            // Total cash out covers the full $5000 principal plus interest.
+            expect(y2025.cashflow.livingExpenses + y2026.cashflow.livingExpenses).toBeGreaterThan(5000);
+        });
+
+        it('charges the final P&I in a mortgage payoff year', () => {
+            // 240k / 4% / 30y with $10k left; no escrow so living expenses are pure P&I.
+            const mortgage = new MortgageExpense('mort-1', 'Mortgage', 'Monthly', 300000, 10000, 240000, 4.0, 30, 0, 0, 0, 0, 0, 0, 0, 'No', 0, 'prop-1', new Date(2000, 0, 1));
+            const property = new PropertyAccount('prop-1', 'House', 300000, 'Financed', 10000, 240000, 'mort-1', 4.0);
+
+            const y2025 = simulateOneYear(2025, [income], [mortgage], [property], cleanAssumptions, taxState2025);
+
+            expect((y2025.accounts[0] as PropertyAccount).loanAmount).toBe(0);
+            const expected = mortgage.calculateAnnualAmortization(2025);
+            expect(expected.totalPrincipal).toBeCloseTo(10000, 2);
+            expect(y2025.cashflow.livingExpenses).toBeCloseTo(expected.totalPayment, 2);
+        });
+    });
+
     it('should handle PropertyAccount with mortgage', () => {
         const propertyAccount = new PropertyAccount('prop-1', 'House', 300000, "Financed", 300000, 250000, "mort-1", 4.0);
         const mortgageExpense = new MortgageExpense('mort-1', 'Mortgage Payment', 'Monthly', 300000, 240000, 240000, 4.0, 30, 1, 0, 1, 200, 1, 0, 0, "Itemized", 0, 'prop-1');
