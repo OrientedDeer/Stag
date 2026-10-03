@@ -67,6 +67,18 @@ export interface RSULot {
   costBasis: number;   // fmvAtVest * shares — basis for future capital gains
 }
 
+// IRS Pub 550: long-term requires holding MORE than one year, counted from the day
+// after acquisition — a sale on the anniversary itself is still short-term. The
+// first long-term day is the day after the anniversary (Feb 29 → Mar 1, per Rev.
+// Rul. 66-7). Compared at local midnight so a time-of-day on saleDate can't flip it.
+function isHeldMoreThanOneYear(acquired: Date, saleDate: Date): boolean {
+  const year = acquired.getFullYear() + 1;
+  const month = acquired.getMonth();
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const firstLongTermDay = new Date(year, month, Math.min(acquired.getDate(), lastDay) + 1);
+  return saleDate >= firstLongTermDay;
+}
+
 // Brokerage Lot interface for tracking individual contributions (simulation-internal, not persisted)
 export interface BrokerageLot {
   purchaseYear: number;    // Year contribution was made
@@ -569,10 +581,7 @@ export class ESPPAccount extends BaseAccount {
       const dispositionType = this.calculateDispositionType(lot, saleDate);
       const lotPurchaseDate = new Date(lot.purchaseDate);
 
-      // Check if held over 1 year for capital gains treatment
-      const oneYearFromPurchase = new Date(lotPurchaseDate);
-      oneYearFromPurchase.setFullYear(oneYearFromPurchase.getFullYear() + 1);
-      const isLongTerm = saleDate >= oneYearFromPurchase;
+      const isLongTerm = isHeldMoreThanOneYear(lotPurchaseDate, saleDate);
 
       if (dispositionType === 'disqualifying') {
         // Disqualifying: discount is ordinary income, rest is capital gain
@@ -888,14 +897,11 @@ export class RSUAccount extends BaseAccount {
   }
 
   /**
-   * Determine if a lot has been held long enough (>=1yr from vest) for
+   * Determine if a lot has been held long enough (more than 1yr from vest) for
    * long-term capital-gains treatment.
    */
   isLongTerm(lot: RSULot, saleDate: Date): boolean {
-    const vestDate = new Date(lot.vestDate);
-    const oneYearFromVest = new Date(vestDate);
-    oneYearFromVest.setFullYear(oneYearFromVest.getFullYear() + 1);
-    return saleDate >= oneYearFromVest;
+    return isHeldMoreThanOneYear(new Date(lot.vestDate), saleDate);
   }
 
   /**
