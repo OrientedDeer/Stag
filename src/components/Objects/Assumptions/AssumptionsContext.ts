@@ -407,27 +407,27 @@ export function migrateAssumptions(saved: unknown, defaults: AssumptionsState): 
 
   // Build migrated state by merging each section
   const migrated: AssumptionsState = {
-    macro: mergeSection(data.macro, defaults.macro),
-    income: mergeSection(data.income, defaults.income),
-    expenses: mergeSection(data.expenses, defaults.expenses),
+    macro: mergeSection(data['macro'], defaults.macro),
+    income: mergeSection(data['income'], defaults.income),
+    expenses: mergeSection(data['expenses'], defaults.expenses),
     investments: {
-      ...mergeSection(data.investments, defaults.investments),
+      ...mergeSection(data['investments'], defaults.investments),
       // Ensure nested returnRates is also merged
       returnRates: mergeSection(
-        (data.investments as Record<string, unknown>)?.returnRates,
+        (data['investments'] as Record<string, unknown>)?.['returnRates'],
         defaults.investments.returnRates
       ),
       // #207: same treatment — a nested object whose typeof matches would otherwise be
       // taken wholesale, so a pre-#207 save (no bondRor/stockPct) needs the key-by-key merge.
       defaultAllocation: mergeSection(
-        (data.investments as Record<string, unknown>)?.defaultAllocation,
+        (data['investments'] as Record<string, unknown>)?.['defaultAllocation'],
         defaults.investments.defaultAllocation ?? { stockPct: 100 }
       ),
       // `allocationGlidepath` is optional and therefore absent from `defaults.investments`.
       // mergeSection only walks the DEFAULT object's keys, so a saved glidepath would be
       // dropped on load — restore it explicitly against a shape default.
       ...(function () {
-        const saved = (data.investments as Record<string, unknown>)?.allocationGlidepath;
+        const saved = (data['investments'] as Record<string, unknown>)?.['allocationGlidepath'];
         if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return {};
         return {
           allocationGlidepath: mergeSection(saved, {
@@ -440,11 +440,11 @@ export function migrateAssumptions(saved: unknown, defaults: AssumptionsState): 
         };
       })(),
     },
-    demographics: mergeSection(data.demographics, defaults.demographics),
-    display: mergeSection(data.display, defaults.display),
+    demographics: mergeSection(data['demographics'], defaults.demographics),
+    display: mergeSection(data['display'], defaults.display),
     // Arrays: use saved if it's a valid array, otherwise use default
-    priorities: Array.isArray(data.priorities) ? data.priorities as PriorityBucket[] : defaults.priorities,
-    withdrawalStrategy: Array.isArray(data.withdrawalStrategy) ? data.withdrawalStrategy as WithdrawalBucket[] : defaults.withdrawalStrategy,
+    priorities: Array.isArray(data['priorities']) ? data['priorities'] as PriorityBucket[] : defaults.priorities,
+    withdrawalStrategy: Array.isArray(data['withdrawalStrategy']) ? data['withdrawalStrategy'] as WithdrawalBucket[] : defaults.withdrawalStrategy,
     // When saved data has no milestones array, start EMPTY (not defaults.milestones)
     // so the built-in-milestone synthesis below actually fires and can seed Birth/
     // Retire/End-of-Plan from any legacy demographics.{birthYear,retirementAge,
@@ -457,7 +457,7 @@ export function migrateAssumptions(saved: unknown, defaults: AssumptionsState): 
     // carries a `conditions` ARRAY. A malformed/older backup whose milestone lacks
     // `conditions` would otherwise violate the type and white-screen the Priority/Income/
     // Withdrawal tabs at `milestone.conditions.every(...)` / `.find(...)` (re-review 1).
-    milestones: Array.isArray(data.milestones) ? normalizeMilestones(data.milestones as CustomMilestone[]) : [],
+    milestones: Array.isArray(data['milestones']) ? normalizeMilestones(data['milestones'] as CustomMilestone[]) : [],
   };
 
   // Migration: withdrawalRateMode predates some saves. When absent, infer the
@@ -466,30 +466,30 @@ export function migrateAssumptions(saved: unknown, defaults: AssumptionsState): 
   // doesn't silently move. A still-default rate gets the new engine-derived
   // 'auto' behavior. (mergeSection already backfilled 'auto' from defaults, so
   // only the customized-rate case needs correcting here.)
-  const savedInvestments = data.investments as Record<string, unknown> | undefined;
-  if (savedInvestments && (savedInvestments.withdrawalRateMode === undefined || savedInvestments.withdrawalRateMode === null)) {
-    const savedRate = savedInvestments.withdrawalRate;
+  const savedInvestments = data['investments'] as Record<string, unknown> | undefined;
+  if (savedInvestments && (savedInvestments['withdrawalRateMode'] === undefined || savedInvestments['withdrawalRateMode'] === null)) {
+    const savedRate = savedInvestments['withdrawalRate'];
     if (typeof savedRate === 'number' && savedRate !== defaults.investments.withdrawalRate) {
       migrated.investments.withdrawalRateMode = 'manual';
     }
   }
 
   // Migration: Get legacy values from old demographics if present
-  const savedDemographics = data.demographics as Record<string, unknown> | undefined;
+  const savedDemographics = data['demographics'] as Record<string, unknown> | undefined;
 
   // priorEarnings is a saved-only demographics field (absent from the defaults
   // object), so the mergeSection above silently drops it on every reload.
   // Preserve the imported SSA earnings history explicitly — the SS benefit
   // projection (IncomeProjection) depends on it.
-  if (savedDemographics?.priorEarnings !== undefined && savedDemographics?.priorEarnings !== null) {
-    migrated.demographics.priorEarnings = savedDemographics.priorEarnings as EarningsRecord[];
+  if (savedDemographics?.['priorEarnings'] !== undefined && savedDemographics?.['priorEarnings'] !== null) {
+    migrated.demographics.priorEarnings = savedDemographics['priorEarnings'] as EarningsRecord[];
   }
 
   // Handle very old format with startAge/startYear
-  let legacyBirthYear = savedDemographics?.birthYear as number | undefined;
+  let legacyBirthYear = savedDemographics?.['birthYear'] as number | undefined;
   if (!legacyBirthYear && savedDemographics) {
-    const startAge = savedDemographics.startAge as number | undefined;
-    const startYear = savedDemographics.startYear as number | undefined;
+    const startAge = savedDemographics['startAge'] as number | undefined;
+    const startYear = savedDemographics['startYear'] as number | undefined;
     if (startAge !== undefined && startYear !== undefined) {
       legacyBirthYear = startYear - startAge;
     } else if (startAge !== undefined) {
@@ -497,8 +497,8 @@ export function migrateAssumptions(saved: unknown, defaults: AssumptionsState): 
     }
   }
 
-  const legacyRetirementAge = savedDemographics?.retirementAge as number | undefined;
-  const legacyLifeExpectancy = savedDemographics?.lifeExpectancy as number | undefined;
+  const legacyRetirementAge = savedDemographics?.['retirementAge'] as number | undefined;
+  const legacyLifeExpectancy = savedDemographics?.['lifeExpectancy'] as number | undefined;
 
   // Use legacy values or defaults for creating built-in milestones
   const birthYearForMilestones = legacyBirthYear ?? DEFAULT_BIRTH_YEAR;
@@ -569,9 +569,9 @@ export function migrateAssumptions(saved: unknown, defaults: AssumptionsState): 
   });
 
   // Clear deprecated fields (they're now derived from milestones)
-  delete (migrated.demographics as Record<string, unknown>).birthYear;
-  delete (migrated.demographics as Record<string, unknown>).retirementAge;
-  delete (migrated.demographics as Record<string, unknown>).lifeExpectancy;
+  delete (migrated.demographics as Record<string, unknown>)['birthYear'];
+  delete (migrated.demographics as Record<string, unknown>)['retirementAge'];
+  delete (migrated.demographics as Record<string, unknown>)['lifeExpectancy'];
 
   // Retire the 'rate-match' Roth-conversion strategy: it either tracked the free
   // standard-deduction floor or over-converted and lost after-tax wealth, so it's no longer
