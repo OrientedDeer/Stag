@@ -822,6 +822,27 @@ describe('Account Models', () => {
             expect(result.longTermGains).toBe(0);
         });
 
+        it('disqualifying sale on the exact 1-year purchase anniversary is short-term (IRS Pub 550)', () => {
+            // Grant < 2 years before the sale keeps this a disqualifying disposition.
+            const lot = createTestLot({
+                grantDate: new Date(2025, 0, 1),
+                purchaseDate: new Date(2025, 5, 15),
+                fmvAtGrant: 100,
+                fmvAtPurchase: 110,
+                purchasePrice: 85,
+                shares: 100
+            });
+            const acc = new ESPPAccount('espp-1', 'Company ESPP', 15000, [lot]);
+
+            const onAnniversary = acc.calculateSaleTax(50, 150, new Date(2026, 5, 15));
+            expect(onAnniversary.shortTermGains).toBe(2000);
+            expect(onAnniversary.longTermGains).toBe(0);
+
+            const dayAfter = acc.calculateSaleTax(50, 150, new Date(2026, 5, 16));
+            expect(dayAfter.shortTermGains).toBe(0);
+            expect(dayAfter.longTermGains).toBe(2000);
+        });
+
         it('qualifying disposition uses the plan discount rate, not a hardcoded 15% (#9)', () => {
             // 10% plan with lookback where the stock fell between grant and purchase.
             // The §423 ordinary-income component must use the plan's 10% × grant FMV,

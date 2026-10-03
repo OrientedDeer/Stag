@@ -109,6 +109,28 @@ describe('RSUAccount model', () => {
         expect(result.shortTermGains).toBeCloseTo(100 * 30, 2);
     });
 
+    it('isLongTerm: a sale ON the 1-year anniversary is short-term; the day after is long-term (IRS Pub 550)', () => {
+        // Pub 550: holding period starts the day AFTER acquisition and must be MORE
+        // than 1 year. Vest Jun 15 2025 → sale Jun 15 2026 is short-term. Jun 15
+        // is also the engine's midYearSaleDate, so a Jun-15 vest hits this exactly.
+        const lot = makeLot({ vestDate: new Date(2025, 5, 15) });
+        const acc = new RSUAccount('rsu-1', 'My RSU', 5000, [lot]);
+        expect(acc.isLongTerm(lot, new Date(2026, 5, 15))).toBe(false);
+        expect(acc.isLongTerm(lot, new Date(2026, 5, 15, 13, 30))).toBe(false);
+        expect(acc.isLongTerm(lot, new Date(2026, 5, 16))).toBe(true);
+
+        const result = acc.calculateSaleTax(100, 80, new Date(2026, 5, 15), 'fifo');
+        expect(result.shortTermGains).toBeCloseTo(100 * 30, 2);
+        expect(result.longTermGains).toBe(0);
+    });
+
+    it('isLongTerm: a Feb 29 vest turns long-term on Mar 1 of the next year', () => {
+        const lot = makeLot({ vestDate: new Date(2024, 1, 29) });
+        const acc = new RSUAccount('rsu-1', 'My RSU', 5000, [lot]);
+        expect(acc.isLongTerm(lot, new Date(2025, 1, 28))).toBe(false);
+        expect(acc.isLongTerm(lot, new Date(2025, 2, 1))).toBe(true);
+    });
+
     it('calculateSaleTax: underwater lot produces a real negative gain (loss)', () => {
         const lot = makeLot({ vestDate: new Date(2021, 0, 1), shares: 100, fmvAtVest: 50 });
         const acc = new RSUAccount('rsu-1', 'My RSU', 3000, [lot]);
