@@ -95,7 +95,7 @@ interface BalanceRowInput {
     balance: number;
 }
 
-export interface NewTransactionInput {
+interface NewTransactionInput {
     /** Stable unique id. For a stable source (SimpleFIN), use its txn id so
      *  exact id-dedup works across overlapping re-fetches. */
     id: string;
