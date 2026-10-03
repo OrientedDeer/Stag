@@ -106,8 +106,8 @@ describe('§415(c) trim — drained-and-contributing account (Issue 1)', () => {
         // employer match) must not exceed §415(c). The negative withdrawal stays in
         // the net balance but must NOT be counted as a "prior addition" that masks
         // the trim.
-        const depositedSelf = (ws.userInflows.trad ?? 0) - (-30000); // back out the pre-existing drain
-        const depositedMatch = ws.employerInflows.trad ?? 0;
+        const depositedSelf = (ws.userInflows['trad'] ?? 0) - (-30000); // back out the pre-existing drain
+        const depositedMatch = ws.employerInflows['trad'] ?? 0;
         const combinedAdditions = depositedSelf + depositedMatch;
 
         expect(combinedAdditions).toBeLessThanOrEqual(limit415c + 0.5);
@@ -131,7 +131,7 @@ describe('§415(c) trim — drained-and-contributing account (Issue 1)', () => {
             0, undefined, 0, AGE, [],
         );
 
-        const depositedSelf = (ws.userInflows.trad ?? 0) - (-50000);
+        const depositedSelf = (ws.userInflows['trad'] ?? 0) - (-50000);
         expect(depositedSelf).toBeLessThanOrEqual(limit415c + 0.5);
         expect(depositedSelf).toBeCloseTo(limit415c, 2); // trimmed to exactly 70k
     });
@@ -146,8 +146,8 @@ describe('§415(c) trim — drained-and-contributing account (Issue 1)', () => {
             0, undefined, 0, AGE, [],
         );
 
-        expect(ws.userInflows.trad).toBeCloseTo(40000, 2);
-        expect(ws.employerInflows.trad).toBeCloseTo(30000, 2); // 35k match trimmed by 5k
+        expect(ws.userInflows['trad']).toBeCloseTo(40000, 2);
+        expect(ws.employerInflows['trad']).toBeCloseTo(30000, 2); // 35k match trimmed by 5k
     });
 });
 
@@ -167,8 +167,8 @@ describe('Sankey employee-deferral §415(c) trim (Issue 2)', () => {
         const inflowResult = processInflows([j1, j2], [account], assumptions, YEAR, ws, 0, undefined, 0, AGE, []);
 
         // Engine deposited the trimmed amount:
-        expect(ws.userInflows.trad).toBeCloseTo(limit415c, 2);
-        expect(inflowResult.userContributions.trad).toBeCloseTo(limit415c, 2);
+        expect(ws.userInflows['trad']).toBeCloseTo(limit415c, 2);
+        expect(inflowResult.userContributions['trad']).toBeCloseTo(limit415c, 2);
 
         const detail = buildCashflowDetail({
             incomes: [j1, j2],
@@ -195,7 +195,7 @@ describe('Sankey employee-deferral §415(c) trim (Issue 2)', () => {
 
         const ws = createWithdrawalState();
         const inflowResult = processInflows([j1, j2], [account], assumptions, YEAR, ws, 0, undefined, 0, AGE, []);
-        expect(ws.userInflows.roth).toBeCloseTo(limit415c, 2);
+        expect(ws.userInflows['roth']).toBeCloseTo(limit415c, 2);
 
         const detail = buildCashflowDetail({
             incomes: [j1, j2],
@@ -251,7 +251,7 @@ describe('Sankey employee-deferral §415(c) trim (Issue 2)', () => {
         const inflowResult = processInflows([job], [account], assumptions, YEAR, ws, 0, undefined, 0, AGE, []);
 
         // Whole 30k is deposited into the single account (no §415(c) breach).
-        const depositedTotal = inflowResult.userContributions.trad;
+        const depositedTotal = inflowResult.userContributions['trad'];
         expect(depositedTotal).toBeCloseTo(30000, 2);
 
         const detail = buildCashflowDetail({
@@ -281,7 +281,7 @@ describe('Sankey employee-deferral §415(c) trim (Issue 2)', () => {
 
         const ws = createWithdrawalState();
         const inflowResult = processInflows([job], [account], assumptions, YEAR, ws, 0, undefined, 0, AGE, []);
-        const depositedTotal = inflowResult.userContributions.trad;
+        const depositedTotal = inflowResult.userContributions['trad'];
         expect(depositedTotal).toBeCloseTo(limit415c, 2); // 70k
 
         const detail = buildCashflowDetail({
@@ -318,7 +318,7 @@ describe('Sankey employee-deferral §415(c) trim (Issue 2)', () => {
         const inflowResult = processInflows([j1, j2], [account], assumptions, YEAR, ws, 0, undefined, 0, AGE, []);
 
         // Engine deposited the trimmed total (70k) into the single account.
-        expect(inflowResult.userContributions.trad).toBeCloseTo(limit415c, 2);
+        expect(inflowResult.userContributions['trad']).toBeCloseTo(limit415c, 2);
 
         const detail = buildCashflowDetail({
             incomes: [j1, j2],
@@ -408,7 +408,7 @@ describe('Sankey employee-deferral §415(c) trim (Issue 2)', () => {
         const inflowResult = processInflows([j1, j2], [account], assumptions, YEAR, ws, 0, undefined, 0, AGE, []);
 
         // No §415(c) breach (40k < 70k, no match): the whole 40k is deposited.
-        const depositedTotal = inflowResult.userContributions.trad;
+        const depositedTotal = inflowResult.userContributions['trad'];
         expect(depositedTotal).toBeCloseTo(40000, 2);
         // The per-income map collided on "" — it holds ONLY j2's split, proving the
         // tier-1 source is unusable here and the builder must fall back.
@@ -452,7 +452,7 @@ describe('Sankey employee-deferral §415(c) trim (Issue 2)', () => {
         const inflowResult = processInflows([feeder, sideGig], [account], assumptions, YEAR, ws, 0, undefined, 0, AGE, []);
 
         // Only the feeder deferred; the whole 30k is deposited.
-        const depositedTotal = inflowResult.userContributions.trad;
+        const depositedTotal = inflowResult.userContributions['trad'];
         expect(depositedTotal).toBeCloseTo(30000, 2);
 
         const detail = buildCashflowDetail({
