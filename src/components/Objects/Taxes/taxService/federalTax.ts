@@ -34,7 +34,7 @@ const SENIOR_BONUS_END_YEAR = 2028;
  *  - `bonus`: the OBBBA "senior bonus" (IRC §151(d)(5), $6,000/person, tax years
  *    2025–2028). This is a SEPARATE deduction available to BOTH itemizers and
  *    non-itemizers, so the caller adds it on BOTH the standard and itemized
- *    paths. Phases out at `seniorBonusPhaseoutRate` of (MAGI − threshold),
+ *    paths. Each person's amount phases out at `seniorBonusPhaseoutRate` of (MAGI − threshold),
  *    floored at $0.
  *
  * Per-person amounts double for MFJ when `seniorDeductionPerPerson` is true (the
@@ -68,8 +68,8 @@ function getFederalSeniorDeduction(
     // applied to the bonus base so the two can't disagree.
     const perPersonMultiplier = seniorPerPersonMultiplier(fedParams, filingStatus);
 
-    // OBBBA senior bonus: $6,000/person, tax years 2025–2028, phasing out at
-    // `seniorBonusPhaseoutRate` of (MAGI − threshold), floored at $0. Available
+    // OBBBA senior bonus: $6,000/person, tax years 2025–2028, each person's
+    // amount phasing out at `seniorBonusPhaseoutRate` of (MAGI − threshold), floored at $0. Available
     // to itemizers AND non-itemizers (added on both paths by the caller).
     let bonus = 0;
     if (
@@ -77,12 +77,15 @@ function getFederalSeniorDeduction(
         year >= SENIOR_BONUS_START_YEAR &&
         year <= SENIOR_BONUS_END_YEAR
     ) {
-        bonus = fedParams.seniorBonusDeduction * perPersonMultiplier;
+        // §151(d)(5)(C) reduces each person's $6,000, not the combined total,
+        // so an MFJ couple's bonus is gone at $250k MAGI rather than $350k.
+        let perPersonBonus = fedParams.seniorBonusDeduction;
         const threshold = fedParams.seniorBonusPhaseoutThreshold;
         const rate = fedParams.seniorBonusPhaseoutRate;
         if (threshold !== undefined && rate !== undefined && magi > threshold) {
-            bonus = Math.max(0, bonus - (magi - threshold) * rate);
+            perPersonBonus = Math.max(0, perPersonBonus - (magi - threshold) * rate);
         }
+        bonus = perPersonBonus * perPersonMultiplier;
     }
 
     return { regular, bonus };

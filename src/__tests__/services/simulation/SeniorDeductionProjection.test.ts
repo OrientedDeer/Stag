@@ -93,6 +93,20 @@ describe('getEffectiveDeduction Standard path — senior add-ons (#191 unit)', (
             .toBe(p.standardDeduction + 2000);
     });
 
+    // IRC §151(d)(5)(C): "the $6,000 amount in clause (i)" (the per-qualified-
+    // individual amount) is reduced by 6% of MAGI over $150k MFJ — EACH spouse's
+    // $6,000 shrinks by the same reduction, so a two-senior couple's bonus is
+    // fully phased out at $250k (IRS Schedule 1-A lines 38-40), not $350k.
+    it('phases out EACH spouse\'s OBBBA $6,000 for MFJ (gone at $250k MAGI)', () => {
+        const p = fedParamsFor('Married Filing Jointly');
+        // MAGI $250k: reduction 6% × $100k = $6,000 → each $6,000 → 0.
+        expect(effectiveStandard(p, 'Married Filing Jointly', 66, YEAR, 250_000))
+            .toBe(p.standardDeduction + 3200);
+        // MAGI $200k: reduction $3,000 → 2 × ($6,000 − $3,000) = $6,000.
+        expect(effectiveStandard(p, 'Married Filing Jointly', 66, YEAR, 200_000))
+            .toBe(p.standardDeduction + 3200 + 6000);
+    });
+
     it('drops the OBBBA bonus after its 2028 sunset but keeps the regular add-on', () => {
         const p = TaxService.getTaxParameters(2030, 'Single', 'federal');
         if (!p) throw new Error('no federal params');

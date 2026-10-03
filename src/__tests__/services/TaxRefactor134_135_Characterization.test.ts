@@ -177,7 +177,10 @@ describe('#135 characterization: MAGI-proxy taxable-SS reuse', () => {
         // Higher income so taxable-SS is at the 85% cap and MAGI crosses $150k,
         // exercising the bonus phaseout that depends on the reused taxable-SS.
         const tax = calculateFederalTaxFromIncomes(taxState, [work(140000), ss(40000)], [], 0, 2026, assumptionsForBirthYear(1959));
-        expect(tax).toBeCloseTo(17570.8, 1);
+        // MAGI $174k: §151(d)(5)(C) reduces EACH $6k by 6%×$24k → bonus 2×$4,560 = $9,120
+        // (was pinned at 17,570.8 from the old combined-$12k phaseout, $10,560 bonus;
+        // the $1,440 difference × 22% = $316.80).
+        expect(tax).toBeCloseTo(17887.6, 1);
     });
 
     it('senior itemizer with SS (2026): bonus applies, regular add-on does NOT', () => {
