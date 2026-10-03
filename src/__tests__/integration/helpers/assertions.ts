@@ -10,7 +10,7 @@ import { type SimulationYear } from '../../../components/Objects/Assumptions/Sim
 import { DeficitDebtAccount, InvestedAccount, PropertyAccount, DebtAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
 import { MortgageExpense, LoanExpense } from '../../../components/Objects/Expense/models';
 import { PassiveIncome } from '../../../components/Objects/Income/models';
-import { getAccountById, calculateNetWorth, calculateLiquidAssets } from './simulationTestUtils';
+import { calculateNetWorth, calculateLiquidAssets } from './simulationTestUtils';
 
 /**
  * Assert no negative account balances (except DeficitDebtAccount which is allowed)
@@ -167,33 +167,6 @@ export function assertAllYearsInvariants(simulation: SimulationYear[]): void {
     for (const year of simulation) {
         assertUniversalInvariants(year);
     }
-}
-
-/**
- * Assert that an account balance grows year-over-year (with tolerance for small fluctuations)
- */
-export function assertAccountGrows(
-    simulation: SimulationYear[],
-    accountId: string,
-    startYear: number,
-    endYear: number,
-    description: string = 'Account'
-): void {
-    const startYearSim = simulation.find(y => y.year === startYear);
-    const endYearSim = simulation.find(y => y.year === endYear);
-
-    if (!startYearSim || !endYearSim) {
-        throw new Error(`Year ${startYear} or ${endYear} not found in simulation`);
-    }
-
-    const startAccount = getAccountById(startYearSim, accountId);
-    const endAccount = getAccountById(endYearSim, accountId);
-
-    if (!startAccount || !endAccount) {
-        throw new Error(`Account ${accountId} not found in simulation`);
-    }
-
-    expect(endAccount.amount, `${description} should grow from ${startYear} to ${endYear}`).toBeGreaterThan(startAccount.amount);
 }
 
 /**
