@@ -18,8 +18,8 @@ describe('migrateAssumptions — investments.withdrawalRateMode', () => {
   /** A pre-field investments section, as old localStorage would have it. */
   const legacyInvestments = (withdrawalRate: number) => {
     const inv = JSON.parse(JSON.stringify(defaultAssumptions.investments)) as Record<string, unknown>;
-    delete inv.withdrawalRateMode;
-    inv.withdrawalRate = withdrawalRate;
+    delete inv['withdrawalRateMode'];
+    inv['withdrawalRate'] = withdrawalRate;
     return inv;
   };
 
@@ -56,7 +56,7 @@ describe('migrateAssumptions — investments.withdrawalRateMode', () => {
 
   it('backfills AUTO when the whole investments section is missing', () => {
     const saved = JSON.parse(JSON.stringify(defaultAssumptions)) as Record<string, unknown>;
-    delete saved.investments;
+    delete saved['investments'];
 
     const migrated = migrateAssumptions(saved, defaultAssumptions);
 
