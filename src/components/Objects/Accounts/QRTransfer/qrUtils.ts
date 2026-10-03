@@ -236,7 +236,7 @@ export function shortenKeys(obj: unknown): unknown {
  */
 function legacyAliasFor(shortKey: string, siblings: Record<string, unknown>): string | null {
     if (shortKey !== 'pp') return null;
-    const className = siblings.c ?? siblings.className;
+    const className = siblings['c'] ?? siblings['className'];
     return typeof className === 'string' && className.includes('SocialSecurity')
         ? 'projectedPIA'
         : null;
