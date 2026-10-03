@@ -186,27 +186,6 @@ export function assertReceivesContributions(
 }
 
 /**
- * Assert income transitions to zero at retirement
- */
-export function assertWorkIncomeEndsAtRetirement(
-    simulation: SimulationYear[],
-    incomeId: string,
-    birthYear: number,
-    retirementAge: number
-): void {
-    const retirementYear = birthYear + retirementAge;
-
-    for (const year of simulation) {
-        const income = year.incomes.find(i => i.id === incomeId);
-        if (!income) continue;
-
-        if (year.year >= retirementYear) {
-            expect(income.amount, `Work income should be 0 at/after retirement (year ${year.year})`).toBe(0);
-        }
-    }
-}
-
-/**
  * Assert Social Security claiming works correctly
  */
 export function assertSocialSecurityClaimed(
