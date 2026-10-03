@@ -288,7 +288,7 @@ describe('captureCurrentState', () => {
 
         const captured = captureCurrentState(accounts, {}, incomes, expenses, taxSettings, assumptions);
 
-        expect(captured.accounts[0].className).toBe('InvestedAccount');
+        expect(captured.accounts[0]['className']).toBe('InvestedAccount');
     });
 });
 
