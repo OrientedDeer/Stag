@@ -46,7 +46,7 @@ describe('migrateAssumptions — display.showDevTools', () => {
 
   it('defaults showDevTools to false when the whole display section is missing', () => {
     const saved = JSON.parse(JSON.stringify(defaultAssumptions)) as Record<string, unknown>;
-    delete saved.display;
+    delete saved['display'];
 
     const migrated = migrateAssumptions(saved, defaultAssumptions);
 
