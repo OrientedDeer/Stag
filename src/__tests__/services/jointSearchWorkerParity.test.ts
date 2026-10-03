@@ -165,7 +165,7 @@ describe('joint-search worker parity (#158)', { timeout: 240_000 }, () => {
         const messages: JointSearchWorkerResponse[] = [];
         const stripped = accts().map(a => {
             const clone = structuredClone(a) as unknown as Record<string, unknown>;
-            delete clone.className; // the discriminator loss the guard exists to catch
+            delete clone['className']; // the discriminator loss the guard exists to catch
             return clone;
         });
         handleJointSearchRequest({
