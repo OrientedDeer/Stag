@@ -470,8 +470,8 @@ function DetailedYearPanel({ simYear, accountsContext }: DetailedYearPanelProps)
         <div className="space-y-3 mt-4">
             {/* 1. Account Balances */}
             <div>
-                <SectionHeader title="Account Balances (End of Year)" expanded={expandedSections.accounts} onToggle={() => toggleSection('accounts')} count={accountDetails.length} />
-                {expandedSections.accounts && (
+                <SectionHeader title="Account Balances (End of Year)" expanded={expandedSections['accounts']} onToggle={() => toggleSection('accounts')} count={accountDetails.length} />
+                {expandedSections['accounts'] && (
                     <div className="mt-2 bg-surface-raised rounded-lg p-3 overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
@@ -520,8 +520,8 @@ function DetailedYearPanel({ simYear, accountsContext }: DetailedYearPanelProps)
 
             {/* 2. Income */}
             <div>
-                <SectionHeader title="Income Sources" expanded={expandedSections.income} onToggle={() => toggleSection('income')} count={incomeDetails.length} />
-                {expandedSections.income && (
+                <SectionHeader title="Income Sources" expanded={expandedSections['income']} onToggle={() => toggleSection('income')} count={incomeDetails.length} />
+                {expandedSections['income'] && (
                     <div className="mt-2 bg-surface-raised rounded-lg p-3 space-y-3">
                         {Object.entries(incomeByCategory).map(([category, items]) => (
                             <div key={category}>
@@ -558,8 +558,8 @@ function DetailedYearPanel({ simYear, accountsContext }: DetailedYearPanelProps)
 
             {/* 3. Withdrawals */}
             <div>
-                <SectionHeader title="Withdrawals" expanded={expandedSections.withdrawals} onToggle={() => toggleSection('withdrawals')} count={withdrawalBreakdown.length} />
-                {expandedSections.withdrawals && (
+                <SectionHeader title="Withdrawals" expanded={expandedSections['withdrawals']} onToggle={() => toggleSection('withdrawals')} count={withdrawalBreakdown.length} />
+                {expandedSections['withdrawals'] && (
                     <div className="mt-2 bg-surface-raised rounded-lg p-3">
                         {withdrawalBreakdown.length === 0 ? (
                             <div className="text-content-subtle text-sm">No withdrawals this year</div>
@@ -622,8 +622,8 @@ function DetailedYearPanel({ simYear, accountsContext }: DetailedYearPanelProps)
 
             {/* 4. Contributions/Inflows */}
             <div>
-                <SectionHeader title="Contributions & Inflows" expanded={expandedSections.inflows} onToggle={() => toggleSection('inflows')} />
-                {expandedSections.inflows && (
+                <SectionHeader title="Contributions & Inflows" expanded={expandedSections['inflows']} onToggle={() => toggleSection('inflows')} />
+                {expandedSections['inflows'] && (
                     <div className="mt-2 bg-surface-raised rounded-lg p-3 space-y-2">
                         <div className="grid grid-cols-2 gap-4">
                             <div className="bg-surface-overlay/50 rounded p-2">
@@ -658,8 +658,8 @@ function DetailedYearPanel({ simYear, accountsContext }: DetailedYearPanelProps)
 
             {/* 5. Taxes */}
             <div>
-                <SectionHeader title="Tax Breakdown" expanded={expandedSections.taxes} onToggle={() => toggleSection('taxes')} />
-                {expandedSections.taxes && (
+                <SectionHeader title="Tax Breakdown" expanded={expandedSections['taxes']} onToggle={() => toggleSection('taxes')} />
+                {expandedSections['taxes'] && (
                     <div className="mt-2 bg-surface-raised rounded-lg p-3">
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
                             <div className="bg-surface-overlay/50 rounded p-2">
@@ -730,8 +730,8 @@ function DetailedYearPanel({ simYear, accountsContext }: DetailedYearPanelProps)
             {/* 6. Roth Conversions */}
             {simYear.rothConversion && simYear.rothConversion.amount > 0 && (
                 <div>
-                    <SectionHeader title="Roth Conversion" expanded={expandedSections.rothConversion} onToggle={() => toggleSection('rothConversion')} />
-                    {expandedSections.rothConversion && (
+                    <SectionHeader title="Roth Conversion" expanded={expandedSections['rothConversion']} onToggle={() => toggleSection('rothConversion')} />
+                    {expandedSections['rothConversion'] && (
                         <div className="mt-2 bg-surface-raised rounded-lg p-3">
                             <div className="grid grid-cols-3 gap-3 mb-3">
                                 <div className="bg-cat-purple-tint/30 border border-cat-purple-strong/50 rounded p-2">
