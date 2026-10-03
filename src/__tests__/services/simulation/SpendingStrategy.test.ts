@@ -702,6 +702,31 @@ describe('SpendingStrategy', () => {
                 // Second year should be higher due to inflation adjustment
                 expect(secondYearResult!.amount).toBeGreaterThan(firstYearResult!.amount);
             });
+
+            it('should not compound inflation when the plan runs in today\'s dollars (inflationAdjusted off)', () => {
+                const accounts: AnyAccount[] = [
+                    new InvestedAccount('inv1', 'Brokerage', 1000000, 0, 0, 0.1, 'Brokerage'),
+                ];
+                const base = createTestAssumptions({
+                    withdrawalStrategy: 'Fixed Real',
+                    withdrawalRate: 4,
+                    inflationRate: 3,
+                    birthYear: 1960,
+                    retirementAge: 65,
+                });
+                const assumptions: AssumptionsState = {
+                    ...base,
+                    macro: { ...base.macro, inflationAdjusted: false },
+                };
+
+                const firstYearResult = calculateStrategyTarget(accounts, assumptions, [], 2025, 65, []);
+                const previousSim = [{ year: 2034, strategyWithdrawal: firstYearResult }] as unknown as SimulationYear[];
+
+                // Ten years in: every other amount in a real-dollar plan stays flat, so the
+                // Fixed Real budget must stay at the year-1 $40k, not $40k × 1.03^10 ≈ $53.8k.
+                const tenthYearResult = calculateStrategyTarget(accounts, assumptions, previousSim, 2035, 75, []);
+                expect(tenthYearResult!.amount).toBeCloseTo(40000, 0);
+            });
         });
 
         describe('Percentage strategy', () => {
