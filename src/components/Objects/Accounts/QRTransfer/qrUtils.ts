@@ -340,97 +340,97 @@ export function flattenAssumptions(assumptions: Record<string, unknown>): Record
  */
 export function expandAssumptions(flat: Record<string, unknown>): Record<string, unknown> {
     const demographics: Record<string, unknown> = {
-        birthYear: flat.birthYear, // No default - must be provided (legacy flat field)
-        retirementAge: flat.retirementAge ?? ASSUMPTIONS_DEFAULTS.retirementAge,
-        lifeExpectancy: flat.lifeExpectancy ?? ASSUMPTIONS_DEFAULTS.lifeExpectancy,
-        priorYearMode: flat.priorYearMode ?? ASSUMPTIONS_DEFAULTS.priorYearMode,
+        birthYear: flat['birthYear'], // No default - must be provided (legacy flat field)
+        retirementAge: flat['retirementAge'] ?? ASSUMPTIONS_DEFAULTS['retirementAge'],
+        lifeExpectancy: flat['lifeExpectancy'] ?? ASSUMPTIONS_DEFAULTS['lifeExpectancy'],
+        priorYearMode: flat['priorYearMode'] ?? ASSUMPTIONS_DEFAULTS['priorYearMode'],
     };
     // priorEarnings (SSA earnings history) is optional - only restore when present
     // so we don't fabricate an empty array that would break deep-equal round-trips.
-    if (flat.priorEarnings !== undefined) {
-        demographics.priorEarnings = flat.priorEarnings;
+    if (flat['priorEarnings'] !== undefined) {
+        demographics['priorEarnings'] = flat['priorEarnings'];
     }
 
     return {
         macro: {
-            inflationRate: flat.inflationRate ?? ASSUMPTIONS_DEFAULTS.inflationRate,
-            healthcareInflation: flat.healthcareInflation ?? ASSUMPTIONS_DEFAULTS.healthcareInflation,
-            inflationAdjusted: flat.inflationAdjusted ?? ASSUMPTIONS_DEFAULTS.inflationAdjusted,
+            inflationRate: flat['inflationRate'] ?? ASSUMPTIONS_DEFAULTS['inflationRate'],
+            healthcareInflation: flat['healthcareInflation'] ?? ASSUMPTIONS_DEFAULTS['healthcareInflation'],
+            inflationAdjusted: flat['inflationAdjusted'] ?? ASSUMPTIONS_DEFAULTS['inflationAdjusted'],
             // Future tax-regime fields (#181). Present-only: a pre-field QR omits
             // them and readers fall back to 0 = current law. Without this a user
             // who modeled a future tax increase (e.g. a TCJA sunset) would have it
             // silently reverted to current-law brackets on the receiving device.
-            ...(flat.taxBracketShiftPct !== undefined
-                ? { taxBracketShiftPct: flat.taxBracketShiftPct }
+            ...(flat['taxBracketShiftPct'] !== undefined
+                ? { taxBracketShiftPct: flat['taxBracketShiftPct'] }
                 : {}),
-            ...(flat.taxBracketShiftStartYear !== undefined
-                ? { taxBracketShiftStartYear: flat.taxBracketShiftStartYear }
+            ...(flat['taxBracketShiftStartYear'] !== undefined
+                ? { taxBracketShiftStartYear: flat['taxBracketShiftStartYear'] }
                 : {}),
         },
         income: {
-            salaryGrowth: flat.salaryGrowth ?? ASSUMPTIONS_DEFAULTS.salaryGrowth,
-            qualifiesForSocialSecurity: flat.qualifiesForSocialSecurity ?? ASSUMPTIONS_DEFAULTS.qualifiesForSocialSecurity,
-            socialSecurityFundingPercent: flat.socialSecurityFundingPercent ?? ASSUMPTIONS_DEFAULTS.socialSecurityFundingPercent,
+            salaryGrowth: flat['salaryGrowth'] ?? ASSUMPTIONS_DEFAULTS['salaryGrowth'],
+            qualifiesForSocialSecurity: flat['qualifiesForSocialSecurity'] ?? ASSUMPTIONS_DEFAULTS['qualifiesForSocialSecurity'],
+            socialSecurityFundingPercent: flat['socialSecurityFundingPercent'] ?? ASSUMPTIONS_DEFAULTS['socialSecurityFundingPercent'],
         },
         expenses: {
-            lifestyleCreep: flat.lifestyleCreep ?? ASSUMPTIONS_DEFAULTS.lifestyleCreep,
-            housingAppreciation: flat.housingAppreciation ?? ASSUMPTIONS_DEFAULTS.housingAppreciation,
-            rentInflation: flat.rentInflation ?? ASSUMPTIONS_DEFAULTS.rentInflation,
+            lifestyleCreep: flat['lifestyleCreep'] ?? ASSUMPTIONS_DEFAULTS['lifestyleCreep'],
+            housingAppreciation: flat['housingAppreciation'] ?? ASSUMPTIONS_DEFAULTS['housingAppreciation'],
+            rentInflation: flat['rentInflation'] ?? ASSUMPTIONS_DEFAULTS['rentInflation'],
         },
         investments: {
             returnRates: {
-                ror: flat.ror ?? ASSUMPTIONS_DEFAULTS.ror,
+                ror: flat['ror'] ?? ASSUMPTIONS_DEFAULTS['ror'],
                 // Absent ⇒ a pre-#207 code; leave it unset so the state stays byte-identical
                 // to what that code described (all-stock, bond rate never consulted).
-                ...(flat.bondRor !== undefined ? { bondRor: flat.bondRor } : {}),
+                ...(flat['bondRor'] !== undefined ? { bondRor: flat['bondRor'] } : {}),
             },
-            ...(flat.stockPct !== undefined
-                ? { defaultAllocation: { stockPct: flat.stockPct } }
+            ...(flat['stockPct'] !== undefined
+                ? { defaultAllocation: { stockPct: flat['stockPct'] } }
                 : {}),
             // Restore only when present — an absent glidepath must stay absent rather than
             // materialize a disabled one (migrateAssumptions distinguishes the two).
-            ...(flat.allocationGlidepath !== undefined
-                ? { allocationGlidepath: flat.allocationGlidepath }
+            ...(flat['allocationGlidepath'] !== undefined
+                ? { allocationGlidepath: flat['allocationGlidepath'] }
                 : {}),
             // This is the investments STRING (Fixed Real / Guardrails / ...), distinct
             // from the top-level `withdrawalStrategy` Burn-Order array restored below.
-            withdrawalStrategy: flat.withdrawalStrategy ?? ASSUMPTIONS_DEFAULTS.withdrawalStrategy,
-            withdrawalRate: flat.withdrawalRate ?? ASSUMPTIONS_DEFAULTS.withdrawalRate,
+            withdrawalStrategy: flat['withdrawalStrategy'] ?? ASSUMPTIONS_DEFAULTS['withdrawalStrategy'],
+            withdrawalRate: flat['withdrawalRate'] ?? ASSUMPTIONS_DEFAULTS['withdrawalRate'],
             // Restore only when present. Deliberately NOT defaulted here (and never
             // stripped as a default on export): a pre-field QR code must arrive with
             // the field ABSENT so migrateAssumptions can infer the mode from the
             // saved rate ('manual' when customized); backfilling 'auto' here would
             // suppress that inference. New exports always carry it explicitly.
-            ...(flat.withdrawalRateMode !== undefined
-                ? { withdrawalRateMode: flat.withdrawalRateMode }
+            ...(flat['withdrawalRateMode'] !== undefined
+                ? { withdrawalRateMode: flat['withdrawalRateMode'] }
                 : {}),
-            gkUpperGuardrail: flat.gkUpperGuardrail ?? ASSUMPTIONS_DEFAULTS.gkUpperGuardrail,
-            gkLowerGuardrail: flat.gkLowerGuardrail ?? ASSUMPTIONS_DEFAULTS.gkLowerGuardrail,
-            gkAdjustmentPercent: flat.gkAdjustmentPercent ?? ASSUMPTIONS_DEFAULTS.gkAdjustmentPercent,
-            autoRothConversions: flat.autoRothConversions ?? ASSUMPTIONS_DEFAULTS.autoRothConversions,
-            rothConversionStrategy: flat.rothConversionStrategy ?? ASSUMPTIONS_DEFAULTS.rothConversionStrategy,
-            rothConversionMinRateGap: flat.rothConversionMinRateGap ?? ASSUMPTIONS_DEFAULTS.rothConversionMinRateGap,
-            rothConversionDPBackloadDelta: flat.rothConversionDPBackloadDelta ?? ASSUMPTIONS_DEFAULTS.rothConversionDPBackloadDelta,
-            rothConversionUserSituation: flat.rothConversionUserSituation ?? ASSUMPTIONS_DEFAULTS.rothConversionUserSituation,
-            taxOptimizationEnabled: flat.taxOptimizationEnabled ?? ASSUMPTIONS_DEFAULTS.taxOptimizationEnabled,
-            acaAware: flat.acaAware ?? ASSUMPTIONS_DEFAULTS.acaAware,
-            acaAnnualSubsidyLoss: flat.acaAnnualSubsidyLoss ?? ASSUMPTIONS_DEFAULTS.acaAnnualSubsidyLoss,
+            gkUpperGuardrail: flat['gkUpperGuardrail'] ?? ASSUMPTIONS_DEFAULTS['gkUpperGuardrail'],
+            gkLowerGuardrail: flat['gkLowerGuardrail'] ?? ASSUMPTIONS_DEFAULTS['gkLowerGuardrail'],
+            gkAdjustmentPercent: flat['gkAdjustmentPercent'] ?? ASSUMPTIONS_DEFAULTS['gkAdjustmentPercent'],
+            autoRothConversions: flat['autoRothConversions'] ?? ASSUMPTIONS_DEFAULTS['autoRothConversions'],
+            rothConversionStrategy: flat['rothConversionStrategy'] ?? ASSUMPTIONS_DEFAULTS['rothConversionStrategy'],
+            rothConversionMinRateGap: flat['rothConversionMinRateGap'] ?? ASSUMPTIONS_DEFAULTS['rothConversionMinRateGap'],
+            rothConversionDPBackloadDelta: flat['rothConversionDPBackloadDelta'] ?? ASSUMPTIONS_DEFAULTS['rothConversionDPBackloadDelta'],
+            rothConversionUserSituation: flat['rothConversionUserSituation'] ?? ASSUMPTIONS_DEFAULTS['rothConversionUserSituation'],
+            taxOptimizationEnabled: flat['taxOptimizationEnabled'] ?? ASSUMPTIONS_DEFAULTS['taxOptimizationEnabled'],
+            acaAware: flat['acaAware'] ?? ASSUMPTIONS_DEFAULTS['acaAware'],
+            acaAnnualSubsidyLoss: flat['acaAnnualSubsidyLoss'] ?? ASSUMPTIONS_DEFAULTS['acaAnnualSubsidyLoss'],
         },
         demographics,
         display: {
-            useCompactCurrency: flat.useCompactCurrency ?? ASSUMPTIONS_DEFAULTS.useCompactCurrency,
-            showExperimentalFeatures: flat.showExperimentalFeatures ?? ASSUMPTIONS_DEFAULTS.showExperimentalFeatures,
-            hsaEligible: flat.hsaEligible ?? ASSUMPTIONS_DEFAULTS.hsaEligible,
+            useCompactCurrency: flat['useCompactCurrency'] ?? ASSUMPTIONS_DEFAULTS['useCompactCurrency'],
+            showExperimentalFeatures: flat['showExperimentalFeatures'] ?? ASSUMPTIONS_DEFAULTS['showExperimentalFeatures'],
+            hsaEligible: flat['hsaEligible'] ?? ASSUMPTIONS_DEFAULTS['hsaEligible'],
             // Present-only (#181): older QR codes omit the Dev-Tools flag;
             // migrateAssumptions backfills the default (false) on those.
-            ...(flat.showDevTools !== undefined
-                ? { showDevTools: flat.showDevTools }
+            ...(flat['showDevTools'] !== undefined
+                ? { showDevTools: flat['showDevTools'] }
                 : {}),
         },
-        priorities: flat.priorities ?? [],
+        priorities: flat['priorities'] ?? [],
         // Top-level Burn-Order array was flattened under the synthetic `burnOrder` key.
-        withdrawalStrategy: flat.burnOrder ?? [],
-        milestones: flat.milestones ?? [],
+        withdrawalStrategy: flat['burnOrder'] ?? [],
+        milestones: flat['milestones'] ?? [],
     };
 }
 
