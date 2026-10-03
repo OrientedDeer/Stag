@@ -35,15 +35,15 @@ describe('DebtStreamChart tooltip wiring (#190)', () => {
         render(<DebtStreamChart data={data} keys={keys} />);
 
         // The whole-slice tooltip is the one nivo actually invokes for the hover card.
-        expect(captured.enableStackTooltip).toBe(true);
-        expect(typeof captured.stackTooltip).toBe('function');
+        expect(captured['enableStackTooltip']).toBe(true);
+        expect(typeof captured['stackTooltip']).toBe('function');
         // The per-layer tooltip is silenced.
-        const perLayer = captured.tooltip as (arg: unknown) => unknown;
+        const perLayer = captured['tooltip'] as (arg: unknown) => unknown;
         expect(typeof perLayer).toBe('function');
         expect(perLayer({ layer: {} })).toBeNull();
 
         // Exercise the stack tooltip with the slice shape nivo really passes.
-        const StackTip = captured.stackTooltip as (arg: { slice: { index: number } }) => ReactElement;
+        const StackTip = captured['stackTooltip'] as (arg: { slice: { index: number } }) => ReactElement;
         const Tip = () => StackTip({ slice: { index: 1 } });
         render(<Tip />);
 
