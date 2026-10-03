@@ -168,32 +168,6 @@ export function assertAllYearsInvariants(simulation: SimulationYear[]): void {
     }
 }
 
-/**
- * Assert Social Security claiming works correctly
- */
-export function assertSocialSecurityClaimed(
-    simulation: SimulationYear[],
-    ssIncomeId: string,
-    birthYear: number,
-    claimingAge: number
-): void {
-    const claimingYear = birthYear + claimingAge;
-
-    for (const year of simulation) {
-        const ssIncome = year.incomes.find(i => i.id === ssIncomeId);
-        if (!ssIncome) continue;
-
-        if (year.year < claimingYear) {
-            // Before claiming age, SS should not be paying
-            expect(ssIncome.amount, `SS should be 0 before claiming age (year ${year.year})`).toBe(0);
-        } else if (year.year === claimingYear) {
-            // At claiming age, PIA should be calculated
-            // Allow for earnings test reduction
-            expect(ssIncome.amount, `SS PIA should be calculated at claiming age (year ${year.year})`).toBeGreaterThanOrEqual(0);
-        }
-    }
-}
-
 // =============================================================================
 // SYSTEM-LEVEL ACCOUNTING INVARIANTS
 // =============================================================================
