@@ -1116,9 +1116,9 @@ export function reconstituteIncome(data: unknown): AnyIncome | null {
     // circuits on any truthy startDate), and (b) destabilize the simulation input hash
     // (startDate serializes as a fresh instant every reload). All startDate consumers are
     // undefined-safe and treat a missing start as "now", so the no-anchor case is unchanged.
-    const startDate = parseDate(data.startDate);
-    const endDate = parseDate(data.end_date);
-    const frequency = (data.frequency as IncomeFrequency) || 'Monthly';
+    const startDate = parseDate(data['startDate']);
+    const endDate = parseDate(data['end_date']);
+    const frequency = (data['frequency'] as IncomeFrequency) || 'Monthly';
     const base = extractBaseFields(data, 'Unnamed Income');
     const { name, amount } = base;
     // A missing/empty deserialized id (old backups, QR/JSON imports) would otherwise
@@ -1126,52 +1126,52 @@ export function reconstituteIncome(data: unknown): AnyIncome | null {
     // Mint a deterministic, content-derived id so the same data reconstitutes to the
     // same id (stable simulation hash) while distinct incomes stay unique.
     const id = base.id || deriveStableIncomeId(data);
-    const earned_income = (data.earned_income as "Yes" | "No") || "No";
-    const startMilestoneId = data.startMilestoneId ? String(data.startMilestoneId) : undefined;
-    const endMilestoneId = data.endMilestoneId ? String(data.endMilestoneId) : undefined;
+    const earned_income = (data['earned_income'] as "Yes" | "No") || "No";
+    const startMilestoneId = data['startMilestoneId'] ? String(data['startMilestoneId']) : undefined;
+    const endMilestoneId = data['endMilestoneId'] ? String(data['endMilestoneId']) : undefined;
 
     switch (data.className) {
         case 'WorkIncome': {
             // Map old 'none' value to 'custom' for backwards compatibility
-            const autoMax401k = data.autoMax401k === 'none' ? 'custom' : (data.autoMax401k || 'custom');
+            const autoMax401k = data['autoMax401k'] === 'none' ? 'custom' : (data['autoMax401k'] || 'custom');
             return new WorkIncome(
                 id, name, amount, frequency, earned_income,
-                Number(data.preTax401k) || 0, Number(data.insurance) || 0,
-                Number(data.roth401k) || 0, Number(data.employerMatch) || 0,
-                String(data.matchAccountId ?? ''), (data.taxType as TaxType) || null,
-                (data.contributionGrowthStrategy as ContributionGrowthStrategy) || 'FIXED',
-                startDate, endDate, Number(data.hsaContribution) || 0, autoMax401k as AutoMax401kOption,
-                (data.esppContributionType as ESPPContributionType) || 'NONE',
-                Number(data.esppContributionAmount) || 0,
-                Number(data.esppDiscountPercent ?? 15),
-                (data.esppHasLookback as boolean) ?? true,
-                Number(data.esppOfferingPeriodMonths ?? 6),
-                data.esppAccountId ? String(data.esppAccountId) : null,
-                Number(data.esppExpectedStockGrowth ?? 7),
-                (data.rsuVestingSchedule as RSUVestingSchedule) || 'NONE',
-                Number(data.rsuGrantShares) || 0,
-                (data.rsuVestFrequency as RSUVestFrequency) || 'quarterly',
-                Number(data.rsuExpectedStockGrowth ?? 7),
-                data.rsuAccountId ? String(data.rsuAccountId) : null,
-                Number(data.rsuWithholdingRate ?? 37),
-                (data.pensionSystem as PensionSystem) || 'NONE',
+                Number(data['preTax401k']) || 0, Number(data['insurance']) || 0,
+                Number(data['roth401k']) || 0, Number(data['employerMatch']) || 0,
+                String(data['matchAccountId'] ?? ''), (data['taxType'] as TaxType) || null,
+                (data['contributionGrowthStrategy'] as ContributionGrowthStrategy) || 'FIXED',
+                startDate, endDate, Number(data['hsaContribution']) || 0, autoMax401k as AutoMax401kOption,
+                (data['esppContributionType'] as ESPPContributionType) || 'NONE',
+                Number(data['esppContributionAmount']) || 0,
+                Number(data['esppDiscountPercent'] ?? 15),
+                (data['esppHasLookback'] as boolean) ?? true,
+                Number(data['esppOfferingPeriodMonths'] ?? 6),
+                data['esppAccountId'] ? String(data['esppAccountId']) : null,
+                Number(data['esppExpectedStockGrowth'] ?? 7),
+                (data['rsuVestingSchedule'] as RSUVestingSchedule) || 'NONE',
+                Number(data['rsuGrantShares']) || 0,
+                (data['rsuVestFrequency'] as RSUVestFrequency) || 'quarterly',
+                Number(data['rsuExpectedStockGrowth'] ?? 7),
+                data['rsuAccountId'] ? String(data['rsuAccountId']) : null,
+                Number(data['rsuWithholdingRate'] ?? 37),
+                (data['pensionSystem'] as PensionSystem) || 'NONE',
                 startMilestoneId, endMilestoneId,
-                (data.employerMatchType as EmployerMatchType) || 'fixed',
-                Number(data.employerMatchPercent) || 0,
-                Number(data.employerMatchMax) || 0,
+                (data['employerMatchType'] as EmployerMatchType) || 'fixed',
+                Number(data['employerMatchPercent']) || 0,
+                Number(data['employerMatchMax']) || 0,
             );
         }
         case 'SocialSecurityIncome':
             return new SocialSecurityIncome(
-                id, name, amount, frequency, Number(data.claimingAge) || 67,
-                Number(data.fullRetirementAgeBenefit) || 0, startDate, endDate,
+                id, name, amount, frequency, Number(data['claimingAge']) || 67,
+                Number(data['fullRetirementAgeBenefit']) || 0, startDate, endDate,
                 startMilestoneId, endMilestoneId
             );
         case 'PassiveIncome':
             return new PassiveIncome(
                 id, name, amount, frequency, earned_income,
-                (data.sourceType as PassiveIncome['sourceType']) || 'Other',
-                startDate, endDate, (data.isReinvested as boolean) ?? false,
+                (data['sourceType'] as PassiveIncome['sourceType']) || 'Other',
+                startDate, endDate, (data['isReinvested'] as boolean) ?? false,
                 startMilestoneId, endMilestoneId
             );
         case 'WindfallIncome':
@@ -1182,27 +1182,27 @@ export function reconstituteIncome(data: unknown): AnyIncome | null {
                 startMilestoneId, endMilestoneId);
         case 'FutureSocialSecurityIncome':
             return new FutureSocialSecurityIncome(
-                id, name, Number(data.claimingAge) || 67,
-                Number(data.calculatedPIA) || 0, Number(data.calculationYear) || 0,
+                id, name, Number(data['claimingAge']) || 67,
+                Number(data['calculatedPIA']) || 0, Number(data['calculationYear']) || 0,
                 startDate, endDate, startMilestoneId, endMilestoneId,
-                Number(data.projectedPIA) || 0  // Preserve projectedPIA across save/reload
+                Number(data['projectedPIA']) || 0  // Preserve projectedPIA across save/reload
             );
         case 'FERSPensionIncome':
             return new FERSPensionIncome(
-                id, name, Number(data.yearsOfService) || 0, Number(data.high3Salary) || 0,
-                Number(data.retirementAge) || 62, Number(data.birthYear) || 1970,
-                Number(data.calculatedBenefit) || 0, Number(data.fersSupplement) || 0,
-                Number(data.estimatedSSAt62) || 0, startDate, endDate,
-                (data.autoCalculateHigh3 as boolean) || false,
-                data.linkedIncomeId ? String(data.linkedIncomeId) : null,
+                id, name, Number(data['yearsOfService']) || 0, Number(data['high3Salary']) || 0,
+                Number(data['retirementAge']) || 62, Number(data['birthYear']) || 1970,
+                Number(data['calculatedBenefit']) || 0, Number(data['fersSupplement']) || 0,
+                Number(data['estimatedSSAt62']) || 0, startDate, endDate,
+                (data['autoCalculateHigh3'] as boolean) || false,
+                data['linkedIncomeId'] ? String(data['linkedIncomeId']) : null,
                 startMilestoneId, endMilestoneId
             );
         case 'CSRSPensionIncome':
             return new CSRSPensionIncome(
-                id, name, Number(data.yearsOfService) || 0, Number(data.high3Salary) || 0,
-                Number(data.retirementAge) || 55, Number(data.calculatedBenefit) || 0,
-                startDate, endDate, (data.autoCalculateHigh3 as boolean) || false,
-                data.linkedIncomeId ? String(data.linkedIncomeId) : null,
+                id, name, Number(data['yearsOfService']) || 0, Number(data['high3Salary']) || 0,
+                Number(data['retirementAge']) || 55, Number(data['calculatedBenefit']) || 0,
+                startDate, endDate, (data['autoCalculateHigh3'] as boolean) || false,
+                data['linkedIncomeId'] ? String(data['linkedIncomeId']) : null,
                 startMilestoneId, endMilestoneId
             );
         default:
