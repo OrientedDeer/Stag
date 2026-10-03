@@ -120,7 +120,9 @@ export function calculateStrategyTarget(
         strategy,
         withdrawalRate: assumptions.investments.withdrawalRate,
         currentPortfolio: totalInvestedAssets,
-        inflationRate: assumptions.macro.inflationRate,
+        // A plan run in today's dollars keeps every other amount flat; compounding
+        // the budget would double-count inflation.
+        inflationRate: assumptions.macro.inflationAdjusted ? assumptions.macro.inflationRate : 0,
         yearsInRetirement,
         previousWithdrawal: previousStrategyResult,
         // GK-specific params (ignored by other strategies)
