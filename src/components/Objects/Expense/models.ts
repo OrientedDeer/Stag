@@ -395,6 +395,21 @@ export class MortgageExpense extends BaseExpense {
     return nextYearMortgage;
   }
 
+  /** Same mortgage carrying `loanBalance` instead (see withYearStartLoanBalances). */
+  withLoanBalance(loanBalance: number): MortgageExpense {
+    const copy = new MortgageExpense(
+      this.id, this.name, this.frequency,
+      this.valuation, loanBalance, this.starting_loan_balance,
+      this.apr, this.term_length, this.property_taxes, this.valuation_deduction,
+      this.maintenance, this.utilities, this.home_owners_insurance, this.pmi, this.hoa_fee,
+      this.is_tax_deductible, this.tax_deductible, this.linkedAccountId,
+      this.startDate, this.payment, this.extra_payment, this.endDate,
+      this.startMilestoneId, this.endMilestoneId
+    );
+    copy.tax_deductible = this.tax_deductible;
+    return this.copyMetaTo(copy);
+  }
+
   // Standard monthly P&I for this mortgage (always from starting_loan_balance).
   private calculatePrincipalAndInterest(): number {
     return calculateMonthlyPayment(this.starting_loan_balance, this.apr, this.term_length * 12);
@@ -669,6 +684,17 @@ export class LoanExpense extends BaseExpense {
     return this.copyMetaTo(result);
   }
 
+  /** Same loan carrying `balance` instead (see withYearStartLoanBalances). */
+  withLoanBalance(balance: number): LoanExpense {
+    const copy = new LoanExpense(
+      this.id, this.name, balance, this.frequency, this.apr, this.interest_type,
+      this.payment, this.is_tax_deductible, this.tax_deductible, this.linkedAccountId,
+      this.startDate, this.endDate, this.startMilestoneId, this.endMilestoneId,
+      this.extra_payment
+    );
+    return this.copyMetaTo(copy);
+  }
+
   calculateAnnualAmortization(year: number): { totalInterest: number, totalPrincipal: number, totalPayment: number } {
     // startDate/endDate are local-midnight date-only values; use local accessors.
     const loanStartYear = this.startDate ? this.startDate.getFullYear() : new Date().getFullYear();
@@ -913,6 +939,30 @@ export function getExpenseActiveMultiplier(expense: BaseExpense, year: number): 
 
 export function isExpenseActiveInCurrentMonth(expense: AnyExpense): boolean {
   return isWindowActiveInCurrentMonth(expense);
+}
+
+/**
+ * The engine advances loans/mortgages with increment(year) — which amortizes
+ * year Y's 12 payments — BEFORE totaling year Y's cashflow, while
+ * calculateAnnualAmortization(year) treats the balance it sees as the year-START
+ * balance. Reading cashflow off the advanced balance shifts every payment a year
+ * early: the first year's P&I never leaves the plan and the payoff year reports
+ * escrow only, so the debt is retired for free. Swap each advanced loan/mortgage
+ * for a copy carrying its entering balance (everything else — escrow inflation,
+ * PMI drop-off — stays as advanced) so the cashflow matches what increment paid.
+ */
+export function withYearStartLoanBalances(advanced: AnyExpense[], entering: AnyExpense[]): AnyExpense[] {
+  const enteringById = new Map(entering.map(e => [e.id, e]));
+  return advanced.map(exp => {
+    const start = enteringById.get(exp.id);
+    if (exp instanceof LoanExpense && start instanceof LoanExpense) {
+      return exp.withLoanBalance(start.amount);
+    }
+    if (exp instanceof MortgageExpense && start instanceof MortgageExpense) {
+      return exp.withLoanBalance(start.loan_balance);
+    }
+    return exp;
+  });
 }
 
 /**
