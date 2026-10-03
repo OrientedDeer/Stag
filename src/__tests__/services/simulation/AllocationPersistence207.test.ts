@@ -51,7 +51,7 @@ describe('#207 allocation persistence', () => {
 
         it('round-trips a non-default allocation and bond rate', () => {
             const restored = expandCompactAssumptions(compactAssumptions(withAllocation(60, 3.5) as unknown as Record<string, unknown>));
-            const inv = restored.investments as AssumptionsState['investments'];
+            const inv = restored['investments'] as AssumptionsState['investments'];
             expect(inv.defaultAllocation?.stockPct).toBe(60);
             expect(inv.returnRates.bondRor).toBe(3.5);
         });
@@ -61,7 +61,7 @@ describe('#207 allocation persistence', () => {
             // plan would import with bonds blended at the STOCK rate.
             const defaultBond = defaultAssumptions.investments.returnRates.bondRor!;
             const restored = expandCompactAssumptions(compactAssumptions(withAllocation(60, defaultBond) as unknown as Record<string, unknown>));
-            const inv = restored.investments as AssumptionsState['investments'];
+            const inv = restored['investments'] as AssumptionsState['investments'];
             expect(inv.returnRates.bondRor).toBe(defaultBond);
             expect(inv.defaultAllocation?.stockPct).toBe(60);
         });
@@ -72,7 +72,7 @@ describe('#207 allocation persistence', () => {
                 enabled: true, startAge: 45, endAge: 70, startStockPct: 90, endStockPct: 40,
             };
             const restored = expandCompactAssumptions(compactAssumptions(a as unknown as Record<string, unknown>));
-            const inv = restored.investments as AssumptionsState['investments'];
+            const inv = restored['investments'] as AssumptionsState['investments'];
             expect(inv.allocationGlidepath).toEqual(a.investments.allocationGlidepath);
         });
     });
