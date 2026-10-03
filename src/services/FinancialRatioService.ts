@@ -5,7 +5,8 @@
  */
 
 import { type SimulationYear } from '../components/Objects/Assumptions/SimulationEngine';
-import { type AnyAccount, SavedAccount, InvestedAccount, DebtAccount, DeficitDebtAccount } from '../components/Objects/Accounts/models';
+import { type AnyAccount, SavedAccount, InvestedAccount } from '../components/Objects/Accounts/models';
+import { getAccountTotals } from '../components/Objects/Accounts/accountTotals';
 
 // ============================================================================
 // Constants - Rating Thresholds
@@ -131,30 +132,24 @@ function getInvestedAssets(accounts: AnyAccount[]): number {
 }
 
 /**
- * Get total debt
+ * Get total debt, including a financed home's mortgage (PropertyAccount.loanAmount)
  */
 function getTotalDebt(accounts: AnyAccount[]): number {
-  return accounts
-    .filter((acc): acc is DebtAccount | DeficitDebtAccount =>
-      acc instanceof DebtAccount || acc instanceof DeficitDebtAccount
-    )
-    .reduce((sum, acc) => sum + acc.amount, 0);
+  return getAccountTotals(accounts).liabilities;
 }
 
 /**
  * Get total assets (excluding debt)
  */
 function getTotalAssets(accounts: AnyAccount[]): number {
-  return accounts
-    .filter(acc => !(acc instanceof DebtAccount) && !(acc instanceof DeficitDebtAccount))
-    .reduce((sum, acc) => sum + acc.amount, 0);
+  return getAccountTotals(accounts).assets;
 }
 
 /**
  * Get net worth
  */
 function getNetWorth(accounts: AnyAccount[]): number {
-  return getTotalAssets(accounts) - getTotalDebt(accounts);
+  return getAccountTotals(accounts).netWorth;
 }
 
 /**
