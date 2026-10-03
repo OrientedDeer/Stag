@@ -1387,11 +1387,11 @@ export function reconstituteAccount(data: unknown): AnyAccount | null {
 
     switch (data.className) {
         case 'SavedAccount':
-            return new SavedAccount(id, name, amount, Number(data.apr) || 0);
+            return new SavedAccount(id, name, amount, Number(data['apr']) || 0);
 
         case 'InvestedAccount': {
-            const conversionHistory = Array.isArray(data.conversionHistory)
-                ? data.conversionHistory.map((c: Record<string, unknown>) => ({ year: Number(c.year), amount: Number(c.amount) }))
+            const conversionHistory = Array.isArray(data['conversionHistory'])
+                ? data['conversionHistory'].map((c: Record<string, unknown>) => ({ year: Number(c['year']), amount: Number(c['amount']) }))
                 : [];
             // Clamp persisted values to safe ranges. employerBalance > amount makes
             // nonVestedAmount/vestedAmount go negative (RMDService then silently skips a
@@ -1399,90 +1399,90 @@ export function reconstituteAccount(data: unknown): AnyAccount | null {
             // (contributions/conversions above current market value) — that is valid,
             // so it is floored at 0 but NOT clamped to amount; clamping would erase the
             // unrealized loss and tax later recovery as phantom gain.
-            const employerBalance = Math.max(0, Math.min(Number(data.employerBalance) || 0, amount));
+            const employerBalance = Math.max(0, Math.min(Number(data['employerBalance']) || 0, amount));
             // #81: a non-numeric persisted costBasis makes Number(...) NaN, which
             // Math.max can't sanitize → "$NaN" on the card. Fall back to `amount`
             // when the parsed value isn't finite.
-            const parsedCostBasis = Number(data.costBasis ?? amount);
+            const parsedCostBasis = Number(data['costBasis'] ?? amount);
             const costBasis = Math.max(0, Number.isFinite(parsedCostBasis) ? parsedCostBasis : amount);
             return new InvestedAccount(
                 id, name, amount,
                 employerBalance,
-                Number(data.tenureYears) || 0,
-                Number(data.expenseRatio ?? 0.1),
-                (data.taxType as TaxType) ?? 'Brokerage',
-                (data.isContributionEligible as boolean) ?? true,
-                Number(data.vestedPerYear ?? 0.2),
+                Number(data['tenureYears']) || 0,
+                Number(data['expenseRatio'] ?? 0.1),
+                (data['taxType'] as TaxType) ?? 'Brokerage',
+                (data['isContributionEligible'] as boolean) ?? true,
+                Number(data['vestedPerYear'] ?? 0.2),
                 costBasis,
-                parseOptionalFiniteNumber(data.customROR),
+                parseOptionalFiniteNumber(data['customROR']),
                 conversionHistory,
                 // `lots` is simulation-internal and never persisted — pass the default so
                 // the #207 stockPct lands in the right positional slot.
                 [],
-                parseOptionalFiniteNumber(data.stockPct)
+                parseOptionalFiniteNumber(data['stockPct'])
             );
         }
 
         case 'ESPPAccount': {
-            const lotsData = Array.isArray(data.lots) ? data.lots : [];
+            const lotsData = Array.isArray(data['lots']) ? data['lots'] : [];
             const lots: ESPPLot[] = lotsData.map((lot: Record<string, unknown>) => ({
-                id: String(lot.id ?? ''),
-                grantDate: parseDate(lot.grantDate, new Date()) as Date,
-                purchaseDate: parseDate(lot.purchaseDate, new Date()) as Date,
-                fmvAtGrant: Number(lot.fmvAtGrant) || 0,
-                fmvAtPurchase: Number(lot.fmvAtPurchase) || 0,
-                purchasePrice: Number(lot.purchasePrice) || 0,
-                shares: Number(lot.shares) || 0,
-                totalCost: Number(lot.totalCost) || 0,
-                discountAmount: Number(lot.discountAmount) || 0,
+                id: String(lot['id'] ?? ''),
+                grantDate: parseDate(lot['grantDate'], new Date()) as Date,
+                purchaseDate: parseDate(lot['purchaseDate'], new Date()) as Date,
+                fmvAtGrant: Number(lot['fmvAtGrant']) || 0,
+                fmvAtPurchase: Number(lot['fmvAtPurchase']) || 0,
+                purchasePrice: Number(lot['purchasePrice']) || 0,
+                shares: Number(lot['shares']) || 0,
+                totalCost: Number(lot['totalCost']) || 0,
+                discountAmount: Number(lot['discountAmount']) || 0,
             }));
             return new ESPPAccount(
                 id, name, amount, lots,
-                data.linkedIncomeId ? String(data.linkedIncomeId) : null,
-                parseOptionalFiniteNumber(data.customROR),
-                data.stockTicker ? String(data.stockTicker) : undefined,
-                parseOptionalFiniteNumber(data.currentSharePrice),
-                (data.withdrawalPreference as ESPPWithdrawalPreference) ?? 'fifo',
-                Number(data.minimumHoldingDays) || 0
+                data['linkedIncomeId'] ? String(data['linkedIncomeId']) : null,
+                parseOptionalFiniteNumber(data['customROR']),
+                data['stockTicker'] ? String(data['stockTicker']) : undefined,
+                parseOptionalFiniteNumber(data['currentSharePrice']),
+                (data['withdrawalPreference'] as ESPPWithdrawalPreference) ?? 'fifo',
+                Number(data['minimumHoldingDays']) || 0
             );
         }
 
         case 'RSUAccount': {
-            const lotsData = Array.isArray(data.lots) ? data.lots : [];
+            const lotsData = Array.isArray(data['lots']) ? data['lots'] : [];
             const lots: RSULot[] = lotsData.map((lot: Record<string, unknown>) => ({
-                id: String(lot.id ?? ''),
-                grantDate: parseDate(lot.grantDate, new Date()) as Date,
-                vestDate: parseDate(lot.vestDate, new Date()) as Date,
-                fmvAtVest: Number(lot.fmvAtVest) || 0,
-                shares: Number(lot.shares) || 0,
-                costBasis: Number(lot.costBasis) || 0,
+                id: String(lot['id'] ?? ''),
+                grantDate: parseDate(lot['grantDate'], new Date()) as Date,
+                vestDate: parseDate(lot['vestDate'], new Date()) as Date,
+                fmvAtVest: Number(lot['fmvAtVest']) || 0,
+                shares: Number(lot['shares']) || 0,
+                costBasis: Number(lot['costBasis']) || 0,
             }));
             return new RSUAccount(
                 id, name, amount, lots,
-                data.linkedIncomeId ? String(data.linkedIncomeId) : null,
-                parseOptionalFiniteNumber(data.customROR),
-                data.stockTicker ? String(data.stockTicker) : undefined,
-                parseOptionalFiniteNumber(data.currentSharePrice),
-                (data.withdrawalPreference as RSUWithdrawalPreference) ?? 'fifo',
-                Number(data.minimumHoldingDays) || 0
+                data['linkedIncomeId'] ? String(data['linkedIncomeId']) : null,
+                parseOptionalFiniteNumber(data['customROR']),
+                data['stockTicker'] ? String(data['stockTicker']) : undefined,
+                parseOptionalFiniteNumber(data['currentSharePrice']),
+                (data['withdrawalPreference'] as RSUWithdrawalPreference) ?? 'fifo',
+                Number(data['minimumHoldingDays']) || 0
             );
         }
 
         case 'PropertyAccount':
             return new PropertyAccount(
                 id, name, amount,
-                (data.ownershipType as 'Financed' | 'Owned') ?? 'Owned',
-                Number(data.loanAmount) || 0,
-                Number(data.startingLoanBalance) || 0,
-                String(data.linkedAccountId ?? ''),
-                Number(data.apr) || 0
+                (data['ownershipType'] as 'Financed' | 'Owned') ?? 'Owned',
+                Number(data['loanAmount']) || 0,
+                Number(data['startingLoanBalance']) || 0,
+                String(data['linkedAccountId'] ?? ''),
+                Number(data['apr']) || 0
             );
 
         case 'DebtAccount':
             return new DebtAccount(
                 id, name, amount,
-                String(data.linkedAccountId ?? ''),
-                Number(data.apr) || 0
+                String(data['linkedAccountId'] ?? ''),
+                Number(data['apr']) || 0
             );
 
         case 'DeficitDebtAccount':
