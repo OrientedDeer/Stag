@@ -688,13 +688,13 @@ export function validatePayload(data: unknown): data is {
     const backup = data as Record<string, unknown>;
 
     // Check required fields exist
-    if (typeof backup.version !== 'number') return false;
-    if (!Array.isArray(backup.accounts)) return false;
-    if (typeof backup.amountHistory !== 'object' || backup.amountHistory === null) return false;
-    if (!Array.isArray(backup.incomes)) return false;
-    if (!Array.isArray(backup.expenses)) return false;
-    if (typeof backup.taxSettings !== 'object' || backup.taxSettings === null) return false;
-    if (typeof backup.assumptions !== 'object' || backup.assumptions === null) return false;
+    if (typeof backup['version'] !== 'number') return false;
+    if (!Array.isArray(backup['accounts'])) return false;
+    if (typeof backup['amountHistory'] !== 'object' || backup['amountHistory'] === null) return false;
+    if (!Array.isArray(backup['incomes'])) return false;
+    if (!Array.isArray(backup['expenses'])) return false;
+    if (typeof backup['taxSettings'] !== 'object' || backup['taxSettings'] === null) return false;
+    if (typeof backup['assumptions'] !== 'object' || backup['assumptions'] === null) return false;
 
     return true;
 }
