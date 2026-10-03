@@ -16,7 +16,7 @@ import type { SimulationYear } from '../../../services/simulation/types';
 
 // An early-retirement CSRS retiree: 25 years of service, $100k High-3, retiring at
 // age 50. The basic benefit is $46,250 but CSRS applies a 2%/yr-under-55 reduction
-// (capped at 10%), so the simulation runs $46,250 × 0.90 = $41,625. The displayed
+// (5yr × 2% = 10%), so the simulation runs $46,250 × 0.90 = $41,625. The displayed
 // estimate must show the reduced $41,625 — NOT the unreduced $46,250.
 const EARLY_RETIREMENT = {
     yearsOfService: 25,
@@ -215,16 +215,16 @@ describe('getDisplayedCSRSBenefit === CSRSPensionIncome.calculateBenefit() (drif
     //
     // expectedReduced = expectedBasic × (1 − reduction%). The basic-benefit tiers:
     // first 5yr ×1.5%, yrs 6–10 ×1.75%, yrs 11+ ×2.0%, capped at 80% of High-3. The
-    // early-retirement reduction is 2%/yr under age 55, capped at 10%, and only when
+    // early-retirement reduction is 2%/yr under age 55 (uncapped, 5 U.S.C. §8339(h)), and only when
     // eligible. Unlike FERS, CSRS eligibility does not depend on birth year.
     const cases = [
         // [yearsOfService, high3, retirementAge, expectedBasic, expectedReduced, label]
         [30, 100_000, 55, 56_250, 56_250, 'age 55 with 30yr, unreduced'],
         [20, 90_000, 60, 32_625, 32_625, 'age 60 with 20yr, unreduced'],
         [5, 80_000, 62, 6_000, 6_000, 'age 62 with exactly 5yr, unreduced'],
-        [25, 100_000, 50, 46_250, 41_625, 'early: age 50 with 25yr, 10% capped reduction (5yr×2%)'],
+        [25, 100_000, 50, 46_250, 41_625, 'early: age 50 with 25yr, 10% reduction (5yr×2%)'],
         [20, 100_000, 52, 36_250, 34_075, 'early: age 50+/20yr at 52, 6% reduction (3yr×2%)'],
-        [25, 95_000, 45, 43_937.5, 39_543.75, 'early: any-age 25yr at 45, reduction capped at 10%'],
+        [25, 95_000, 45, 43_937.5, 35_150, 'early: any-age 25yr at 45, 20% reduction (10yr×2%, uncapped)'],
         [22, 120_000, 54, 48_300, 47_334, 'early: 22yr at 54, 2% reduction (1yr under 55)'],
         [40, 150_000, 60, 114_375, 114_375, '40yr below the 80% cap, unreduced'],
         [45, 150_000, 50, 120_000, 108_000, '80% cap engaged + 10% early reduction stacked'],
