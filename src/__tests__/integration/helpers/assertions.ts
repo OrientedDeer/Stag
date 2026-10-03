@@ -284,7 +284,7 @@ export function assertWithdrawalsWithinBounds(year: SimulationYear): void {
  * Assert taxes don't exceed income.
  * Total taxes should not be more than gross income (though this can happen with penalties).
  */
-export function assertTaxesWithinBounds(year: SimulationYear): void {
+function assertTaxesWithinBounds(year: SimulationYear): void {
     const totalTax = year.taxDetails.fed + year.taxDetails.state + year.taxDetails.fica;
     const totalIncome = year.cashflow.totalIncome;
 
