@@ -8,7 +8,6 @@
 import { expect } from 'vitest';
 import { type SimulationYear } from '../../../components/Objects/Assumptions/SimulationEngine';
 import { DeficitDebtAccount, InvestedAccount, PropertyAccount, DebtAccount, SavedAccount } from '../../../components/Objects/Accounts/models';
-import { MortgageExpense, LoanExpense } from '../../../components/Objects/Expense/models';
 import { PassiveIncome } from '../../../components/Objects/Income/models';
 import { calculateNetWorth, calculateLiquidAssets } from './simulationTestUtils';
 
@@ -208,34 +207,6 @@ export function assertSocialSecurityClaimed(
             // Allow for earnings test reduction
             expect(ssIncome.amount, `SS PIA should be calculated at claiming age (year ${year.year})`).toBeGreaterThanOrEqual(0);
         }
-    }
-}
-
-/**
- * Assert linked accounts stay synchronized with their expenses
- */
-export function assertLinkedAccountSync(
-    year: SimulationYear,
-    accountId: string,
-    expenseId: string
-): void {
-    const account = year.accounts.find(a => a.id === accountId);
-    const expense = year.expenses.find(e => e.id === expenseId);
-
-    if (!account || !expense) return;
-
-    if (expense instanceof MortgageExpense || expense instanceof LoanExpense) {
-        // For debt-linked accounts, the account balance should match the expense balance
-        const expenseBalance = expense instanceof MortgageExpense
-            ? expense.loan_balance
-            : expense.amount;
-
-        // Allow small tolerance for floating point
-        const tolerance = Math.max(1, expenseBalance * 0.001);
-        expect(
-            Math.abs(account.amount - expenseBalance),
-            `Linked account ${account.name} balance should match expense ${expense.name} in year ${year.year}`
-        ).toBeLessThan(tolerance);
     }
 }
 
