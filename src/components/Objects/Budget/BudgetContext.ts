@@ -542,7 +542,7 @@ export const BudgetContext = createContext<BudgetContextProps>({
 export function reconstituteBudgetMonths(rawMonths: unknown): MonthlySnapshot[] {
     return ((rawMonths as unknown[]) || []).map((m: unknown) => {
         const month = m as Record<string, unknown>;
-        const transactions = ((month.transactions as unknown[]) || []).map((t: unknown) => {
+        const transactions = ((month['transactions'] as unknown[]) || []).map((t: unknown) => {
             const trans = t as Record<string, unknown>;
             return {
                 ...trans,
@@ -550,15 +550,15 @@ export function reconstituteBudgetMonths(rawMonths: unknown): MonthlySnapshot[] 
                 // 'YYYY-MM-DD' by jsonDateReplacer on backup). parseDate reads that
                 // portion as LOCAL midnight so a west-of-UTC export/import round-trip
                 // doesn't walk the date a day earlier and defeat dedupe (#182).
-                date: trans.date ? parseDate(trans.date, new Date()) : new Date(),
-                postedDate: trans.postedDate ? parseDate(trans.postedDate) : undefined,
-                statementDate: trans.statementDate ? parseDate(trans.statementDate) : undefined,
+                date: trans['date'] ? parseDate(trans['date'], new Date()) : new Date(),
+                postedDate: trans['postedDate'] ? parseDate(trans['postedDate']) : undefined,
+                statementDate: trans['statementDate'] ? parseDate(trans['statementDate']) : undefined,
             } as Transaction;
         });
         return {
             ...month,
-            createdAt: month.createdAt ? new Date(month.createdAt as string) : new Date(),
-            updatedAt: month.updatedAt ? new Date(month.updatedAt as string) : new Date(),
+            createdAt: month['createdAt'] ? new Date(month['createdAt'] as string) : new Date(),
+            updatedAt: month['updatedAt'] ? new Date(month['updatedAt'] as string) : new Date(),
             transactions,
         } as MonthlySnapshot;
     });
@@ -572,19 +572,19 @@ export function reconstituteBudgetMonths(rawMonths: unknown): MonthlySnapshot[] 
  */
 export function reconstituteBudgetState(parsed: unknown): Partial<BudgetState> {
     const data = (parsed as Record<string, unknown>) || {};
-    const months = reconstituteBudgetMonths(data.months);
+    const months = reconstituteBudgetMonths(data['months']);
 
-    const importSettingsData = (data.importSettings as Record<string, unknown>) || undefined;
+    const importSettingsData = (data['importSettings'] as Record<string, unknown>) || undefined;
     if (!importSettingsData) {
         return { ...data, months };
     }
 
-    const savedCSVFormats = ((importSettingsData.savedCSVFormats as unknown[]) || []).map((f: unknown) => {
+    const savedCSVFormats = ((importSettingsData['savedCSVFormats'] as unknown[]) || []).map((f: unknown) => {
         const format = f as Record<string, unknown>;
         return {
             ...format,
-            lastUsed: format.lastUsed ? new Date(format.lastUsed as string) : new Date(),
-            createdAt: format.createdAt ? new Date(format.createdAt as string) : new Date(),
+            lastUsed: format['lastUsed'] ? new Date(format['lastUsed'] as string) : new Date(),
+            createdAt: format['createdAt'] ? new Date(format['createdAt'] as string) : new Date(),
         } as SavedCSVMapping;
     });
 
@@ -596,7 +596,7 @@ export function reconstituteBudgetState(parsed: unknown): Partial<BudgetState> {
             // Older/hand-edited backups may omit categoryMappings; default it so the
             // SettingsTab and the category-mapping reducers never spread/map/filter
             // undefined (mirrors hydrateBudgetState).
-            categoryMappings: (importSettingsData.categoryMappings as CategoryMapping[]) || [],
+            categoryMappings: (importSettingsData['categoryMappings'] as CategoryMapping[]) || [],
             savedCSVFormats,
         },
     };
@@ -606,15 +606,15 @@ export function hydrateBudgetState(parsed: unknown, initial: BudgetState): Budge
     const data = parsed as Record<string, unknown>;
     if (!data) return initial;
 
-    const months = reconstituteBudgetMonths(data.months);
+    const months = reconstituteBudgetMonths(data['months']);
 
-    const importSettingsData = (data.importSettings as Record<string, unknown>) || {};
-    const savedCSVFormats = ((importSettingsData.savedCSVFormats as unknown[]) || []).map((f: unknown) => {
+    const importSettingsData = (data['importSettings'] as Record<string, unknown>) || {};
+    const savedCSVFormats = ((importSettingsData['savedCSVFormats'] as unknown[]) || []).map((f: unknown) => {
         const format = f as Record<string, unknown>;
         return {
             ...format,
-            lastUsed: format.lastUsed ? new Date(format.lastUsed as string) : new Date(),
-            createdAt: format.createdAt ? new Date(format.createdAt as string) : new Date(),
+            lastUsed: format['lastUsed'] ? new Date(format['lastUsed'] as string) : new Date(),
+            createdAt: format['createdAt'] ? new Date(format['createdAt'] as string) : new Date(),
         } as SavedCSVMapping;
     });
 
@@ -625,11 +625,10 @@ export function hydrateBudgetState(parsed: unknown, initial: BudgetState): Budge
         importSettings: {
             ...initial.importSettings,
             ...importSettingsData,
-            categoryMappings: (importSettingsData.categoryMappings as CategoryMapping[]) || [],
+            categoryMappings: (importSettingsData['categoryMappings'] as CategoryMapping[]) || [],
             savedCSVFormats,
         },
-        selectedMonth: (data.selectedMonth as number) || initial.selectedMonth,
-        selectedYear: (data.selectedYear as number) || initial.selectedYear,
+        selectedMonth: (data['selectedMonth'] as number) || initial.selectedMonth,
+        selectedYear: (data['selectedYear'] as number) || initial.selectedYear,
     };
 }
-
