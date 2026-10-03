@@ -316,13 +316,13 @@ export function flattenAssumptions(assumptions: Record<string, unknown>): Record
             for (const [key, value] of Object.entries(values as Record<string, unknown>)) {
                 // Handle nested returnRates.ror
                 if (key === 'returnRates' && typeof value === 'object' && value !== null) {
-                    flat['ror'] = (value as Record<string, unknown>).ror;
-                    const bondRor = (value as Record<string, unknown>).bondRor;
+                    flat['ror'] = (value as Record<string, unknown>)['ror'];
+                    const bondRor = (value as Record<string, unknown>)['bondRor'];
                     if (bondRor !== undefined) flat['bondRor'] = bondRor;
                 } else if (key === 'defaultAllocation' && typeof value === 'object' && value !== null) {
                     // #207: flattened to a bare `stockPct` so it shares the strip-defaults
                     // path; rebuilt into the nested object on import.
-                    const stockPct = (value as Record<string, unknown>).stockPct;
+                    const stockPct = (value as Record<string, unknown>)['stockPct'];
                     if (stockPct !== undefined) flat['stockPct'] = stockPct;
                 } else {
                     // Includes demographics.priorEarnings and the investments flags
