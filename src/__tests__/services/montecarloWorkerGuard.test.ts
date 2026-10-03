@@ -82,7 +82,7 @@ describe('MC worker reconstitution guard — wipeout is the case the guard catch
         const clone = structuredClone(acct) as unknown as Record<string, unknown>;
 
         // Missing discriminator (the original bug: className only set at serialize time).
-        delete clone.className;
+        delete clone['className'];
         expect(reconstituteAccount(clone)).toBeNull();
 
         // Minified-style garbled discriminator (what constructor.name WOULD produce
@@ -115,7 +115,7 @@ describe('MC worker reconstitution guard — wipeout is the case the guard catch
         // is observable so the extended expense guard has something concrete to catch.
         const food = new FoodExpense('e1', 'Groceries', 600, 'Monthly');
         const stripped = structuredClone(food) as unknown as Record<string, unknown>;
-        delete stripped.className;
+        delete stripped['className'];
 
         const rebuilt = [stripped].map(reconstituteExpense).filter(notNull);
         expect(rebuilt).toHaveLength(0);
