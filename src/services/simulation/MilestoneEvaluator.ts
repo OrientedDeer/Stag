@@ -4,6 +4,7 @@ import { type AnyIncome, isIncomeActiveInCurrentMonth } from "../../components/O
 import { type CustomMilestone, type MilestoneCondition, type MilestoneReachEvent, type SimulationYear } from "./types";
 import { getTaxParameters, calculateTotalFederalTax } from "../../components/Objects/Taxes/TaxService";
 import { type FilingStatus } from "../../data/TaxData";
+import { type AssumptionsState } from "../../components/Objects/Assumptions/AssumptionsContext";
 
 /**
  * Context for evaluating milestone conditions
@@ -15,6 +16,10 @@ export interface MilestoneContext {
     age: number;
     milestoneReachYears?: Map<string, number>;  // milestoneId -> year reached (for YEARS_AFTER_MILESTONE)
     filingStatus?: FilingStatus;  // user's filing status, for the EXPENSES_GROSSED_UP tax gross-up (defaults to Single)
+    // Plan assumptions, so the EXPENSES_GROSSED_UP gross-up indexes future-year brackets
+    // exactly like the engine does. Expenses here are nominal (inflated); taxing them
+    // against frozen latest-table brackets overstates the target.
+    assumptions?: AssumptionsState;
 }
 
 /**
@@ -153,8 +158,13 @@ const GROSS_UP_DEFAULT_FILING_STATUS: FilingStatus = 'Single';
  * more accurate than the previous flat 15%, especially at modest spend levels.
  *
  */
-function grossUpExpenses(netExpenses: number, year: number, filingStatus: FilingStatus): number {
-    const fedParams = getTaxParameters(year, filingStatus, "federal");
+function grossUpExpenses(
+    netExpenses: number,
+    year: number,
+    filingStatus: FilingStatus,
+    assumptions?: AssumptionsState,
+): number {
+    const fedParams = getTaxParameters(year, filingStatus, "federal", undefined, assumptions);
     // Federal params resolve for every filing status; a flat-rate fallback
     // would silently distort the milestone — crash loudly instead.
     if (!fedParams) {
@@ -224,6 +234,7 @@ function calculateTargetValue(condition: MilestoneCondition, context: MilestoneC
                 annualExpenses,
                 context.year,
                 context.filingStatus ?? GROSS_UP_DEFAULT_FILING_STATUS,
+                context.assumptions,
             );
             return condition.value * grossedUpExpenses;
         }

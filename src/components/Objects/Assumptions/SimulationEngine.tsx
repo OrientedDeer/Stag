@@ -282,6 +282,7 @@ function simulateOneYearWithNewEngine(
         age: currentAge,
         milestoneReachYears: previousMilestoneReachYears,
         filingStatus: taxState.filingStatus,
+        assumptions,
     };
 
     const milestoneResult = evaluateAllMilestones(
