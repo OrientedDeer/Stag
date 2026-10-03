@@ -40,6 +40,7 @@ const EARLY_WITHDRAWAL_PENALTY_RATE = 0.10;
 // uncapped loss can't refund unlimited tax or push net proceeds above gross.
 // (Carry-forward of the disallowed excess is not modeled.)
 const ANNUAL_CAPITAL_LOSS_LIMIT = 3000;
+const ANNUAL_CAPITAL_LOSS_LIMIT_MFS = 1500;
 
 // BUG #14 FIX: gross-up divides by (1 - effectiveRate). If a combined
 // marginal+penalty rate reaches or exceeds 1, the denominator is <= 0 and the
@@ -2054,7 +2055,7 @@ export function planWithdrawals(
         });
     }
 
-    // §1211(b): a NET realized capital loss offsets at most $3,000 of other income
+    // §1211(b): a NET realized capital loss offsets at most $3,000 ($1,500 MFS) of other income
     // per year. Cap the aggregate (across every sale and account) ONCE here, scaling
     // the ST/LT buckets proportionally. YearSolver feeds totalLTCG raw into the
     // SS-taxability and state-tax bases (no Math.max(0,…) floor there), so an
@@ -2068,9 +2069,12 @@ export function planWithdrawals(
     // a capped loss doesn't reduce the federal/SS/MAGI base — the loss is very
     // slightly UNDER-applied. That's the safe direction (opposite of the
     // phantom-refund bug) and only in this already-rare both-underwater case.
+    const capitalLossLimit = taxState.filingStatus === 'Married Filing Separately'
+        ? ANNUAL_CAPITAL_LOSS_LIMIT_MFS
+        : ANNUAL_CAPITAL_LOSS_LIMIT;
     const netRealizedCapital = totalSTCG + totalLTCG;
-    if (netRealizedCapital < -ANNUAL_CAPITAL_LOSS_LIMIT) {
-        const lossScale = -ANNUAL_CAPITAL_LOSS_LIMIT / netRealizedCapital; // in (0,1)
+    if (netRealizedCapital < -capitalLossLimit) {
+        const lossScale = -capitalLossLimit / netRealizedCapital; // in (0,1)
         totalSTCG *= lossScale;
         totalLTCG *= lossScale;
     }
