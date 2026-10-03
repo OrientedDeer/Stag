@@ -10,6 +10,7 @@ import {
     getFicaExemptions,
     getEarnedIncome,
     getItemizedDeductions,
+    getItemizedPropertyTaxes,
     getYesDeductions,
     calculateTax,
     calculateFicaTax,
@@ -893,8 +894,9 @@ describe('TaxService: Additional Functions', () => {
             const taxState = createTaxState({ deductionMethod: 'Itemized', stateResidency: 'DC' });
             const fedTax = calculateFederalTaxFromIncomes(taxState, [income], [mortgage], 0, 2024, noInflationAssumptions);
             // PR#55 #3: corrected 2024 Single bracket to breakpoint convention (+$0.10 vs old +1 boundary)
-            // Placeholder value. Actual tax depends on the calculated itemized deduction.
-            expect(fedTax).toBeCloseTo(13356.44);
+            // Itemized = mortgage interest + SALT, where SALT = DC income tax + the
+            // $6,000 property tax (1.2% × $500k), capped at the 2024 $10k limit.
+            expect(fedTax).toBeCloseTo(12472.06);
         });
 
         it('should use federal override when provided', () => {
@@ -1081,8 +1083,10 @@ describe('TaxService: Additional Functions', () => {
                     createTaxState({ deductionMethod: 'Itemized' }), [makeItemizeIncome()], [mortgage], 0, 2026, assumptionsForBirthYear(1980),
                 );
                 // Recompute the itemized deduction the engine uses and assert the bracket math.
-                const itemizedDeduction = getItemizedDeductions([mortgage], 2026); // Texas → no SALT add
-                const taxable = ITEMIZE_INCOME - itemizedDeduction; // ~$102.3k → in the 22% band
+                // Texas → no state income tax; SALT is the mortgage's $12k property tax.
+                const itemizedDeduction = getItemizedDeductions([mortgage], 2026)
+                    + Math.min(getItemizedPropertyTaxes([mortgage], 2026), getSALTCap(2026, 'Single'));
+                const taxable = ITEMIZE_INCOME - itemizedDeduction; // ~$90.3k → in the 22% band
                 // 2026 Single brackets: 10% to 12,400; 12% to 50,400; 22% to 105,700.
                 const expected = 12400 * 0.10
                     + (50400 - 12400) * 0.12

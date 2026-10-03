@@ -177,11 +177,11 @@ describe('PR55 #8: calculateFederalTaxFromIncomes characterization', () => {
         expect(dc).toBe(tx);
     });
 
-    it('Itemized path applies SALT (pins to 13356.44)', () => {
-        // Value moved +$0.10 with the PR#55 #3 fix (2024 Single brackets → breakpoint convention).
+    it('Itemized path applies SALT (pins to 12472.06)', () => {
+        // SALT = DC income tax + $6,000 mortgage property tax, capped at the 2024 $10k limit.
         const s = createTaxState({ deductionMethod: 'Itemized', stateResidency: 'DC' });
         const m = [itemizedMortgage()];
-        expect(calculateFederalTaxFromIncomes(s, [work(100000)], m, 0, 2024, noInflationAssumptions)).toBeCloseTo(13356.44, 2);
+        expect(calculateFederalTaxFromIncomes(s, [work(100000)], m, 0, 2024, noInflationAssumptions)).toBeCloseTo(12472.06, 2);
     });
 
     it('Auto path pins to its computed value (still applies SALT)', () => {
@@ -190,8 +190,9 @@ describe('PR55 #8: calculateFederalTaxFromIncomes characterization', () => {
         // Standard/Itemized calls. Pin the concrete value as a regression guard.
         const m = [itemizedMortgage()];
         const auto = calculateFederalTaxFromIncomes(createTaxState({ deductionMethod: 'Auto', stateResidency: 'DC' }), [work(100000)], m, 0, 2024, noInflationAssumptions);
-        // Value moved +$0.10 with the PR#55 #3 fix (2024 Single brackets → breakpoint convention).
-        expect(auto).toBeCloseTo(13427.080948654457, 4);
+        // DC income tax + property tax exceeds the $10k SALT cap on both state-deduction
+        // choices, so Auto now matches the explicit Itemized value.
+        expect(auto).toBeCloseTo(12472.060948654456, 4);
     });
 
     it('Itemized path with additionalOrdinaryIncome>0 uses unified state tax', () => {

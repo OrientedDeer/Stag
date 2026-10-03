@@ -8,7 +8,7 @@ import {
     getPreTaxExemptions,
     getSocialSecurityBenefits,
 } from "./incomeAggregation";
-import { getItemizedDeductions, getYesDeductions } from "./deductions";
+import { getItemizedDeductions, getItemizedPropertyTaxes, getYesDeductions } from "./deductions";
 import { calculateTotalFederalTax } from "./bracketTax";
 import { calculateStateTax, calculateUnifiedStateTax } from "./stateTax";
 import { getTaxableSocialSecurityFromComponents } from "./socialSecurity";
@@ -294,9 +294,9 @@ export function calculateFederalTaxFromIncomes(
             : calculateStateTax(state, incomes, expenses, year, assumptions);
 
         const saltCap = getSALTCap(year, state.filingStatus);
-        const cappedStateTax = Math.min(stateTax, saltCap);
+        const cappedSalt = Math.min(stateTax + getItemizedPropertyTaxes(expenses, year), saltCap);
 
-        itemizedTotal = getItemizedDeductions(expenses, year) + cappedStateTax;
+        itemizedTotal = getItemizedDeductions(expenses, year) + cappedSalt;
     }
 
     // The two 65+ deductions attach to different bases (IRS rules):

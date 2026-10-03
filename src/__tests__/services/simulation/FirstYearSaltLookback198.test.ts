@@ -27,7 +27,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 import * as TaxService from '../../../components/Objects/Taxes/TaxService';
-import { getItemizedDeductions } from '../../../components/Objects/Taxes/taxService/deductions';
+import { getItemizedDeductions, getItemizedPropertyTaxes } from '../../../components/Objects/Taxes/taxService/deductions';
 import { runSimulation } from '../../../components/Objects/Assumptions/useSimulation';
 import {
     type AssumptionsState,
@@ -142,8 +142,10 @@ describe("#198 stage 2 — FIRST projected year prices SALT off year-0's FULL-ye
         const saltComponent = firstProjected.itemizedDeductionTotal! - mortgageInterest;
 
         const cap = TaxService.getSALTCap(firstProjected.year, 'Single');
-        const correctSalt = Math.min(yearZero.taxDetails.state, cap); // full-year year-0 state tax
-        const buggySalt = Math.min(eoyRow.taxDetails.state, cap); // prorated EOY-row state tax
+        // Mortgage property tax shares the SALT cap with state income tax (§164(b)(6)).
+        const propertyTax = getItemizedPropertyTaxes(sim[idx - 1].expenses, firstProjected.year);
+        const correctSalt = Math.min(yearZero.taxDetails.state + propertyTax, cap); // full-year year-0 state tax
+        const buggySalt = Math.min(eoyRow.taxDetails.state + propertyTax, cap); // prorated EOY-row state tax
 
         // Full vs. quarter of the year-0 state tax — a several-hundred-dollar gap, so
         // the assertion has teeth (buggy ≈ 0.25 × correct).
@@ -180,6 +182,7 @@ describe("#198 stage 2 — FIRST projected year prices SALT off year-0's FULL-ye
         const mortgageInterest = getItemizedDeductions(auto[idx - 1].expenses, autoFirst.year);
         const saltComponent = autoFirst.itemizedDeductionTotal! - mortgageInterest;
         const cap = TaxService.getSALTCap(autoFirst.year, 'Single');
-        expect(saltComponent).toBeCloseTo(Math.min(auto[0].taxDetails.state, cap), 1);
+        const propertyTax = getItemizedPropertyTaxes(auto[idx - 1].expenses, autoFirst.year);
+        expect(saltComponent).toBeCloseTo(Math.min(auto[0].taxDetails.state + propertyTax, cap), 1);
     });
 });
