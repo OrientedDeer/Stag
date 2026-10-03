@@ -114,11 +114,12 @@ export function useTodayMilestoneSet(): {
             age: year - getBirthYear(milestones),
             filingStatus: taxState.filingStatus,
             milestoneReachYears,
+            assumptions: state,
         };
         return new Set(evaluateAllMilestones(milestones, new Set<string>(), ctx).activeMilestones);
         // `milestoneReachYears` (not `simulation`) is the dep: a stable empty map when
         // no relative milestone exists, so this doesn't churn on re-sims in that case.
-    }, [hasMilestoneIncome, state.milestones, accounts, expenses, taxState.filingStatus, milestoneReachYears, year]);
+    }, [hasMilestoneIncome, state, accounts, expenses, taxState.filingStatus, milestoneReachYears, year]);
 
     // The "can't resolve this income's milestone gate" signal keys off whether the
     // PROJECTION itself has run (simulation non-empty) — NOT the reach-map size, which
