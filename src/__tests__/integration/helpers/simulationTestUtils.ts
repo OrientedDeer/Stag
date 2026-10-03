@@ -120,18 +120,6 @@ export function getAccountsByTaxType(accounts: AnyAccount[], taxType: string): I
 }
 
 /**
- * Check if simulation year is in retirement (age >= retirementAge)
- */
-export function isRetirementYear(
-    year: SimulationYear,
-    birthYear: number,
-    retirementAge: number
-): boolean {
-    const age = getAge(year.year, birthYear);
-    return age >= retirementAge;
-}
-
-/**
  * Get the retirement year from simulation
  */
 export function getRetirementYear(
