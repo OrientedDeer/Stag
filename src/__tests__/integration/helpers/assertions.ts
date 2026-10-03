@@ -169,22 +169,6 @@ export function assertAllYearsInvariants(simulation: SimulationYear[]): void {
 }
 
 /**
- * Assert that contributions are going to an account (account receives inflows)
- */
-export function assertReceivesContributions(
-    year: SimulationYear,
-    accountId: string,
-    description: string = 'Account'
-): void {
-    const bucketAllocation = year.cashflow.bucketDetail[accountId] || 0;
-    // Note: 401k contributions are tracked separately, not in bucketDetail
-    // This assertion is for priority bucket allocations
-
-    // For work income contributions, check if the income has matchAccountId
-    expect(bucketAllocation, `${description} should receive contributions in ${year.year}`).toBeGreaterThanOrEqual(0);
-}
-
-/**
  * Assert Social Security claiming works correctly
  */
 export function assertSocialSecurityClaimed(
