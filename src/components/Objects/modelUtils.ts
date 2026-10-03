@@ -73,9 +73,9 @@ interface BaseModelFields {
  */
 export function extractBaseFields(data: Record<string, unknown>, defaultName: string = "Unnamed"): BaseModelFields {
   return {
-    id: String(data.id ?? ''),
-    name: String(data.name ?? defaultName),
-    amount: Number(data.amount) || 0,
+    id: String(data['id'] ?? ''),
+    name: String(data['name'] ?? defaultName),
+    amount: Number(data['amount']) || 0,
   };
 }
 
@@ -204,6 +204,6 @@ export function hasClassName(data: unknown): data is { className: string } & Rec
     typeof data === 'object' &&
     data !== null &&
     'className' in data &&
-    typeof (data as Record<string, unknown>).className === 'string'
+    typeof (data as Record<string, unknown>)['className'] === 'string'
   );
 }
