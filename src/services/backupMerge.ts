@@ -114,7 +114,7 @@ interface NewTransactionInput {
     postedDate?: string;
 }
 
-export interface ApplyTransactionsOptions {
+interface ApplyTransactionsOptions {
     /**
      * 'fuzzy' (default): date + amount ±$0.01 + ~80% description similarity —
      *   mirrors the in-app manual-CSV importer, for sources without stable ids.
