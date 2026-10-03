@@ -23,8 +23,10 @@ import {
     PassiveIncome,
     CurrentSocialSecurityIncome,
     FutureSocialSecurityIncome,
+    FERSPensionIncome,
     type AnyIncome
 } from '../../components/Objects/Income/models';
+import { classifyIncome } from '../../services/simulation/IncomeClassifier';
 import { getIncomeThresholdForRate, getMedianRetirementTaxRate } from '../../services/TaxOptimizationService';
 import { type SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
 
@@ -395,6 +397,28 @@ describe('getGrossIncome', () => {
             );
             const gross = getGrossIncome([income], year);
             expect(gross).toBe(100000);
+        });
+    });
+
+    describe('FERSPensionIncome', () => {
+        // FERS retiree (MRA+30) receiving a $40k annuity plus a $15k MRA-to-62
+        // annuity supplement. The supplement is taxable annuity income, and the
+        // engine's cash/tax path (classifyIncome) already counts it.
+        const makeFers = (start: Date) => new FERSPensionIncome(
+            'fers1', 'FERS Pension', 30, 100000, 57, 1969,
+            40000, 15000, 24000, start,
+        );
+
+        it('should include the FERS annuity supplement', () => {
+            const gross = getGrossIncome([makeFers(fullYearStart)], year);
+            expect(gross).toBe(55000);
+        });
+
+        it('should match the engine income classification (prorated mid-year start)', () => {
+            const fers = makeFers(new Date(2026, 6, 1));
+            const engine = classifyIncome([fers], 0, 0, year).classified.breakdown.pensions;
+            expect(getGrossIncome([fers], year)).toBeCloseTo(engine, 6);
+            expect(engine).toBeCloseTo(55000 * 6 / 12, 6);
         });
     });
 
