@@ -20,7 +20,7 @@ import {
   ratePortfolioYears,
 } from '../../services/FinancialRatioService';
 import { type SimulationYear } from '../../components/Objects/Assumptions/SimulationEngine';
-import { SavedAccount, InvestedAccount, DebtAccount } from '../../components/Objects/Accounts/models';
+import { SavedAccount, InvestedAccount, DebtAccount, PropertyAccount } from '../../components/Objects/Accounts/models';
 
 // Helper to create a mock SimulationYear
 function createMockSimulationYear(
@@ -182,6 +182,35 @@ describe('FinancialRatioService', () => {
       // Debt-to-asset = 15000 / 50000 = 0.30
       expect(ratios.debtToAssetRatio.value).toBe(0.3);
       expect(ratios.debtToAssetRatio.rating).toBe('good'); // <=30% is good
+    });
+
+    it('counts a financed home\'s mortgage (PropertyAccount.loanAmount) as debt', () => {
+      const year = createMockSimulationYear(2025, {
+        savedAmount: 50000,
+        investedAmount: 150000,
+        totalIncome: 100000,
+      });
+      year.accounts.push(
+        new PropertyAccount('p1', 'Home', 400000, 'Financed', 300000, 350000, '', 6),
+      );
+      const prevYear = createMockSimulationYear(2024, {
+        savedAmount: 50000,
+        investedAmount: 150000,
+      });
+      prevYear.accounts.push(
+        new PropertyAccount('p1', 'Home', 400000, 'Financed', 310000, 350000, '', 6),
+      );
+
+      const ratios = calculateFinancialRatios(year, prevYear);
+
+      // Assets = 50k + 150k + 400k home = 600k; liabilities = 300k mortgage.
+      // Net worth = 300k (matches getAccountTotals, the app-wide definition).
+      expect(ratios.debtToAssetRatio.value).toBeCloseTo(0.5);
+      expect(ratios.debtToIncomeRatio.value).toBeCloseTo(3);
+      expect(ratios.netWorthToIncomeRatio.value).toBeCloseTo(3);
+      // Net worth 290k → 300k from paying down $10k of principal.
+      expect(ratios.netWorthGrowthRate!.value).toBeCloseTo(10000 / 290000);
+      expect(calculateRatioTrends([year])[0].netWorth).toBe(300000);
     });
 
     it('should calculate net worth to income ratio correctly', () => {
