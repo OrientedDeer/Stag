@@ -1,6 +1,7 @@
 import {
     type AnyIncome,
     WorkIncome,
+    FERSPensionIncome,
     isSocialSecurity,
 } from "../../Income/models";
 
@@ -17,6 +18,11 @@ export function getGrossIncome(incomes: AnyIncome[], year: number): number {
             // handles both 'fixed' and 'percent' match types), so it's added outside
             // getProratedAnnual — mirroring getPostTaxEmployerMatch.
             total += inc.getEffectiveAnnualEmployerMatch(year);
+        }
+        if (inc instanceof FERSPensionIncome) {
+            // The MRA-to-62 annuity supplement is taxable annuity income and lives
+            // outside `amount`; the engine already counts it via classifyIncome.
+            total += inc.getProratedAnnual(inc.fersSupplement || 0, year);
         }
         return acc + total;
     }, 0);
