@@ -49,36 +49,6 @@ export async function navigateToTab(page: Page, tabName: string) {
 }
 
 /**
- * Add a work income
- */
-export async function addWorkIncome(
-  page: Page,
-  name: string,
-  amount: number,
-  frequency: 'Annually' | 'Monthly' | 'Bi-Weekly' = 'Annually'
-) {
-  // Click add income button
-  await page.getByRole('button', { name: /add income/i }).first().click();
-
-  // Select Work Income type (two-step modal)
-  await page.getByRole('button', { name: /work income/i }).click();
-
-  // Fill in details
-  await page.getByLabel(/name/i).first().fill(name);
-  await page.getByLabel(/amount/i).first().fill(amount.toString());
-
-  // Select frequency if dropdown exists
-  const frequencySelect = page.getByLabel(/frequency/i);
-  if (await frequencySelect.isVisible().catch(() => false)) {
-    await frequencySelect.selectOption(frequency);
-  }
-
-  // Save
-  await page.getByRole('button', { name: /save/i }).click();
-  await waitForLocalStorageSave(page);
-}
-
-/**
  * Run the simulation and wait for it to complete
  */
 export async function runSimulation(page: Page) {
