@@ -672,9 +672,9 @@ describe('qrUtils', () => {
       const result = flattenAssumptions(input);
 
       // Verify all nested values are flattened to top level
-      expect(result.inflationRate).toBe(0.03);
-      expect(result.ror).toBe(0.07);
-      expect(result.birthYear).toBe(1990);
+      expect(result['inflationRate']).toBe(0.03);
+      expect(result['ror']).toBe(0.07);
+      expect(result['birthYear']).toBe(1990);
     });
 
     it('should flatten all macro fields', () => {
@@ -688,9 +688,9 @@ describe('qrUtils', () => {
 
       const result = flattenAssumptions(input);
 
-      expect(result.inflationRate).toBe(2.6);
-      expect(result.healthcareInflation).toBe(3.9);
-      expect(result.inflationAdjusted).toBe(true);
+      expect(result['inflationRate']).toBe(2.6);
+      expect(result['healthcareInflation']).toBe(3.9);
+      expect(result['inflationAdjusted']).toBe(true);
     });
 
     it('should flatten all income fields', () => {
@@ -704,9 +704,9 @@ describe('qrUtils', () => {
 
       const result = flattenAssumptions(input);
 
-      expect(result.salaryGrowth).toBe(1.5);
-      expect(result.qualifiesForSocialSecurity).toBe(false);
-      expect(result.socialSecurityFundingPercent).toBe(80);
+      expect(result['salaryGrowth']).toBe(1.5);
+      expect(result['qualifiesForSocialSecurity']).toBe(false);
+      expect(result['socialSecurityFundingPercent']).toBe(80);
     });
 
     it('should flatten all expenses fields', () => {
@@ -720,9 +720,9 @@ describe('qrUtils', () => {
 
       const result = flattenAssumptions(input);
 
-      expect(result.lifestyleCreep).toBe(50);
-      expect(result.housingAppreciation).toBe(2.0);
-      expect(result.rentInflation).toBe(1.5);
+      expect(result['lifestyleCreep']).toBe(50);
+      expect(result['housingAppreciation']).toBe(2.0);
+      expect(result['rentInflation']).toBe(1.5);
     });
 
     it('should flatten investments including nested returnRates.ror', () => {
@@ -740,13 +740,13 @@ describe('qrUtils', () => {
 
       const result = flattenAssumptions(input);
 
-      expect(result.ror).toBe(6.5);
-      expect(result.withdrawalStrategy).toBe('Guardrails');
-      expect(result.withdrawalRate).toBe(3.5);
-      expect(result.gkUpperGuardrail).toBe(1.3);
-      expect(result.gkLowerGuardrail).toBe(0.7);
-      expect(result.gkAdjustmentPercent).toBe(15);
-      expect(result.autoRothConversions).toBe(true);
+      expect(result['ror']).toBe(6.5);
+      expect(result['withdrawalStrategy']).toBe('Guardrails');
+      expect(result['withdrawalRate']).toBe(3.5);
+      expect(result['gkUpperGuardrail']).toBe(1.3);
+      expect(result['gkLowerGuardrail']).toBe(0.7);
+      expect(result['gkAdjustmentPercent']).toBe(15);
+      expect(result['autoRothConversions']).toBe(true);
     });
 
     it('should flatten demographics fields', () => {
@@ -761,10 +761,10 @@ describe('qrUtils', () => {
 
       const result = flattenAssumptions(input);
 
-      expect(result.birthYear).toBe(1985);
-      expect(result.retirementAge).toBe(60);
-      expect(result.lifeExpectancy).toBe(95);
-      expect(result.priorYearMode).toBe(true);
+      expect(result['birthYear']).toBe(1985);
+      expect(result['retirementAge']).toBe(60);
+      expect(result['lifeExpectancy']).toBe(95);
+      expect(result['priorYearMode']).toBe(true);
     });
 
     it('should flatten display fields', () => {
@@ -778,9 +778,9 @@ describe('qrUtils', () => {
 
       const result = flattenAssumptions(input);
 
-      expect(result.useCompactCurrency).toBe(false);
-      expect(result.showExperimentalFeatures).toBe(true);
-      expect(result.hsaEligible).toBe(false);
+      expect(result['useCompactCurrency']).toBe(false);
+      expect(result['showExperimentalFeatures']).toBe(true);
+      expect(result['hsaEligible']).toBe(false);
     });
 
     it('should preserve non-empty priorities array', () => {
@@ -793,7 +793,7 @@ describe('qrUtils', () => {
 
       const result = flattenAssumptions(input);
 
-      expect(result.priorities).toEqual([
+      expect(result['priorities']).toEqual([
         { type: 'debt', accountId: 'acc1' },
         { type: 'savings', accountId: 'acc2' },
       ]);
@@ -811,7 +811,7 @@ describe('qrUtils', () => {
 
       const result = flattenAssumptions(input);
 
-      expect(result.burnOrder).toEqual([
+      expect(result['burnOrder']).toEqual([
         { accountId: 'acc1' },
         { accountId: 'acc2' },
       ]);
