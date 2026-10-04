@@ -217,6 +217,16 @@ describe('Expense Models', () => {
       it('advances when no year is supplied (backward compatible)', () => {
         expect(futureHome.increment(mockAssumptions).loan_balance).toBeLessThan(400000);
       });
+
+      it('amortizes only the months from closing in a mid-year purchase year', () => {
+        // Closing Jul 2028: the cashflow pays 6 P&I payments (Jul–Dec), so the balance
+        // carried into 2029 must drop by exactly that principal — not by 12 months'.
+        const julyHome = new MortgageExpense('mj', 'July Home', 'Monthly', 500000, 400000, 400000, 3, 30, 1.2, 0, 1, 100, 0.3, 0, 50, 'Yes', 0, 'a5', new Date(2028, 6, 1));
+        const paid = julyHome.calculateAnnualAmortization(2028);
+        const next = julyHome.increment(mockAssumptions, 2028);
+        expect(next.loan_balance).toBeCloseTo(400000 - paid.totalPrincipal, 6);
+        expect(next.tax_deductible).toBeCloseTo(paid.totalInterest, 6);
+      });
     });
 
     it('should calculate annual amortization', () => {
@@ -649,6 +659,15 @@ describe('Expense Models', () => {
 
       it('still amortizes when no year is supplied (backward compatible)', () => {
         expect(futureLoan.increment(mockAssumptions).amount).toBeLessThan(30000);
+      });
+
+      it('amortizes only the months from the start month in a mid-year start year', () => {
+        // $12k at 0% and $1,000/mo starting Sep 2028: Sep–Dec is 4 payments, which is
+        // all the cashflow charges, so $8k must still be owed entering 2029.
+        const sepLoan = new LoanExpense('ls', 'Sep Car', 12000, 'Monthly', 0, 'Compounding', 1000, 'No', 0, 'a6', new Date(2028, 8, 1), new Date(2029, 8, 1));
+        expect(sepLoan.calculateAnnualAmortization(2028).totalPrincipal).toBeCloseTo(4000, 6);
+        expect(sepLoan.increment(mockAssumptions, 2028).amount).toBeCloseTo(8000, 6);
+        expect(sepLoan.increment(mockAssumptions, 2029).amount).toBe(0);
       });
     });
 
