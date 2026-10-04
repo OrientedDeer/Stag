@@ -49,27 +49,6 @@ export async function navigateToTab(page: Page, tabName: string) {
 }
 
 /**
- * Add a basic cash account
- */
-export async function addCashAccount(
-  page: Page,
-  name: string,
-  amount: number
-) {
-  // Click Cash tab first, then add cash button
-  await page.getByRole('button', { name: /^cash$/i }).click();
-  await page.getByRole('button', { name: /add cash/i }).click();
-
-  // Fill in the form
-  await page.getByLabel(/name/i).first().fill(name);
-  await page.getByLabel(/amount.*\(\$\)/i).first().fill(amount.toString());
-
-  // Save
-  await page.getByRole('button', { name: /add account/i }).click();
-  await waitForLocalStorageSave(page);
-}
-
-/**
  * Add a work income
  */
 export async function addWorkIncome(
