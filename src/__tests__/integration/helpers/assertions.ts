@@ -44,7 +44,7 @@ export function assertNoNegativeBalances(year: SimulationYear): void {
 /**
  * Assert no NaN or Infinity values in simulation results
  */
-export function assertNoNaNOrInfinity(year: SimulationYear): void {
+function assertNoNaNOrInfinity(year: SimulationYear): void {
     // Check all account amounts
     for (const account of year.accounts) {
         expect(Number.isNaN(account.amount), `Account ${account.name} has NaN amount in year ${year.year}`).toBe(false);
