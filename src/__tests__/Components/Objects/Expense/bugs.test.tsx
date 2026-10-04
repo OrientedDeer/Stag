@@ -18,6 +18,7 @@ import {
   getGoalFundAnnualSetAside,
   getGoalFundMonthlyCap,
 } from '../../../../components/Objects/Expense/models';
+import { defaultAssumptions } from '../../../../components/Objects/Assumptions/AssumptionsContext';
 
 // ============================================================
 // FINDING 2: LoanExpense.getAnnualAmount uncapped → Sankey imbalance
@@ -166,7 +167,7 @@ describe('Finding 5: MortgageExpense.calculatePayment must gate PMI on LTV > 80%
       'No', 0, 'a1',
       new Date(2025, 0, 1),
     );
-    const pmiMonthly = 400000 * 0.005 / 12;
+    const pmiMonthly = 360000 * 0.005 / 12; // % of the $360k loan
     expect(mortgageHighLTV.calculatePayment()).toBeCloseTo(
       mortgageHighNoPMI.calculatePayment() + pmiMonthly, 2
     );
@@ -281,5 +282,44 @@ describe('Finding 1: local-midnight dates must use local (not UTC) accessors', (
       const annual = getGoalFundAnnualSetAside([g], 'acc', 2030);
       expect(annual).toBeCloseTo(12000, 2);
     });
+  });
+});
+
+// ============================================================
+// PMI is quoted as an annual % of the LOAN amount (the PMI tooltip: "Usually
+// 0.5-1% of loan annually"; CFPB/Freddie Mac quote it the same way), not of
+// the home's value — and it doesn't grow as the home appreciates.
+// ============================================================
+describe('MortgageExpense PMI is a % of the original loan amount, not home value', () => {
+  const build = (pmi: number) => new MortgageExpense(
+    'm-pmi', 'PMI', 'Monthly',
+    500000,   // valuation
+    450000,   // loan_balance → LTV 90%
+    450000,   // starting_loan_balance
+    6, 30,
+    0, 0, 0, 0,
+    0,
+    pmi,
+    0,
+    'No', 0, 'a1',
+    new Date(2025, 0, 1),
+  );
+
+  it('charges 1% of the $450k loan ($375/mo), not 1% of the $500k value', () => {
+    const pmiMonthly = build(1).amount - build(0).amount;
+    expect(pmiMonthly).toBeCloseTo(450000 * 0.01 / 12, 2);
+    expect(build(1).calculatePayment() - build(0).calculatePayment()).toBeCloseTo(375, 2);
+  });
+
+  it('does not grow with home appreciation while PMI still applies', () => {
+    const assumptions = {
+      ...defaultAssumptions,
+      macro: { ...defaultAssumptions.macro, inflationAdjusted: true, inflationRate: 3 },
+      expenses: { ...defaultAssumptions.expenses, housingAppreciation: 0 },
+    };
+    const next = build(1).increment(assumptions, 2025);
+    const nextNoPmi = build(0).increment(assumptions, 2025);
+    expect(next.pmi).toBe(1); // LTV still > 80% after one year
+    expect(next.amount - nextNoPmi.amount).toBeCloseTo(375, 2);
   });
 });

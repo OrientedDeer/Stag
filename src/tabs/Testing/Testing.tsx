@@ -1,7 +1,7 @@
 import { useState, useMemo, useContext, useEffect, useCallback, useRef } from 'react';
 import jsQR from 'jsqr';
 import { useSubTabKeyboardNav } from '../../hooks/useKeyboardShortcuts';
-import { MortgageExpense, HealthcareExpense, CLASS_TO_CATEGORY } from '../../components/Objects/Expense/models';
+import { MortgageExpense, HealthcareExpense, CLASS_TO_CATEGORY, monthlyPMI } from '../../components/Objects/Expense/models';
 import { decompressData, isCompactFormat, expandCompactBackup, validatePayload } from '../../components/Objects/Accounts/QRTransfer/qrUtils';
 import { useFileManager } from '../../components/Objects/Accounts/useFileManager';
 import { CurrencyInput } from '../../components/Layout/InputFields/CurrencyInput';
@@ -1611,7 +1611,9 @@ function MortgageTestingTab() {
             const annualPropTax = Math.max(0, startValuation - currentMortgage.valuation_deduction) * (currentMortgage.property_taxes / 100);
             const annualInsurance = startValuation * (currentMortgage.home_owners_insurance / 100);
             const annualRepairs = startValuation * (currentMortgage.maintenance / 100);
-            const annualPMI = startValuation * (currentMortgage.pmi / 100);
+            const annualPMI = startBalance / startValuation > 0.8
+                ? monthlyPMI(currentMortgage.pmi, currentMortgage.starting_loan_balance, startBalance) * 12
+                : 0;
             const annualHOA = currentMortgage.hoa_fee * 12;
             const annualUtilities = currentMortgage.utilities * 12;
 

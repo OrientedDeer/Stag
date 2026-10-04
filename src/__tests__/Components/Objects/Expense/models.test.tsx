@@ -468,7 +468,7 @@ describe('Expense Models', () => {
           500000, 450000, 450000,
           3, 30,
           0, 0, 0, 0, 0,
-          0.6,  // pmi rate → 500000 × 0.6% / 12 = $250/mo while LTV > 80%
+          0.6,  // pmi rate → 450000 loan × 0.6% / 12 = $225/mo while LTV > 80%
           0, 'No', 0, 'a1',
           new Date(2025, 0, 1)
         );
@@ -485,8 +485,8 @@ describe('Expense Models', () => {
         // Mid-life full year: amortization-aware annual == payment × 12.
         expect(withPmi.getAnnualAmount(2026)).toBeCloseTo(withPmi.payment * 12, 2);
         expect(noPmi.getAnnualAmount(2026)).toBeCloseTo(noPmi.payment * 12, 2);
-        // The PMI escrow flows through the year-aware amount: $250/mo × 12.
-        expect(withPmi.getAnnualAmount(2026) - noPmi.getAnnualAmount(2026)).toBeCloseTo(3000, 2);
+        // The PMI escrow flows through the year-aware amount: $225/mo × 12.
+        expect(withPmi.getAnnualAmount(2026) - noPmi.getAnnualAmount(2026)).toBeCloseTo(2700, 2);
       });
 
       it('returns 0 before the purchase year', () => {

@@ -3,6 +3,7 @@ import {
     type AnyExpense,
     RentExpense,
     MortgageExpense,
+    monthlyPMI,
     LoanExpense,
     DependentExpense,
     HealthcareExpense,
@@ -457,7 +458,7 @@ function getMortgageExtrasSummary(expense: MortgageExpense): string {
     const propertyTax = monthlyPct(expense.property_taxes, expense.valuation - expense.valuation_deduction);
     // PMI only applies while loan-to-value is above 80% (matches the constructor).
     const pmi = expense.valuation > 0 && expense.loan_balance / expense.valuation > 0.8
-        ? monthlyPct(expense.pmi, expense.valuation)
+        ? monthlyPMI(expense.pmi, expense.starting_loan_balance, expense.loan_balance)
         : 0;
     const total = propertyTax + pmi
         + monthlyPct(expense.maintenance, expense.valuation)
