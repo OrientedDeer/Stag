@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   RentExpense,
   MortgageExpense,
@@ -161,7 +161,7 @@ describe('Expense Models', () => {
 
   describe('MortgageExpense', () => {
     // Params: id, name, freq, valuation, loan_balance, starting_loan_balance, apr, term, taxes, deduct, maint, util, insurance, pmi, hoa, is_deduct, tax_deduct, linkedId, startDate
-    const mortgage = new MortgageExpense('m1', 'Home', 'Monthly', 500000, 400000, 400000, 3, 30, 1.2, 0, 1, 100, 0.3, 0, 50, 'Yes', 0, 'a1', new Date('2025-01-01'));
+    const mortgage = new MortgageExpense('m1', 'Home', 'Monthly', 500000, 400000, 400000, 3, 30, 1.2, 0, 1, 100, 0.3, 0, 50, 'Yes', 0, 'a1', new Date(2025, 0, 1));
     
     it('should calculate initial monthly payment correctly in constructor', () => {
       // P&I: $1686.416134
@@ -622,6 +622,41 @@ describe('Expense Models', () => {
 
         // Before purchase, loan didn't exist
         expect(balance).toBe(0);
+      });
+
+      describe('reads YYYY-MM-DD as a local date in UTC- timezones', () => {
+        afterEach(() => {
+          vi.unstubAllEnvs();
+        });
+
+        it('counts the payment made on the 1st of the month', () => {
+          vi.stubEnv('TZ', 'America/New_York');
+          const m = new MortgageExpense(
+            'm-tz', 'TZ', 'Monthly',
+            350000, 300000, 300000,
+            6, 30,
+            0, 0, 0, 0, 0,
+            0, 0, 'Yes', 0, 'a1',
+            new Date(2024, 0, 15)
+          );
+          const r = 0.06 / 12;
+          const pi = 300000 * r / (1 - Math.pow(1 + r, -360));
+          const afterOnePayment = 300000 - (pi - 300000 * r);
+          expect(m.getBalanceAtDate('2024-02-01')).toBeCloseTo(afterOnePayment, 2);
+        });
+
+        it('returns the starting balance on the purchase date itself', () => {
+          vi.stubEnv('TZ', 'America/Los_Angeles');
+          const m = new MortgageExpense(
+            'm-tz2', 'TZ2', 'Monthly',
+            350000, 300000, 300000,
+            6, 30,
+            0, 0, 0, 0, 0,
+            0, 0, 'Yes', 0, 'a1',
+            new Date(2024, 5, 1)
+          );
+          expect(m.getBalanceAtDate('2024-06-01')).toBe(300000);
+        });
       });
     });
   });

@@ -568,7 +568,9 @@ export class MortgageExpense extends BaseExpense {
   }
 
   getBalanceAtDate(dateStr: string): number {
-    const targetDate = new Date(dateStr);
+    // new Date('YYYY-MM-DD') is UTC midnight, which is the previous local day in
+    // UTC- zones; the local-accessor month math below needs a local date.
+    const targetDate = parseDate(dateStr) ?? new Date(dateStr);
     const start = new Date(this.startDate != null ? this.startDate : new Date());
 
     // If target is before purchase, the loan didn't exist yet (return 0)
