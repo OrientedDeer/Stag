@@ -2127,7 +2127,8 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
             input.assumptions,
             'Spending deficit',
             acaWithdrawalOpts,
-            currentSSTaxable
+            currentSSTaxable,
+            fedParams
         );
 
         // Update tracking variables from this iteration
@@ -2819,6 +2820,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
                 'Spending deficit',
                 undefined,     // no ACA steering in working years (employer coverage; aca = 0)
                 iterTaxableSS, // stateExemptIncome
+                fedParams,
             );
 
             withdrawals = withdrawalResult.withdrawals;
