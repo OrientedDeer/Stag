@@ -483,37 +483,37 @@ describe('qrUtils', () => {
       it('should add missing employerBalance: 0', () => {
         const input = { id: 'acc1', name: 'Test' };
         const result = restoreDefaults(input, 'account');
-        expect(result.employerBalance).toBe(0);
+        expect(result['employerBalance']).toBe(0);
       });
 
       it('should add missing tenureYears: 0', () => {
         const input = { id: 'acc1' };
         const result = restoreDefaults(input, 'account');
-        expect(result.tenureYears).toBe(0);
+        expect(result['tenureYears']).toBe(0);
       });
 
       it('should add missing vestedPerYear: 0', () => {
         const input = { id: 'acc1' };
         const result = restoreDefaults(input, 'account');
-        expect(result.vestedPerYear).toBe(0);
+        expect(result['vestedPerYear']).toBe(0);
       });
 
       it('should add missing costBasis: 0', () => {
         const input = { id: 'acc1' };
         const result = restoreDefaults(input, 'account');
-        expect(result.costBasis).toBe(0);
+        expect(result['costBasis']).toBe(0);
       });
 
       it('should add missing conversionHistory: []', () => {
         const input = { id: 'acc1' };
         const result = restoreDefaults(input, 'account');
-        expect(result.conversionHistory).toEqual([]);
+        expect(result['conversionHistory']).toEqual([]);
       });
 
       it('should preserve existing non-default value', () => {
         const input = { id: 'acc1', employerBalance: 5000 };
         const result = restoreDefaults(input, 'account');
-        expect(result.employerBalance).toBe(5000);
+        expect(result['employerBalance']).toBe(5000);
       });
 
       it('should add all account defaults', () => {
@@ -541,31 +541,31 @@ describe('qrUtils', () => {
       it('should add missing annualGrowthRate: 0.03', () => {
         const input = { id: 'inc1', name: 'Salary' };
         const result = restoreDefaults(input, 'income');
-        expect(result.annualGrowthRate).toBe(0.03);
+        expect(result['annualGrowthRate']).toBe(0.03);
       });
 
       it('should add missing hsaContribution: 0', () => {
         const input = { id: 'inc1' };
         const result = restoreDefaults(input, 'income');
-        expect(result.hsaContribution).toBe(0);
+        expect(result['hsaContribution']).toBe(0);
       });
 
       it('should add missing autoMax401k: false', () => {
         const input = { id: 'inc1' };
         const result = restoreDefaults(input, 'income');
-        expect(result.autoMax401k).toBe(false);
+        expect(result['autoMax401k']).toBe(false);
       });
 
       it('should add missing matchAccountId: null', () => {
         const input = { id: 'inc1' };
         const result = restoreDefaults(input, 'income');
-        expect(result.matchAccountId).toBe(null);
+        expect(result['matchAccountId']).toBe(null);
       });
 
       it('should preserve existing non-default value', () => {
         const input = { id: 'inc1', annualGrowthRate: 0.05 };
         const result = restoreDefaults(input, 'income');
-        expect(result.annualGrowthRate).toBe(0.05);
+        expect(result['annualGrowthRate']).toBe(0.05);
       });
     });
 
@@ -573,25 +573,25 @@ describe('qrUtils', () => {
       it('should add missing annualGrowthRate: 0.03', () => {
         const input = { id: 'exp1' };
         const result = restoreDefaults(input, 'expense');
-        expect(result.annualGrowthRate).toBe(0.03);
+        expect(result['annualGrowthRate']).toBe(0.03);
       });
 
       it('should add missing is_tax_deductible: false', () => {
         const input = { id: 'exp1' };
         const result = restoreDefaults(input, 'expense');
-        expect(result.is_tax_deductible).toBe(false);
+        expect(result['is_tax_deductible']).toBe(false);
       });
 
       it('should add missing tax_deductible: false', () => {
         const input = { id: 'exp1' };
         const result = restoreDefaults(input, 'expense');
-        expect(result.tax_deductible).toBe(false);
+        expect(result['tax_deductible']).toBe(false);
       });
 
       it('should preserve existing non-default value', () => {
         const input = { id: 'exp1', is_tax_deductible: true };
         const result = restoreDefaults(input, 'expense');
-        expect(result.is_tax_deductible).toBe(true);
+        expect(result['is_tax_deductible']).toBe(true);
       });
     });
 
