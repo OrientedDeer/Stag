@@ -267,7 +267,7 @@ export function assertNetWorthConservation(
 /**
  * Assert withdrawals never exceed available liquid assets.
  */
-export function assertWithdrawalsWithinBounds(year: SimulationYear): void {
+function assertWithdrawalsWithinBounds(year: SimulationYear): void {
     const totalWithdrawals = year.cashflow.withdrawals;
     // Note: liquidAssets could be used for a stricter check but timing makes it complex
     // const liquidAssets = calculateLiquidAssets(year.accounts);
