@@ -53,6 +53,12 @@ function calculateMonthlyPayment(principal: number, apr: number, numPayments: nu
   return principal * ((r * Math.pow(1 + r, numPayments)) / (Math.pow(1 + r, numPayments) - 1));
 }
 
+// PMI premiums are quoted as an annual % of the original loan amount (not the
+// home's value), so the charge stays flat as the home appreciates.
+export function monthlyPMI(pmiRate: number, startingLoanBalance: number, loanBalance: number): number {
+  return (startingLoanBalance || loanBalance) * pmiRate / 100 / 12;
+}
+
 // 2. Base Abstract Class
 export abstract class BaseExpense implements Expense {
   /**
@@ -303,7 +309,7 @@ export class MortgageExpense extends BaseExpense {
 
     const property_tax_payment = (valuation - valuation_deduction) * property_taxes / 100 / 12;
     // PMI applies while loan-to-value is ABOVE 80% (low equity) and drops off once LTV <= 80%.
-    const pmi_payment = (loan_balance/valuation) > .8 ? valuation * pmi / 100 / 12 : 0;
+    const pmi_payment = (loan_balance/valuation) > .8 ? monthlyPMI(pmi, starting_loan_balance, loan_balance) : 0;
     const repair_payment = maintenance / 100 / 12 * valuation;
     const home_owners_insurance_payment = home_owners_insurance / 100 / 12 * valuation;
 
@@ -497,7 +503,7 @@ export class MortgageExpense extends BaseExpense {
     // PMI applies only while loan-to-value is ABOVE 80% (low equity), matching the
     // LTV gate in the constructor and increment(). Without the gate, calculatePayment
     // overstates the payment for mortgages with >20% equity.
-    const pmi_payment = (this.loan_balance / this.valuation) > 0.8 ? this.valuation * this.pmi / 100 / 12 : 0;
+    const pmi_payment = (this.loan_balance / this.valuation) > 0.8 ? monthlyPMI(this.pmi, this.starting_loan_balance, this.loan_balance) : 0;
     const repair_payment = this.maintenance / 100 / 12 * this.valuation;
     const home_owners_insurance_payment = this.home_owners_insurance / 100 / 12 * this.valuation;
 

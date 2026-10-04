@@ -14,6 +14,7 @@ import {
 	CharityExpense,
 	OtherExpense,
 	getGoalMonthlySetAside,
+	monthlyPMI,
 	type GoalType,
 } from "./models";
 import { GOAL_TYPE_OPTIONS, DEFAULT_GOAL_INTERVAL_YEARS } from "./goalKinds";
@@ -161,8 +162,8 @@ const MODAL_SECTION_GRID = "grid grid-cols-2 lg:grid-cols-3 gap-4 px-4 pb-4";
 
 /** Estimated monthly total of the collapsed escrow/ownership costs, mirroring
  *  how MortgageExpense's constructor converts each input (percent-of-value
- *  rates annualized → monthly; utilities/HOA already monthly; PMI only while
- *  loan-to-value is above 80%). Approximate on purpose — it's a stub line. */
+ *  rates annualized → monthly; utilities/HOA already monthly; PMI as % of the
+ *  loan, only while loan-to-value is above 80%). Approximate on purpose — it's a stub line. */
 function getEscrowSummary(form: ExpenseFormState): string {
 	const v = form.valuation;
 	const pctOfValueMonthly = (pct: number) => (v * pct) / 100 / 12;
@@ -171,7 +172,7 @@ function getEscrowSummary(form: ExpenseFormState): string {
 	const total =
 		propertyTax +
 		pctOfValueMonthly(form.homeOwnersInsurance) +
-		(pmiApplies ? pctOfValueMonthly(form.pmi) : 0) +
+		(pmiApplies ? monthlyPMI(form.pmi, form.startingLoanBalance, form.loanBalance) : 0) +
 		pctOfValueMonthly(form.maintenance) +
 		form.utilities +
 		form.hoaFee;

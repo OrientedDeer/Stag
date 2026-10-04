@@ -86,8 +86,8 @@ describe('ExpenseCard collapsible sections', () => {
             render(<ExpenseCard expense={makeMortgage({ loan_balance: 450_000 })} />);
             expandCard('Home');
 
-            // 925 + PMI (500k * 0.5% / 12 ≈ 208) = 1,133; PMI warning gone at 10% equity.
-            expect(screen.getByText('$1,133/mo extras')).toBeInTheDocument();
+            // 925 + PMI (400k original loan * 0.5% / 12 ≈ 167) = 1,092; PMI warning gone at 10% equity.
+            expect(screen.getByText('$1,092/mo extras')).toBeInTheDocument();
             expect(screen.queryByText(/eligible to have your PMI removed/)).not.toBeInTheDocument();
         });
     });
