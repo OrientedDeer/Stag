@@ -14,7 +14,7 @@ import { calculateNetWorth, calculateLiquidAssets } from './simulationTestUtils'
 /**
  * Assert no negative account balances (except DeficitDebtAccount which is allowed)
  */
-export function assertNoNegativeBalances(year: SimulationYear): void {
+function assertNoNegativeBalances(year: SimulationYear): void {
     for (const account of year.accounts) {
         // DeficitDebtAccount is the only account type that can have "negative" semantics
         // but its amount is stored as positive (it represents debt owed)
