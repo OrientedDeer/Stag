@@ -89,17 +89,6 @@ export const testExpenses = {
   },
 };
 
-export const testTaxSettings = {
-  single: {
-    filingStatus: 'Single',
-    stateResidency: 'California',
-  },
-  married: {
-    filingStatus: 'Married Filing Jointly',
-    stateResidency: 'Texas',
-  },
-};
-
 export const testAssumptions = {
   default: {
     startAge: 30,
