@@ -1945,24 +1945,24 @@ describe('qrUtils', () => {
       // Verify accounts have expanded keys and defaults
       const acc = result.accounts[0];
       expect(acc.id).toBe('acc1');
-      expect(acc.name).toBe('Checking');
-      expect(acc.amount).toBe(5000);
-      expect(acc.employerBalance).toBe(0); // default restored
-      expect(acc.tenureYears).toBe(0); // default restored
+      expect(acc['name']).toBe('Checking');
+      expect(acc['amount']).toBe(5000);
+      expect(acc['employerBalance']).toBe(0); // default restored
+      expect(acc['tenureYears']).toBe(0); // default restored
 
       // Verify incomes have expanded keys and defaults
       const inc = result.incomes[0];
-      expect(inc.id).toBe('inc1');
-      expect(inc.name).toBe('Salary');
-      expect(inc.amount).toBe(100000);
-      expect(inc.annualGrowthRate).toBe(0.03); // default restored
+      expect(inc['id']).toBe('inc1');
+      expect(inc['name']).toBe('Salary');
+      expect(inc['amount']).toBe(100000);
+      expect(inc['annualGrowthRate']).toBe(0.03); // default restored
 
       // Verify expenses have expanded keys and defaults
       const exp = result.expenses[0];
-      expect(exp.id).toBe('exp1');
-      expect(exp.name).toBe('Rent');
-      expect(exp.amount).toBe(24000);
-      expect(exp.annualGrowthRate).toBe(0.03); // default restored
+      expect(exp['id']).toBe('exp1');
+      expect(exp['name']).toBe('Rent');
+      expect(exp['amount']).toBe(24000);
+      expect(exp['annualGrowthRate']).toBe(0.03); // default restored
     });
 
     it('should expand assumptions to nested structure with defaults', () => {
@@ -1979,16 +1979,16 @@ describe('qrUtils', () => {
       const result = expandCompactBackup(compact);
 
       const assumptions = result.assumptions as Record<string, unknown>;
-      const macro = assumptions.macro as Record<string, unknown>;
-      const investments = assumptions.investments as Record<string, unknown>;
-      const returnRates = investments.returnRates as Record<string, unknown>;
-      const demographics = assumptions.demographics as Record<string, unknown>;
+      const macro = assumptions['macro'] as Record<string, unknown>;
+      const investments = assumptions['investments'] as Record<string, unknown>;
+      const returnRates = investments['returnRates'] as Record<string, unknown>;
+      const demographics = assumptions['demographics'] as Record<string, unknown>;
 
-      expect(macro.inflationRate).toBe(4.0); // non-default preserved
-      expect(macro.healthcareInflation).toBe(3.9); // default restored
-      expect(returnRates.ror).toBe(7.0); // non-default preserved
-      expect(demographics.birthYear).toBe(1985);
-      expect(demographics.retirementAge).toBe(65); // default restored
+      expect(macro['inflationRate']).toBe(4.0); // non-default preserved
+      expect(macro['healthcareInflation']).toBe(3.9); // default restored
+      expect(returnRates['ror']).toBe(7.0); // non-default preserved
+      expect(demographics['birthYear']).toBe(1985);
+      expect(demographics['retirementAge']).toBe(65); // default restored
     });
 
     it('should expand history from index to account ID keys', () => {
