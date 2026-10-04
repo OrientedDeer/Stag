@@ -916,9 +916,10 @@ export class CharityExpense extends BaseExpense {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   increment(assumptions: AssumptionsState, _year?: number): CharityExpense {
     const generalInflation = this.getGeneralInflation(assumptions);
+    // A gift is deductible as given (IRC §170(a)), so the deduction scales with it.
     const result = new CharityExpense(
       this.id, this.name, this.amount * (1 + generalInflation), this.frequency,
-      this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate,
+      this.is_tax_deductible, this.tax_deductible * (1 + generalInflation), this.startDate, this.endDate,
       this.startMilestoneId, this.endMilestoneId
     );
     return this.copyMetaTo(result);
@@ -927,7 +928,7 @@ export class CharityExpense extends BaseExpense {
   adjustAmount(ratio: number): CharityExpense {
     const result = new CharityExpense(
       this.id, this.name, this.amount * ratio, this.frequency,
-      this.is_tax_deductible, this.tax_deductible, this.startDate, this.endDate,
+      this.is_tax_deductible, this.tax_deductible * ratio, this.startDate, this.endDate,
       this.startMilestoneId, this.endMilestoneId
     );
     return this.copyMetaTo(result);
