@@ -2587,8 +2587,8 @@ describe('qrUtils', () => {
       const compacted = createCompactBackup(original);
       const expanded = expandCompactBackup(compacted);
 
-      const lot = (expanded.accounts[0] as Record<string, unknown>).lots as Array<Record<string, unknown>>;
-      expect(lot[0].purchasePrice).toBe(85);
+      const lot = (expanded.accounts[0] as Record<string, unknown>)['lots'] as Array<Record<string, unknown>>;
+      expect(lot[0]['purchasePrice']).toBe(85);
       expect('projectedPIA' in lot[0]).toBe(false);
     });
 
@@ -2606,7 +2606,7 @@ describe('qrUtils', () => {
       const shortened = shortenKeys(income) as Record<string, unknown>;
       const expanded = expandKeys(shortened) as Record<string, unknown>;
 
-      expect(expanded.projectedPIA).toBe(3100);
+      expect(expanded['projectedPIA']).toBe(3100);
       expect('purchasePrice' in expanded).toBe(false);
     });
 
@@ -2672,21 +2672,21 @@ describe('qrUtils', () => {
       const expanded = expandCompactAssumptions(compacted);
 
       // Top-level burn-order array survives (and is NOT the investments string)
-      expect(expanded.withdrawalStrategy).toEqual(original.withdrawalStrategy);
-      expect((expanded.investments as Record<string, unknown>).withdrawalStrategy).toBe('Guardrails');
+      expect(expanded['withdrawalStrategy']).toEqual(original.withdrawalStrategy);
+      expect((expanded['investments'] as Record<string, unknown>)['withdrawalStrategy']).toBe('Guardrails');
       // Milestones survive
-      expect(expanded.milestones).toEqual(original.milestones);
+      expect(expanded['milestones']).toEqual(original.milestones);
       // priorEarnings survive
-      expect((expanded.demographics as Record<string, unknown>).priorEarnings).toEqual(
+      expect((expanded['demographics'] as Record<string, unknown>)['priorEarnings']).toEqual(
         original.demographics.priorEarnings
       );
       // Investment flags survive
-      const inv = expanded.investments as Record<string, unknown>;
-      expect(inv.rothConversionStrategy).toBe('dp-precomputed');
-      expect(inv.rothConversionMinRateGap).toBe(0.08);
-      expect(inv.rothConversionDPBackloadDelta).toBe(0.02);
-      expect(inv.taxOptimizationEnabled).toBe(true);
-      expect(inv.acaAware).toBe(false);
+      const inv = expanded['investments'] as Record<string, unknown>;
+      expect(inv['rothConversionStrategy']).toBe('dp-precomputed');
+      expect(inv['rothConversionMinRateGap']).toBe(0.08);
+      expect(inv['rothConversionDPBackloadDelta']).toBe(0.02);
+      expect(inv['taxOptimizationEnabled']).toBe(true);
+      expect(inv['acaAware']).toBe(false);
 
       // No phantom withdrawalOrder key
       expect('withdrawalOrder' in expanded).toBe(false);
@@ -2748,13 +2748,13 @@ describe('qrUtils', () => {
       const expanded = expandCompactBackup(compacted);
       const a = expanded.assumptions as Record<string, unknown>;
 
-      expect(a.milestones).toEqual(original.assumptions.milestones);
-      expect(a.withdrawalStrategy).toEqual(original.assumptions.withdrawalStrategy);
-      expect((a.demographics as Record<string, unknown>).priorEarnings).toEqual(
+      expect(a['milestones']).toEqual(original.assumptions.milestones);
+      expect(a['withdrawalStrategy']).toEqual(original.assumptions.withdrawalStrategy);
+      expect((a['demographics'] as Record<string, unknown>)['priorEarnings']).toEqual(
         original.assumptions.demographics.priorEarnings
       );
-      expect((a.investments as Record<string, unknown>).taxOptimizationEnabled).toBe(true);
-      expect((a.investments as Record<string, unknown>).acaAware).toBe(false);
+      expect((a['investments'] as Record<string, unknown>)['taxOptimizationEnabled']).toBe(true);
+      expect((a['investments'] as Record<string, unknown>)['acaAware']).toBe(false);
     });
   });
 
