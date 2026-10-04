@@ -1034,6 +1034,8 @@ function planConversion(
         // is used only for MAGI/tax estimation here, so folding them in is cash-safe.
         const preTaxDeductions = TaxService.getPreTaxExemptions(input.incomes, input.year, input.currentAge, true)
             + (input.expenseAboveLineDeductions ?? 0);
+        const statePreTaxDeductions = preTaxDeductions
+            - TaxService.getStateHSAAddBack(input.taxState.stateResidency, input.incomes, input.year);
         const ficaTax = TaxService.calculateFicaTax(input.taxState, input.incomes, input.year, input.assumptions);
 
         // Function to estimate MAGI for a given conversion - uses EXACT same logic as solver
@@ -1066,7 +1068,7 @@ function planConversion(
             // LTCG is derived from this very deficit below, so it isn't known yet
             // (this matches the solver's pre-loop baseline, which also omits it).
             const stateTax = stateParams
-                ? TaxService.calculateTax(nonSSOrdinaryIncome + conversion, preTaxDeductions, stateParams)
+                ? TaxService.calculateTax(nonSSOrdinaryIncome + conversion, statePreTaxDeductions, stateParams)
                 : 0;
 
             // 4. Total ordinary tax (same as solver line 732)
@@ -1687,6 +1689,8 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // input.incomes/year/currentAge/expenseAboveLineDeductions don't change in between.
     const preTaxDeductions = TaxService.getPreTaxExemptions(input.incomes, input.year, input.currentAge, true)
         + (input.expenseAboveLineDeductions ?? 0);
+    const statePreTaxDeductions = preTaxDeductions
+        - TaxService.getStateHSAAddBack(input.taxState.stateResidency, input.incomes, input.year);
     const roughFedTax = TaxService.calculateTotalFederalTax(
         taxableBase - socialSecurityBenefits, // non-SS ordinary income (baseOrdinaryIncome holds taxable SS)
         socialSecurityBenefits,
@@ -1700,7 +1704,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
         // it), mirroring the authoritative state calc below. baseOrdinaryIncome
         // folds in taxable SS, so use the non-SS ordinary income — the same base
         // the rough federal calc above uses.
-        ? TaxService.calculateTax(taxableBase - socialSecurityBenefits, preTaxDeductions, stateParams)
+        ? TaxService.calculateTax(taxableBase - socialSecurityBenefits, statePreTaxDeductions, stateParams)
         : 0;
     const roughFica = TaxService.calculateFicaTax(input.taxState, input.incomes, input.year, input.assumptions);
     const roughTax = roughFedTax + roughStateTax + roughFica;
@@ -2014,7 +2018,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // planned withdrawals goes through the in-loop recompute or converged with
     // ltcgDelta < $1, so this baseline can never be left stale with material LTCG.
     let finalStateTax = stateParams
-        ? TaxService.calculateTax(allOrdinaryIncome - currentSSTaxable + estimatedLTCG, preTaxDeductions, stateParams)
+        ? TaxService.calculateTax(allOrdinaryIncome - currentSSTaxable + estimatedLTCG, statePreTaxDeductions, stateParams)
         : 0;
 
     const MAX_ITERATIONS = 10;
@@ -2054,7 +2058,7 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
             // STCG state tax. To avoid double-counting we leave STCG out of the
             // state base (the planner already positioned it via runningOrdinaryIncome).
             finalStateTax = stateParams
-                ? TaxService.calculateTax(allOrdinaryIncome - currentSSTaxable + estimatedLTCG, preTaxDeductions, stateParams)
+                ? TaxService.calculateTax(allOrdinaryIncome - currentSSTaxable + estimatedLTCG, statePreTaxDeductions, stateParams)
                 : 0;
         }
 
@@ -2450,6 +2454,8 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
     // expense is ALREADY counted in totalLivingExpenses, so folding it into the cash
     // figure would double-count it. Only federal/state tax calls use this variable.
     const preTaxDeductionsForTax = preTaxDeductions + (input.expenseAboveLineDeductions ?? 0);
+    const statePreTaxDeductionsForTax = preTaxDeductionsForTax
+        - TaxService.getStateHSAAddBack(input.taxState.stateResidency, input.incomes, input.year);
     const socialSecurityBenefits = getTotalSSBenefits(input.incomes, input.year);
 
     // Include reinvested income in tax base - it's taxable even though it's not spendable
@@ -2622,7 +2628,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
             // into taxableOrdinaryBase and stays in the state base. A #159
             // working-year conversion is state-taxable ordinary income too.
             taxableOrdinaryBase - socialSecurityBenefits + conversionAmount,
-            preTaxDeductionsForTax,
+            statePreTaxDeductionsForTax,
             stateParams
         )
         : 0;
@@ -2648,7 +2654,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
                 0, 0, preTaxDeductionsForTax, input.taxState.filingStatus, fedParams,
             ).totalTax;
             const stateNoConv = stateParams
-                ? TaxService.calculateTax(taxableOrdinaryBase - socialSecurityBenefits, preTaxDeductionsForTax, stateParams)
+                ? TaxService.calculateTax(taxableOrdinaryBase - socialSecurityBenefits, statePreTaxDeductionsForTax, stateParams)
                 : 0;
             conversionFedTax = Math.max(0, taxResult.totalTax - fedNoConv);
             conversionStateTax = Math.max(0, stateTax - stateNoConv);
@@ -2778,7 +2784,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
                 Math.max(0, ordinary), 0, 0, 0, preTaxDeductionsForTax, input.taxState.filingStatus, fedParams,
             ).ordinaryTax;
         const stateTaxAt = (base: number): number =>
-            stateParams ? TaxService.calculateTax(Math.max(0, base), preTaxDeductionsForTax, stateParams) : 0;
+            stateParams ? TaxService.calculateTax(Math.max(0, base), statePreTaxDeductionsForTax, stateParams) : 0;
 
         // Iterate: the deficit and the taxes it triggers (NIIT, state LTCG, SS torpedo)
         // are mutually dependent, exactly as in the retirement path — sizing the
