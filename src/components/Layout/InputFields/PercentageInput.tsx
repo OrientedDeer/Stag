@@ -68,7 +68,7 @@ export const PercentageInput: React.FC<PercentageInputProps> = ({ label, value, 
 
     return (
         <StyledInput
-            id={id}
+            {...(id !== undefined && { id })}
             label={isAboveInflation ? `${label} (%) (above inflation)` : `${label} (%)`}
             type="text"
             value={isFocused ? displayValue : `${formatDecimal(value)}%`}
@@ -77,8 +77,8 @@ export const PercentageInput: React.FC<PercentageInputProps> = ({ label, value, 
             onBlur={handleBlur}
             onKeyDown={handleEnterKeyBlur}
             disabled={disabled}
-            error={displayError}
-            tooltip={tooltip}
+            {...(displayError !== undefined && { error: displayError })}
+            {...(tooltip !== undefined && { tooltip })}
         />
     );
 };
