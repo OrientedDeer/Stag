@@ -49,18 +49,6 @@ export async function navigateToTab(page: Page, tabName: string) {
 }
 
 /**
- * Run the simulation and wait for it to complete
- */
-export async function runSimulation(page: Page) {
-  const recalcButton = page.getByRole('button', { name: /recalculate/i });
-  await recalcButton.click();
-
-  // Wait for loading to start and finish (if there's a loading indicator)
-  // The simulation should complete within 10 seconds
-  await page.waitForTimeout(2000);
-}
-
-/**
  * Get localStorage value by key
  */
 export async function getLocalStorageItem(page: Page, key: string): Promise<string | null> {
