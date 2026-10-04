@@ -143,7 +143,7 @@ export function assertWithdrawalOrderRespected(
 /**
  * Assert taxes are non-negative
  */
-export function assertNonNegativeTaxes(year: SimulationYear): void {
+function assertNonNegativeTaxes(year: SimulationYear): void {
     expect(year.taxDetails.fed, `Fed tax negative in ${year.year}`).toBeGreaterThanOrEqual(0);
     expect(year.taxDetails.state, `State tax negative in ${year.year}`).toBeGreaterThanOrEqual(0);
     expect(year.taxDetails.fica, `FICA tax negative in ${year.year}`).toBeGreaterThanOrEqual(0);
