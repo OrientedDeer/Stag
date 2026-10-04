@@ -33,7 +33,7 @@ interface DisplayGroupProps {
 }
 
 const DisplayGroup: React.FC<DisplayGroupProps> = ({ label, children, className = '', tooltip }) => (
-  <InputGroup label={label} className={className} tooltip={tooltip}>
+  <InputGroup label={label} className={className} {...(tooltip !== undefined && { tooltip })}>
     {children}
   </InputGroup>
 );
@@ -49,7 +49,13 @@ export const StyledInput: React.FC<StyledInputProps> = ({ label, id: providedId,
   const reactId = useId();
   const id = providedId || label.toLowerCase().replace(/\s/g, '-') || reactId;
   return (
-    <InputGroup label={label} className={className} id={id} error={error} tooltip={tooltip}>
+    <InputGroup
+      label={label}
+      className={className}
+      id={id}
+      {...(error !== undefined && { error })}
+      {...(tooltip !== undefined && { tooltip })}
+    >
       <input
         id={id}
         className="bg-transparent border-none outline-none text-white text-md font-semibold placeholder-content-faint w-full p-0 m-0 disabled:opacity-50"
@@ -70,7 +76,7 @@ export const StyledSelect: React.FC<StyledSelectProps> = ({ label, options, id: 
   const reactId = useId();
   const id = providedId || label.toLowerCase().replace(/\s/g, '-') || reactId;
   return (
-    <InputGroup label={label} id={id} tooltip={tooltip}>
+    <InputGroup label={label} id={id} {...(tooltip !== undefined && { tooltip })}>
       <select
         id={id}
         className="bg-transparent border-none outline-none text-white text-md font-semibold w-full p-0 m-0 appearance-none cursor-pointer"
@@ -95,7 +101,7 @@ interface StyledDisplayProps {
 
 export const StyledDisplay: React.FC<StyledDisplayProps> = ({ label, value, blankValue, tooltip }) => {
   return (
-    <DisplayGroup label={label} tooltip={tooltip}>
+    <DisplayGroup label={label} {...(tooltip !== undefined && { tooltip })}>
       <div className="bg-transparent border-none outline-none text-white text-md font-semibold w-full p-0 m-0 flex items-center min-h-[21px] truncate">
         {value || blankValue || '...'}
       </div>
