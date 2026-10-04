@@ -20,16 +20,6 @@ export async function waitForLocalStorageSave(page: Page) {
 }
 
 /**
- * Dismiss the data storage disclaimer if visible
- */
-export async function dismissDisclaimer(page: Page) {
-  const dismissBtn = page.getByRole('button', { name: /dismiss/i });
-  if (await dismissBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
-    await dismissBtn.click();
-  }
-}
-
-/**
  * Navigate to a specific section in the app via sidebar
  * Maps friendly names to routes
  */
