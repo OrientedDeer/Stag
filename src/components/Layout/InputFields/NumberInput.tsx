@@ -72,7 +72,7 @@ export const NumberInput: React.FC<NumberInputProps> = ({ label, value, onChange
 
     return (
         <StyledInput
-            id={id}
+            {...(id !== undefined ? { id } : {})}
             label={label}
             type="text"
             value={localValue}
@@ -80,8 +80,8 @@ export const NumberInput: React.FC<NumberInputProps> = ({ label, value, onChange
             onBlur={handleBlur}
             onKeyDown={handleEnterKeyBlur}
             disabled={disabled}
-            error={displayError}
-            tooltip={tooltip}
+            {...(displayError !== undefined ? { error: displayError } : {})}
+            {...(tooltip !== undefined ? { tooltip } : {})}
         />
     );
 };
