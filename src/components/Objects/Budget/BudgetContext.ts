@@ -34,6 +34,7 @@ import { generateId } from '../../../utils/id';
 // `new Date('YYYY-MM-DD')` UTC constructor shifts them a day earlier for west-of-UTC
 // users, ratcheting every transaction date one day per export/import cycle (#182).
 import { parseDate } from '../modelUtils';
+import { jsonDateReplacer } from '../../../utils/formatters';
 // `spending` is derived from the month's categorized transactions, so every
 // reducer that removes or re-categorizes a transaction has to refresh it (#210).
 import { recomputeSpendingForCategories } from './budgetUtils';
@@ -631,4 +632,21 @@ export function hydrateBudgetState(parsed: unknown, initial: BudgetState): Budge
         selectedMonth: (data['selectedMonth'] as number) || initial.selectedMonth,
         selectedYear: (data['selectedYear'] as number) || initial.selectedYear,
     };
+}
+
+// Only the transaction calendar dates go through jsonDateReplacer; createdAt /
+// updatedAt / lastUsed are real instants and keep their full ISO timestamp.
+const DATE_ONLY_TRANSACTION_KEYS = new Set(['date', 'postedDate', 'statementDate']);
+
+function budgetDateReplacer(this: unknown, key: string, value: unknown): unknown {
+    return DATE_ONLY_TRANSACTION_KEYS.has(key) ? jsonDateReplacer.call(this, key, value) : value;
+}
+
+/**
+ * localStorage serializer. Bare JSON.stringify writes local-midnight transaction
+ * dates as UTC instants, which for UTC+ users fall on the previous day; parseDate
+ * then reloads them a day early, ratcheting one more day on every save/reload.
+ */
+export function serializeBudgetState(state: BudgetState): string {
+    return JSON.stringify(state, budgetDateReplacer);
 }
