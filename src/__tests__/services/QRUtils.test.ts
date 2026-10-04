@@ -1121,7 +1121,7 @@ describe('qrUtils', () => {
       const result = compactAssumptions(input);
 
       // Should only contain birthYear (non-default) with shortened key
-      expect(result.by).toBe(1985); // birthYear → by
+      expect(result['by']).toBe(1985); // birthYear → by
       // Default values should be stripped
       expect('ir' in result).toBe(false); // inflationRate default stripped
       expect('rr' in result).toBe(false); // ror default stripped
@@ -1146,13 +1146,13 @@ describe('qrUtils', () => {
 
       const result = compactAssumptions(input);
 
-      expect(result.ir).toBe(4.0); // inflationRate
-      expect(result.hi).toBe(5.5); // healthcareInflation
-      expect(result.ia).toBe(false); // inflationAdjusted
-      expect(result.by).toBe(1990); // birthYear
-      expect(result.ra).toBe(55); // retirementAge
-      expect(result.rr).toBe(7.0); // ror
-      expect(result.ws).toBe('Guardrails'); // withdrawalStrategy
+      expect(result['ir']).toBe(4.0); // inflationRate
+      expect(result['hi']).toBe(5.5); // healthcareInflation
+      expect(result['ia']).toBe(false); // inflationAdjusted
+      expect(result['by']).toBe(1990); // birthYear
+      expect(result['ra']).toBe(55); // retirementAge
+      expect(result['rr']).toBe(7.0); // ror
+      expect(result['ws']).toBe('Guardrails'); // withdrawalStrategy
     });
 
     it('should shorten keys in priorities array items', () => {
@@ -1163,13 +1163,13 @@ describe('qrUtils', () => {
       };
 
       const result = compactAssumptions(input);
-      const priorities = result.priorities as Array<Record<string, unknown>>;
+      const priorities = result['priorities'] as Array<Record<string, unknown>>;
 
       expect(priorities).toBeDefined();
-      expect(priorities[0].t).toBe('debt'); // type
-      expect(priorities[0].ai).toBe('acc1'); // accountId
-      expect(priorities[0].ct).toBe('fixed'); // capType
-      expect(priorities[0].cv).toBe(500); // capValue
+      expect(priorities[0]['t']).toBe('debt'); // type
+      expect(priorities[0]['ai']).toBe('acc1'); // accountId
+      expect(priorities[0]['ct']).toBe('fixed'); // capType
+      expect(priorities[0]['cv']).toBe(500); // capValue
     });
 
     // PR #58: corrected — empty burn-order is the top-level `withdrawalStrategy`
