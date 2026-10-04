@@ -71,7 +71,7 @@ const PlanBasicsSection: React.FC<PlanBasicsSectionProps> = ({ className = "", o
                         value={birthYear}
                         min={MIN_BIRTH_YEAR}
                         max={currentYear}
-                        error={birthYearError}
+                        {...(birthYearError !== undefined && { error: birthYearError })}
                         onChange={(val) => updateBuiltinValue(BUILTIN_MILESTONE_IDS.BIRTH, "YEAR", val)}
                     />
                     {!birthYearError && (
@@ -85,7 +85,7 @@ const PlanBasicsSection: React.FC<PlanBasicsSectionProps> = ({ className = "", o
                         label="Retirement Age"
                         value={retirementAge}
                         min={1}
-                        error={retirementAgeError}
+                        {...(retirementAgeError !== undefined && { error: retirementAgeError })}
                         onChange={(val) => updateBuiltinValue(BUILTIN_MILESTONE_IDS.RETIRE, "AGE", val)}
                     />
                     {!retirementAgeError && (
@@ -99,7 +99,7 @@ const PlanBasicsSection: React.FC<PlanBasicsSectionProps> = ({ className = "", o
                         label="Life Expectancy"
                         value={lifeExpectancy}
                         min={retirementAge + 1}
-                        error={lifeExpectancyError}
+                        {...(lifeExpectancyError !== undefined && { error: lifeExpectancyError })}
                         onChange={(val) => updateBuiltinValue(BUILTIN_MILESTONE_IDS.END_OF_PLAN, "AGE", val)}
                     />
                     {!lifeExpectancyError && (
