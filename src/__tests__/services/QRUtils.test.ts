@@ -1359,7 +1359,7 @@ describe('qrUtils', () => {
       const compacted = compactAssumptions(original);
       const expanded = expandCompactAssumptions(compacted);
 
-      expect(expanded.priorities).toEqual(original.priorities);
+      expect(expanded['priorities']).toEqual(original.priorities);
     });
 
     it('should compact to much smaller object', () => {
@@ -1408,7 +1408,7 @@ describe('qrUtils', () => {
 
       // Should only have birthYear (non-default)
       expect(Object.keys(compacted).length).toBe(1);
-      expect(compacted.by).toBe(1985);
+      expect(compacted['by']).toBe(1985);
     });
   });
 
