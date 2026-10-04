@@ -73,7 +73,12 @@ const CustomDropdownInner: React.FC<CustomDropdownProps> = ({
     };
 
     return (
-        <InputGroup label={label} id={buttonId} error={error} tooltip={tooltip}>
+        <InputGroup
+            label={label}
+            id={buttonId}
+            {...(error !== undefined ? { error } : {})}
+            {...(tooltip !== undefined ? { tooltip } : {})}
+        >
             <Listbox value={value} onChange={onChange}>
                 {({ open }) => (
                     <div className="relative">
