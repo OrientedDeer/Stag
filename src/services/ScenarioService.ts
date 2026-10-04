@@ -21,6 +21,7 @@ import { type AnyIncome } from '../components/Objects/Income/models';
 import { type AnyExpense } from '../components/Objects/Expense/models';
 import { type TaxState } from '../components/Objects/Taxes/TaxContext';
 import { type AmountHistoryEntry } from '../components/Objects/Accounts/AccountContext';
+import { jsonDateReplacer } from '../utils/formatters';
 
 // ============================================================================
 // Utility Functions
@@ -79,7 +80,9 @@ export const loadScenariosFromStorage = (): SavedScenario[] => {
  */
 const saveScenariosToStorage = (scenarios: SavedScenario[]): void => {
     try {
-        localStorage.setItem(SCENARIOS_STORAGE_KEY, JSON.stringify(scenarios));
+        // Scenarios are re-simulated via parseDate, which reads the date portion
+        // locally; bare UTC ISO strings would reload a day earlier for UTC+ users (#73).
+        localStorage.setItem(SCENARIOS_STORAGE_KEY, JSON.stringify(scenarios, jsonDateReplacer));
     } catch (e) {
         console.error('Error saving scenarios to storage:', e);
         // Check if it's a quota exceeded error
@@ -194,7 +197,7 @@ export const createScenario = (
  * Export a scenario to a JSON file
  */
 export const exportScenarioToFile = (scenario: SavedScenario): void => {
-    const blob = new Blob([JSON.stringify(scenario, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(scenario, jsonDateReplacer, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
