@@ -29,7 +29,12 @@ export function useTimelineRange(
     useArrowKeyAdjust(
         activeRange,
         (v) => setRange(v as [number, number]),
-        { min: minYear, max: maxYear, step: 1, containerRef },
+        {
+            min: minYear,
+            max: maxYear,
+            step: 1,
+            ...(containerRef === undefined ? {} : { containerRef }),
+        },
     );
 
     return { activeRange, setRange };
