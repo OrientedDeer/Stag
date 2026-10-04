@@ -126,13 +126,18 @@ export default function TaxesTab() {
         [expenses, taxYear]
     );
 
+    const federalItemizedExpenses = useMemo(
+        () => getItemizedDeductions(expenses, taxYear, filingStatus),
+        [expenses, taxYear, filingStatus]
+    );
+
     const itemizedPropertyTaxes = useMemo(
         () => getItemizedPropertyTaxes(expenses, taxYear),
         [expenses, taxYear]
     );
 
     // Mirrors calculateFederalTaxFromIncomes: state income + property tax share one SALT cap.
-    const federalItemizedTotal = stateItemized + Math.min(stateTax + itemizedPropertyTaxes, getSALTCap(taxYear, filingStatus));
+    const federalItemizedTotal = federalItemizedExpenses + Math.min(stateTax + itemizedPropertyTaxes, getSALTCap(taxYear, filingStatus));
     const stateParams = TAX_DATABASE.states[stateResidency]?.[taxYear]?.[filingStatus];
     const stateStandardDeduction = stateParams?.standardDeduction ?? 0;
     // A backup may carry a `year` outside the tax DB's range (a forward-dated or

@@ -296,7 +296,7 @@ export function calculateFederalTaxFromIncomes(
         const saltCap = getSALTCap(year, state.filingStatus);
         const cappedSalt = Math.min(stateTax + getItemizedPropertyTaxes(expenses, year), saltCap);
 
-        itemizedTotal = getItemizedDeductions(expenses, year) + cappedSalt;
+        itemizedTotal = getItemizedDeductions(expenses, year, state.filingStatus) + cappedSalt;
     }
 
     // The two 65+ deductions attach to different bases (IRS rules):

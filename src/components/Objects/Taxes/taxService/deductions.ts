@@ -1,4 +1,5 @@
 import { type AnyExpense, MortgageExpense, getExpenseActiveMultiplier } from "../../Expense/models";
+import type { FilingStatus } from "../../../../data/TaxData";
 
 /**
  * Narrow an expense to those that declare a numeric `tax_deductible` field.
@@ -12,10 +13,11 @@ function hasTaxDeductible(exp: AnyExpense): exp is AnyExpense & { tax_deductible
 /**
  * TCJA acquisition-debt limit: home-mortgage interest is deductible only on the
  * interest attributable to the first $750,000 of acquisition debt (post-2017
- * loans). Single-user simplification — a flat $750k with NO pre-2018 $1M
- * grandfathering.
+ * loans), halved to $375,000 for married filing separately
+ * (§163(h)(3)(F)(i)(II)). Simplification: NO pre-2018 $1M grandfathering.
  */
 const MORTGAGE_ACQUISITION_DEBT_LIMIT = 750_000;
+const MORTGAGE_ACQUISITION_DEBT_LIMIT_MFS = 375_000;
 
 /**
  * Proration factor to apply to itemized mortgage interest for the $750k
@@ -26,7 +28,14 @@ const MORTGAGE_ACQUISITION_DEBT_LIMIT = 750_000;
  * below the limit (or there are no mortgages) — so a ≤$750k plan multiplies
  * interest by 1.0 and stays byte-identical to the pre-cap behavior.
  */
-function mortgageInterestProration(activeItemized: AnyExpense[], year: number): number {
+function mortgageInterestProration(
+    activeItemized: AnyExpense[],
+    year: number,
+    filingStatus?: FilingStatus,
+): number {
+    const limit = filingStatus === "Married Filing Separately"
+        ? MORTGAGE_ACQUISITION_DEBT_LIMIT_MFS
+        : MORTGAGE_ACQUISITION_DEBT_LIMIT;
     let combinedAvgBalance = 0;
     for (const exp of activeItemized) {
         if (!(exp instanceof MortgageExpense)) continue;
@@ -35,11 +44,19 @@ function mortgageInterestProration(activeItemized: AnyExpense[], year: number): 
         const exiting = entering - totalPrincipal;
         combinedAvgBalance += (entering + exiting) / 2;
     }
-    if (combinedAvgBalance <= MORTGAGE_ACQUISITION_DEBT_LIMIT) return 1;
-    return MORTGAGE_ACQUISITION_DEBT_LIMIT / combinedAvgBalance;
+    if (combinedAvgBalance <= limit) return 1;
+    return limit / combinedAvgBalance;
 }
 
-export function getItemizedDeductions(expenses: AnyExpense[], year: number): number {
+/**
+ * `filingStatus` selects the federal acquisition-debt limit. State callers omit
+ * it (states set their own caps) and get the $750k limit as before.
+ */
+export function getItemizedDeductions(
+    expenses: AnyExpense[],
+    year: number,
+    filingStatus?: FilingStatus,
+): number {
     const activeItemized = expenses.filter(
         (exp) =>
             "is_tax_deductible" in exp &&
@@ -49,7 +66,7 @@ export function getItemizedDeductions(expenses: AnyExpense[], year: number): num
 
     // Same proration for every itemized mortgage — applying the shared factor
     // per-mortgage is equivalent to prorating their combined interest.
-    const mortgageProration = mortgageInterestProration(activeItemized, year);
+    const mortgageProration = mortgageInterestProration(activeItemized, year, filingStatus);
 
     return activeItemized.reduce((val, exp) => {
         if (exp instanceof MortgageExpense) {
