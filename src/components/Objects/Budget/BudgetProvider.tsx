@@ -8,12 +8,14 @@ import {
     initialState,
     STORAGE_KEY,
     hydrateBudgetState,
+    serializeBudgetState,
 } from './BudgetContext';
 
 export function BudgetProvider({ children }: { children: ReactNode }): React.ReactElement {
     const [state, dispatch] = usePersistedReducer(budgetReducer, initialState, {
         storageKey: STORAGE_KEY,
         hydrate: hydrateBudgetState,
+        serialize: serializeBudgetState,
     });
 
     const getOrCreateMonth = useCallback((month: number, year: number): MonthlySnapshot => {
