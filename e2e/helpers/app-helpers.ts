@@ -79,29 +79,6 @@ export async function addWorkIncome(
 }
 
 /**
- * Add a basic expense
- */
-export async function addExpense(
-  page: Page,
-  name: string,
-  amount: number
-) {
-  // Click add expense button
-  await page.getByRole('button', { name: /add expense/i }).first().click();
-
-  // Select expense type (e.g., Living Expense)
-  await page.getByRole('button', { name: /living expense/i }).click();
-
-  // Fill in details
-  await page.getByLabel(/name/i).first().fill(name);
-  await page.getByLabel(/amount/i).first().fill(amount.toString());
-
-  // Save
-  await page.getByRole('button', { name: /save/i }).click();
-  await waitForLocalStorageSave(page);
-}
-
-/**
  * Run the simulation and wait for it to complete
  */
 export async function runSimulation(page: Page) {
