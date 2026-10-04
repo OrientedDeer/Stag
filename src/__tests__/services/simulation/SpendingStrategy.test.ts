@@ -87,11 +87,11 @@ function createGoalExpense(id: string, name: string, amount: number): AnyExpense
     return expense;
 }
 
-// Helper to create WorkIncome
+// Helper to create WorkIncome (with startDate in the past so it's active)
 function createWorkIncome(id: string, amount: number): WorkIncome {
     return new WorkIncome(
         id, 'Test Job', amount, 'Annually', 'Yes',
-        0, 0, 0, 0, '', null, 'FIXED'
+        0, 0, 0, 0, '', null, 'FIXED', new Date(2020, 0, 1)
     );
 }
 
@@ -441,6 +441,31 @@ describe('SpendingStrategy', () => {
 
                 // Total raise: $4.5k, 100% creep = $4.5k added
                 expect(result[0].getAnnualAmount()).toBeCloseTo(14500, 0);
+            });
+
+            it('ignores raises from a WorkIncome that is not active in the year', () => {
+                const expenses = [createDiscretionaryExpense('1', 'Vacation', 10000)];
+                const current = createWorkIncome('w1', 100000);
+                const endedJob = createWorkIncome('w2', 80000);
+                endedJob.end_date = new Date(2022, 11, 31);
+                const futureJob = createWorkIncome('w3', 60000);
+                futureJob.startDate = new Date(2030, 0, 1);
+                const assumptions = createTestAssumptions({
+                    salaryGrowth: 3,
+                    lifestyleCreep: 100,
+                });
+
+                const result = applyLifestyleCreep(
+                    expenses,
+                    [current, endedJob, futureJob],
+                    assumptions,
+                    2025,
+                    false,
+                    []
+                );
+
+                // Only the active $100k job raises: $3k at 3%, 100% creep
+                expect(result[0].getAnnualAmount()).toBeCloseTo(13000, 0);
             });
 
             it('should log the lifestyle creep application', () => {

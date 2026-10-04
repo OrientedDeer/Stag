@@ -41,7 +41,7 @@ export function applyLifestyleCreep(
     let totalRaise = 0;
     for (const prevInc of incomes) {
         if (prevInc instanceof WorkIncome) {
-            const realRaise = prevInc.getAnnualAmount() * salaryGrowthRate;
+            const realRaise = prevInc.getAnnualAmount(year) * salaryGrowthRate;
             if (realRaise > 0) {
                 totalRaise += realRaise;
             }
