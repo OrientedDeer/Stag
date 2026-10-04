@@ -421,7 +421,7 @@ function simulateOneYearWithNewEngine(
     const expenseAboveLineDeductions = TaxService.getYesDeductions(milestoneFilteredExpenses, year);
     let itemizedDeductionTotal = 0;
     if (taxState.deductionMethod !== 'Standard') {
-        const itemizedExpenses = TaxService.getItemizedDeductions(milestoneFilteredExpenses, year);
+        const itemizedExpenses = TaxService.getItemizedDeductions(milestoneFilteredExpenses, year, taxState.filingStatus);
         // SALT = min(state income tax, cap). State tax depends on this year's
         // withdrawals/conversions, which depend on the deduction ⇒ a fixed point the
         // engine doesn't iterate (fedParams is fixed once, pre-deficit-loop). Resolve
