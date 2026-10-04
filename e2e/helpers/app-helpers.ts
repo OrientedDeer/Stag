@@ -1,4 +1,4 @@
-import { type Page, expect } from '@playwright/test';
+import { type Page } from '@playwright/test';
 
 /**
  * Helper functions for Stag E2E tests
@@ -88,15 +88,6 @@ export async function runSimulation(page: Page) {
   // Wait for loading to start and finish (if there's a loading indicator)
   // The simulation should complete within 10 seconds
   await page.waitForTimeout(2000);
-}
-
-/**
- * Verify that the app is in a pristine/empty state
- */
-export async function verifyPristineState(page: Page) {
-  // Check for setup warning or empty state indicators
-  const setupWarning = page.getByText(/add accounts|no accounts|get started/i);
-  await expect(setupWarning.first()).toBeVisible({ timeout: 5000 });
 }
 
 /**
