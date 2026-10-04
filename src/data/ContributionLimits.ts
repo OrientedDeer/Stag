@@ -98,16 +98,18 @@ export function getContributionLimits(year: number, inflationAdjusted: boolean =
   const yearsAhead = year - latestYear;
   const inflationFactor = Math.pow(1.025, yearsAhead);
 
+  // §402(g)(4), §219(b)(5)(C)(ii) and §415(d)(4)(A) round COLA'd limits DOWN to the
+  // next-lowest $500/$500/$1,000 multiple; only the HSA limit (§223(g)(1)) rounds to nearest.
   return {
-    traditional401k: Math.round(latestLimits.traditional401k * inflationFactor / 500) * 500,
+    traditional401k: Math.floor(latestLimits.traditional401k * inflationFactor / 500) * 500,
     catchUp401k: latestLimits.catchUp401k,  // Catch-up tends to stay flat
     superCatchUp401k: latestLimits.superCatchUp401k,  // 60-63 super catch-up, held flat like catchUp401k
-    traditionalIRA: Math.round(latestLimits.traditionalIRA * inflationFactor / 500) * 500,
+    traditionalIRA: Math.floor(latestLimits.traditionalIRA * inflationFactor / 500) * 500,
     catchUpIRA: latestLimits.catchUpIRA,
     hsaIndividual: Math.round(latestLimits.hsaIndividual * inflationFactor / 50) * 50,
     hsaFamily: Math.round(latestLimits.hsaFamily * inflationFactor / 50) * 50,
     catchUpHSA: latestLimits.catchUpHSA,
-    section415c: Math.round(latestLimits.section415c * inflationFactor / 1000) * 1000,
+    section415c: Math.floor(latestLimits.section415c * inflationFactor / 1000) * 1000,
   };
 }
 

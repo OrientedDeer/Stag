@@ -87,4 +87,33 @@ describe('ContributionLimits published IRS figures', () => {
       expect(future.superCatchUp401k).toBe(11250);
     });
   });
+
+  describe('projected future years round DOWN like the statutory COLA', () => {
+    // 2029 = 3 years past the 2026 table: factor 1.025^3 ≈ 1.07689.
+    // 401(k): 24,500 × 1.07689 ≈ 26,383.8 → next-lowest $500 multiple = $26,000
+    //   (§402(g)(4)); nearest-rounding would overstate it as $26,500.
+    // §415(c): 72,000 × 1.07689 ≈ 77,536 → next-lowest $1,000 multiple = $77,000
+    //   (§415(d)(4)(A)); nearest-rounding would give $78,000.
+    // IRA: 7,500 × 1.07689 ≈ 8,076.7 → next-lower $500 multiple = $8,000 (§219(b)(5)(C)(ii)).
+    // HSA is the exception: §223(g)(1) rounds to the NEAREST $50.
+    const limits = getContributionLimits(2029);
+
+    it('401(k) deferral limit rounds down to a $500 multiple', () => {
+      expect(limits.traditional401k).toBe(26000);
+    });
+
+    it('§415(c) limit rounds down to a $1,000 multiple', () => {
+      expect(limits.section415c).toBe(77000);
+    });
+
+    it('IRA limit rounds down to a $500 multiple', () => {
+      expect(limits.traditionalIRA).toBe(8000);
+    });
+
+    it('HSA limits still round to the nearest $50', () => {
+      // 4,400 × 1.07689 ≈ 4,738.3 → 4,750; 8,750 × 1.07689 ≈ 9,422.8 → 9,400
+      expect(limits.hsaIndividual).toBe(4750);
+      expect(limits.hsaFamily).toBe(9400);
+    });
+  });
 });
