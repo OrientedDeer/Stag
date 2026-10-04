@@ -841,94 +841,94 @@ describe('qrUtils', () => {
 
       const result = expandAssumptions(input);
 
-      expect(result.macro).toBeDefined();
-      expect((result.macro as Record<string, unknown>).inflationRate).toBe(0.03);
-      expect(result.investments).toBeDefined();
-      expect((result.investments as Record<string, unknown>).returnRates).toBeDefined();
-      expect(((result.investments as Record<string, unknown>).returnRates as Record<string, unknown>).ror).toBe(0.07);
-      expect(result.demographics).toBeDefined();
-      expect((result.demographics as Record<string, unknown>).birthYear).toBe(1990);
+      expect(result['macro']).toBeDefined();
+      expect((result['macro'] as Record<string, unknown>)['inflationRate']).toBe(0.03);
+      expect(result['investments']).toBeDefined();
+      expect((result['investments'] as Record<string, unknown>)['returnRates']).toBeDefined();
+      expect(((result['investments'] as Record<string, unknown>)['returnRates'] as Record<string, unknown>)['ror']).toBe(0.07);
+      expect(result['demographics']).toBeDefined();
+      expect((result['demographics'] as Record<string, unknown>)['birthYear']).toBe(1990);
     });
 
     it('should apply defaults for missing macro fields', () => {
       const input = {};
 
       const result = expandAssumptions(input);
-      const macro = result.macro as Record<string, unknown>;
+      const macro = result['macro'] as Record<string, unknown>;
 
-      expect(macro.inflationRate).toBe(2.6);
-      expect(macro.healthcareInflation).toBe(3.9);
-      expect(macro.inflationAdjusted).toBe(true);
+      expect(macro['inflationRate']).toBe(2.6);
+      expect(macro['healthcareInflation']).toBe(3.9);
+      expect(macro['inflationAdjusted']).toBe(true);
     });
 
     it('should apply defaults for missing income fields', () => {
       const input = {};
 
       const result = expandAssumptions(input);
-      const income = result.income as Record<string, unknown>;
+      const income = result['income'] as Record<string, unknown>;
 
-      expect(income.salaryGrowth).toBe(1.0);
-      expect(income.qualifiesForSocialSecurity).toBe(true);
-      expect(income.socialSecurityFundingPercent).toBe(100);
+      expect(income['salaryGrowth']).toBe(1.0);
+      expect(income['qualifiesForSocialSecurity']).toBe(true);
+      expect(income['socialSecurityFundingPercent']).toBe(100);
     });
 
     it('should apply defaults for missing expenses fields', () => {
       const input = {};
 
       const result = expandAssumptions(input);
-      const expenses = result.expenses as Record<string, unknown>;
+      const expenses = result['expenses'] as Record<string, unknown>;
 
-      expect(expenses.lifestyleCreep).toBe(75.0);
-      expect(expenses.housingAppreciation).toBe(1.4);
-      expect(expenses.rentInflation).toBe(1.2);
+      expect(expenses['lifestyleCreep']).toBe(75.0);
+      expect(expenses['housingAppreciation']).toBe(1.4);
+      expect(expenses['rentInflation']).toBe(1.2);
     });
 
     it('should apply defaults for missing investments fields', () => {
       const input = {};
 
       const result = expandAssumptions(input);
-      const investments = result.investments as Record<string, unknown>;
-      const returnRates = investments.returnRates as Record<string, unknown>;
+      const investments = result['investments'] as Record<string, unknown>;
+      const returnRates = investments['returnRates'] as Record<string, unknown>;
 
-      expect(returnRates.ror).toBe(5.9);
-      expect(investments.withdrawalStrategy).toBe('Fixed Real');
-      expect(investments.withdrawalRate).toBe(4.0);
-      expect(investments.gkUpperGuardrail).toBe(1.2);
-      expect(investments.gkLowerGuardrail).toBe(0.8);
-      expect(investments.gkAdjustmentPercent).toBe(10);
-      expect(investments.autoRothConversions).toBe(false);
+      expect(returnRates['ror']).toBe(5.9);
+      expect(investments['withdrawalStrategy']).toBe('Fixed Real');
+      expect(investments['withdrawalRate']).toBe(4.0);
+      expect(investments['gkUpperGuardrail']).toBe(1.2);
+      expect(investments['gkLowerGuardrail']).toBe(0.8);
+      expect(investments['gkAdjustmentPercent']).toBe(10);
+      expect(investments['autoRothConversions']).toBe(false);
     });
 
     it('should apply defaults for missing demographics fields except birthYear', () => {
       const input = { birthYear: 1985 };
 
       const result = expandAssumptions(input);
-      const demographics = result.demographics as Record<string, unknown>;
+      const demographics = result['demographics'] as Record<string, unknown>;
 
-      expect(demographics.birthYear).toBe(1985);
-      expect(demographics.retirementAge).toBe(65);
-      expect(demographics.lifeExpectancy).toBe(90);
-      expect(demographics.priorYearMode).toBe(false);
+      expect(demographics['birthYear']).toBe(1985);
+      expect(demographics['retirementAge']).toBe(65);
+      expect(demographics['lifeExpectancy']).toBe(90);
+      expect(demographics['priorYearMode']).toBe(false);
     });
 
     it('should leave birthYear undefined if not provided', () => {
       const input = {};
 
       const result = expandAssumptions(input);
-      const demographics = result.demographics as Record<string, unknown>;
+      const demographics = result['demographics'] as Record<string, unknown>;
 
-      expect(demographics.birthYear).toBeUndefined();
+      expect(demographics['birthYear']).toBeUndefined();
     });
 
     it('should apply defaults for missing display fields', () => {
       const input = {};
 
       const result = expandAssumptions(input);
-      const display = result.display as Record<string, unknown>;
+      const display = result['display'] as Record<string, unknown>;
 
-      expect(display.useCompactCurrency).toBe(true);
-      expect(display.showExperimentalFeatures).toBe(false);
-      expect(display.hsaEligible).toBe(true);
+      expect(display['useCompactCurrency']).toBe(true);
+      expect(display['showExperimentalFeatures']).toBe(false);
+      expect(display['hsaEligible']).toBe(true);
     });
 
     // PR #58: corrected — top-level array is `withdrawalStrategy` (burn order),
@@ -938,9 +938,9 @@ describe('qrUtils', () => {
 
       const result = expandAssumptions(input);
 
-      expect(result.priorities).toEqual([]);
-      expect(result.withdrawalStrategy).toEqual([]);
-      expect(result.milestones).toEqual([]);
+      expect(result['priorities']).toEqual([]);
+      expect(result['withdrawalStrategy']).toEqual([]);
+      expect(result['milestones']).toEqual([]);
       // No phantom withdrawalOrder key is emitted
       expect('withdrawalOrder' in result).toBe(false);
     });
@@ -953,8 +953,8 @@ describe('qrUtils', () => {
 
       const result = expandAssumptions(input);
 
-      expect(result.priorities).toEqual([{ type: 'debt', accountId: 'acc1' }]);
-      expect(result.withdrawalStrategy).toEqual([{ accountId: 'acc2' }]);
+      expect(result['priorities']).toEqual([{ type: 'debt', accountId: 'acc1' }]);
+      expect(result['withdrawalStrategy']).toEqual([{ accountId: 'acc2' }]);
     });
 
     it('should preserve non-default values when provided', () => {
@@ -966,15 +966,15 @@ describe('qrUtils', () => {
       };
 
       const result = expandAssumptions(input);
-      const macro = result.macro as Record<string, unknown>;
-      const investments = result.investments as Record<string, unknown>;
-      const demographics = result.demographics as Record<string, unknown>;
-      const returnRates = investments.returnRates as Record<string, unknown>;
+      const macro = result['macro'] as Record<string, unknown>;
+      const investments = result['investments'] as Record<string, unknown>;
+      const demographics = result['demographics'] as Record<string, unknown>;
+      const returnRates = investments['returnRates'] as Record<string, unknown>;
 
-      expect(macro.inflationRate).toBe(4.0);
-      expect(returnRates.ror).toBe(8.0);
-      expect(demographics.retirementAge).toBe(55);
-      expect(investments.withdrawalStrategy).toBe('VPW');
+      expect(macro['inflationRate']).toBe(4.0);
+      expect(returnRates['ror']).toBe(8.0);
+      expect(demographics['retirementAge']).toBe(55);
+      expect(investments['withdrawalStrategy']).toBe('VPW');
     });
   });
 
