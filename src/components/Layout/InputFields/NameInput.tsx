@@ -41,9 +41,9 @@ export const NameInput: React.FC<NameInputProps> = ({ label, id, value, onChange
             onChange={(e) => setLocalValue(e.target.value)}
             onBlur={handleBlur}
             onKeyDown={handleEnterKeyBlur}
-            error={displayError}
+            {...(displayError !== undefined && { error: displayError })}
             placeholder={placeholder}
-            tooltip={tooltip}
+            {...(tooltip !== undefined && { tooltip })}
         />
     );
 };
