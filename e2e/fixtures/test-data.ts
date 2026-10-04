@@ -89,23 +89,6 @@ export const testExpenses = {
   },
 };
 
-export const testAssumptions = {
-  default: {
-    startAge: 30,
-    retirementAge: 65,
-    lifeExpectancy: 90,
-    inflationRate: 3.0,
-    returnRate: 7.0,
-  },
-  conservative: {
-    startAge: 35,
-    retirementAge: 67,
-    lifeExpectancy: 85,
-    inflationRate: 4.0,
-    returnRate: 5.0,
-  },
-};
-
 /**
  * localStorage keys used by the app
  */
