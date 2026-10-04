@@ -1442,9 +1442,9 @@ describe('qrUtils', () => {
         display: Record<string, unknown>;
       };
 
-      expect(expanded.macro.taxBracketShiftPct).toBe(5);
-      expect(expanded.macro.taxBracketShiftStartYear).toBe(2030);
-      expect(expanded.display.showDevTools).toBe(true);
+      expect(expanded.macro['taxBracketShiftPct']).toBe(5);
+      expect(expanded.macro['taxBracketShiftStartYear']).toBe(2030);
+      expect(expanded.display['showDevTools']).toBe(true);
     });
 
     it('leaves the fields absent for a legacy (pre-field) QR payload', () => {
