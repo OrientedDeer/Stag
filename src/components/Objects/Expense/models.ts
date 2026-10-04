@@ -307,7 +307,9 @@ export class MortgageExpense extends BaseExpense {
     const repair_payment = maintenance / 100 / 12 * valuation;
     const home_owners_insurance_payment = home_owners_insurance / 100 / 12 * valuation;
 
-    payment = principal_payment + property_tax_payment + pmi_payment + hoa_fee + repair_payment + utilities + home_owners_insurance_payment + interest_payment + extra_payment;
+    // Extra principal stops once the loan is paid off — there is nothing left to prepay.
+    const extra_principal = loan_balance > 0 ? extra_payment : 0;
+    payment = principal_payment + property_tax_payment + pmi_payment + hoa_fee + repair_payment + utilities + home_owners_insurance_payment + interest_payment + extra_principal;
     tax_deductible = interest_payment;
 
     super(id, name, payment, frequency, startDate, endDate, false, startMilestoneId, endMilestoneId);
@@ -488,8 +490,8 @@ export class MortgageExpense extends BaseExpense {
     // Interest (Based on current balance)
     const interest_payment = this.loan_balance * r;
 
-    // Principal (The remainder)
-    const principal_payment = fixed_amortization - interest_payment;
+    // Principal (The remainder) — none once the loan is paid off, matching the constructor.
+    const principal_payment = this.loan_balance > 0 ? fixed_amortization - interest_payment : 0;
 
     const property_tax_payment = (this.valuation - this.valuation_deduction) * this.property_taxes / 100 / 12;
     // PMI applies only while loan-to-value is ABOVE 80% (low equity), matching the
@@ -499,7 +501,8 @@ export class MortgageExpense extends BaseExpense {
     const repair_payment = this.maintenance / 100 / 12 * this.valuation;
     const home_owners_insurance_payment = this.home_owners_insurance / 100 / 12 * this.valuation;
 
-    return principal_payment + property_tax_payment + pmi_payment + this.hoa_fee + repair_payment + this.utilities + home_owners_insurance_payment + interest_payment + this.extra_payment;
+    const extra_principal = this.loan_balance > 0 ? this.extra_payment : 0;
+    return principal_payment + property_tax_payment + pmi_payment + this.hoa_fee + repair_payment + this.utilities + home_owners_insurance_payment + interest_payment + extra_principal;
   }
 
   calculateDeductible(): number {

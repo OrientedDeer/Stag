@@ -494,6 +494,31 @@ describe('Expense Models', () => {
       });
     });
 
+    // Extra principal is a payment toward the loan; once the balance is zero
+    // there is nothing to prepay, so only escrow (here $300/mo utilities) remains.
+    describe('extra_payment after payoff', () => {
+      const withExtra = new MortgageExpense(
+        'm-extra', 'Accelerated', 'Monthly',
+        400000,  // valuation
+        5000,    // loan_balance at start of 2030
+        360000,  // starting_loan_balance → $1,000/mo P&I at 0%
+        0, 30,
+        0, 0, 0, 300, 0, // taxes, deduction, maintenance, utilities $300/mo, insurance
+        0, 0, 'No', 0, 'a1',
+        new Date(2028, 0, 1),
+        0,
+        500,     // extra_payment $500/mo
+      );
+
+      it('charges only escrow in the years after the loan is paid off', () => {
+        const paidOff = withExtra.increment(mockAssumptions, 2030);
+        expect(paidOff.loan_balance).toBe(0);
+        expect(paidOff.calculateAnnualAmortization(2031).totalPayment).toBeCloseTo(300 * 12, 2);
+        expect(paidOff.getAnnualAmount()).toBeCloseTo(300 * 12, 2);
+        expect(paidOff.calculatePayment()).toBeCloseTo(300, 2);
+      });
+    });
+
     describe('calculateDeductible', () => {
       it('should calculate monthly interest: $290k balance at 6% APR = $1,450', () => {
         const mortgageDeduct = new MortgageExpense(
