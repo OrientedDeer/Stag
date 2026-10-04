@@ -52,6 +52,7 @@ import {
 } from "./TaxOptimizedWithdrawal";
 import { estimateFixedIncomeAtRMD } from "./helpers";
 import { allocateSurplus, type SurplusAllocationSettings } from "./SurplusAllocator";
+import { planESPPPurchases } from "./AccountGrowth";
 import { getIRALimit } from "../../data/ContributionLimits";
 
 // =============================================================================
@@ -2443,6 +2444,9 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
     // Calculate deductions
     const preTaxDeductions = TaxService.getPreTaxExemptions(input.incomes, input.year, input.currentAge, true);
     const postTaxDeductions = TaxService.getPostTaxExemptions(input.incomes, input.year, input.currentAge, true);
+    // After-tax payroll ESPP contributions buy the shares processInflows deposits,
+    // so they leave take-home cash just like a Roth 401k deferral.
+    const esppPayrollCost = planESPPPurchases(input.incomes, input.accounts, input.year).totalCost;
     // #198: the TAX-side pre-tax figure adds the above-the-line "Yes" expense
     // deductions (mirrors year-0's totalPreTaxDeductions). Kept SEPARATE from
     // `preTaxDeductions` because the working-year cash math (surplus / incomeCashIn
@@ -2659,7 +2663,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         // order (surplus → brokerage → withhold). Advisory/display only — the cash
         // itself flows through the year's deficit/surplus math either way.
         const surplusEstimate = Math.max(0,
-            incomeClassification.classified.spendable - preTaxDeductions - postTaxDeductions - input.totalLivingExpenses);
+            incomeClassification.classified.spendable - preTaxDeductions - postTaxDeductions - esppPayrollCost - input.totalLivingExpenses);
         const taxSource: ConversionTaxSource =
             surplusEstimate >= conversionTax ? 'SURPLUS'
                 : getTotalBrokerageBalance(input.accounts) >= conversionTax ? 'BROKERAGE'
@@ -2713,7 +2717,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
     // tax below — at this initial stage deficit withdrawals haven't added tax yet.)
     const initialCashTax = Math.max(0, totalTax - rsuWithholding);
     const initialRsuRefund = Math.max(0, rsuWithholding - totalTax);
-    const incomeCashIn = incomeClassification.classified.spendable - preTaxDeductions - postTaxDeductions + initialRsuRefund;
+    const incomeCashIn = incomeClassification.classified.spendable - preTaxDeductions - postTaxDeductions - esppPayrollCost + initialRsuRefund;
     const incomeCashOut = input.totalLivingExpenses + initialCashTax + irmaaSurcharge;
     const initialDeficit = Math.max(0, incomeCashOut - incomeCashIn);
 

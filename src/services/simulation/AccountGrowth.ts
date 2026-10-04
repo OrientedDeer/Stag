@@ -37,6 +37,136 @@ interface InflowResult {
 }
 
 /**
+ * The ESPP lots bought through payroll this year and the cash they cost.
+ * solveWorkingYear deducts `totalCost` from take-home pay and processInflows
+ * deposits `lots`, so both must come from this one computation — otherwise the
+ * shares appear without the paycheck money that bought them leaving cash, or a
+ * $25k-limited purchase is charged for contributions the plan refunds.
+ */
+export function planESPPPurchases(
+    incomes: AnyIncome[],
+    accounts: AnyAccount[],
+    year: number,
+    logs: string[] = [],
+): { lots: Record<string, ESPPLot[]>; totalCost: number } {
+    const esppLots: Record<string, ESPPLot[]> = {};
+    let totalCost = 0;
+    let totalESPPFMVThisYear = 0;
+    const esppLimit = getESPPLimit();
+
+    incomes.forEach(inc => {
+        if (!(inc instanceof WorkIncome)) return;
+        if (inc.esppContributionType === 'NONE') return;
+        if (!inc.esppAccountId) return;
+
+        const activeMultiplier = getIncomeActiveMultiplier(inc, year);
+        if (activeMultiplier === 0) return;
+
+        const annualContribution = inc.getAnnualESPPContribution() * activeMultiplier;
+        if (annualContribution <= 0) return;
+
+        const esppAccount = accounts.find(acc => acc.id === inc.esppAccountId && acc instanceof ESPPAccount) as ESPPAccount | undefined;
+        if (!esppAccount) {
+            logs.push(`[WARN] ESPP account ${inc.esppAccountId} not found for ${inc.name}`);
+            return;
+        }
+
+        const purchaseContribution = annualContribution / 2;
+        const stockGrowthRate = inc.esppExpectedStockGrowth / 100;
+
+        for (let purchaseNum = 0; purchaseNum < 2; purchaseNum++) {
+            const grantMonth = purchaseNum * 6;
+            const purchaseMonth = grantMonth + 5;
+            // Build LOCAL date-only values (repo convention; parseDate hydrates
+            // user-entered lots the same way). Every reader — calculateDispositionType,
+            // getEligibleLots/daysSincePurchase — uses LOCAL accessors and getTime()
+            // deltas, so a UTC-midnight stamp would classify holding-period and
+            // disposition boundaries inconsistently against user lots in non-UTC zones.
+            const grantDate = new Date(year, grantMonth, 1);
+            const purchaseDate = new Date(year, purchaseMonth, 28);
+
+            const fmvAtGrant = 100;
+            const growthOverPeriod = Math.pow(1 + stockGrowthRate, 0.5);
+            const fmvAtPurchase = fmvAtGrant * growthOverPeriod;
+
+            let basePriceForDiscount: number;
+            if (inc.esppHasLookback) {
+                basePriceForDiscount = Math.min(fmvAtGrant, fmvAtPurchase);
+            } else {
+                basePriceForDiscount = fmvAtPurchase;
+            }
+
+            const discountPercent = inc.esppDiscountPercent / 100;
+            const purchasePrice = basePriceForDiscount * (1 - discountPercent);
+            const discountAmount = basePriceForDiscount - purchasePrice;
+
+            const shares = purchaseContribution / purchasePrice;
+            const fmvOfShares = shares * fmvAtPurchase;
+
+            if (totalESPPFMVThisYear + fmvOfShares > esppLimit) {
+                const remainingFMV = Math.max(0, esppLimit - totalESPPFMVThisYear);
+                if (remainingFMV <= 0) {
+                    logs.push(`[WARN] ESPP: ${inc.name} hit $25k annual limit - purchase skipped`);
+                    continue;
+                }
+                const reducedShares = remainingFMV / fmvAtPurchase;
+                const reducedContribution = reducedShares * purchasePrice;
+                logs.push(`[WARN] ESPP: ${inc.name} purchase reduced to stay within $25k limit`);
+
+                const lot: ESPPLot = {
+                    id: `LOT-${year}-${purchaseNum}-${inc.id}`,
+                    grantDate,
+                    purchaseDate,
+                    fmvAtGrant,
+                    fmvAtPurchase,
+                    purchasePrice,
+                    shares: reducedShares,
+                    totalCost: reducedContribution,
+                    discountAmount
+                };
+
+                // NOTE: do NOT write the purchase FMV into userInflows[esppId].
+                // The ESPP balance is updated via addLot (esppLots) in growAccounts,
+                // not via userInflows. userInflows[esppId] is reserved for the NET
+                // SALE signal that SimulationEngine records as a negative entry — a
+                // positive purchase write here would net against a same-year sale and
+                // mask it (PR #56 #3). Cash deployed into ESPP is tracked separately
+                // via the WorkIncome contribution, not this field.
+                totalESPPFMVThisYear += remainingFMV;
+                totalCost += reducedContribution;
+
+                if (!esppLots[esppAccount.id]) esppLots[esppAccount.id] = [];
+                esppLots[esppAccount.id].push(lot);
+            } else {
+                const lot: ESPPLot = {
+                    id: `LOT-${year}-${purchaseNum}-${inc.id}`,
+                    grantDate,
+                    purchaseDate,
+                    fmvAtGrant,
+                    fmvAtPurchase,
+                    purchasePrice,
+                    shares,
+                    totalCost: purchaseContribution,
+                    discountAmount
+                };
+
+                // See note above: the purchase reaches the balance via addLot, so
+                // we must NOT add it to userInflows (it would mask a same-year sale).
+                totalESPPFMVThisYear += fmvOfShares;
+                totalCost += purchaseContribution;
+
+                if (!esppLots[esppAccount.id]) esppLots[esppAccount.id] = [];
+                esppLots[esppAccount.id].push(lot);
+
+                logs.push(`[FLOW] ESPP: ${inc.name} purchased ${shares.toFixed(2)} shares @ $${purchasePrice.toFixed(2)} (${(discountPercent * 100).toFixed(0)}% discount${inc.esppHasLookback ? ' + lookback' : ''})`);
+            }
+        }
+    });
+
+    return { lots: esppLots, totalCost };
+}
+
+/**
  * Process payroll contributions, employer match, ESPP purchases,
  * deficit debt payments, and priority bucket allocations.
  */
@@ -55,7 +185,6 @@ export function processInflows(
     const bucketDetail: Record<string, number> = {};
     let totalEmployerMatch = 0;
     const totalBucketAllocations = 0;
-    const esppLots: Record<string, ESPPLot[]> = {};
     const deficitDebtPayment = 0;
 
     // Per-account POSITIVE employee deferral routed to each 401k THIS YEAR (the
@@ -195,115 +324,7 @@ export function processInflows(
     }
 
     // 5a-2. ESPP Purchase Processing
-    let totalESPPFMVThisYear = 0;
-    const esppLimit = getESPPLimit();
-
-    incomesWithEarningsTest.forEach(inc => {
-        if (!(inc instanceof WorkIncome)) return;
-        if (inc.esppContributionType === 'NONE') return;
-        if (!inc.esppAccountId) return;
-
-        const activeMultiplier = getIncomeActiveMultiplier(inc, year);
-        if (activeMultiplier === 0) return;
-
-        const annualContribution = inc.getAnnualESPPContribution() * activeMultiplier;
-        if (annualContribution <= 0) return;
-
-        const esppAccount = accounts.find(acc => acc.id === inc.esppAccountId && acc instanceof ESPPAccount) as ESPPAccount | undefined;
-        if (!esppAccount) {
-            logs.push(`[WARN] ESPP account ${inc.esppAccountId} not found for ${inc.name}`);
-            return;
-        }
-
-        const purchaseContribution = annualContribution / 2;
-        const stockGrowthRate = inc.esppExpectedStockGrowth / 100;
-
-        for (let purchaseNum = 0; purchaseNum < 2; purchaseNum++) {
-            const grantMonth = purchaseNum * 6;
-            const purchaseMonth = grantMonth + 5;
-            // Build LOCAL date-only values (repo convention; parseDate hydrates
-            // user-entered lots the same way). Every reader — calculateDispositionType,
-            // getEligibleLots/daysSincePurchase — uses LOCAL accessors and getTime()
-            // deltas, so a UTC-midnight stamp would classify holding-period and
-            // disposition boundaries inconsistently against user lots in non-UTC zones.
-            const grantDate = new Date(year, grantMonth, 1);
-            const purchaseDate = new Date(year, purchaseMonth, 28);
-
-            const fmvAtGrant = 100;
-            const growthOverPeriod = Math.pow(1 + stockGrowthRate, 0.5);
-            const fmvAtPurchase = fmvAtGrant * growthOverPeriod;
-
-            let basePriceForDiscount: number;
-            if (inc.esppHasLookback) {
-                basePriceForDiscount = Math.min(fmvAtGrant, fmvAtPurchase);
-            } else {
-                basePriceForDiscount = fmvAtPurchase;
-            }
-
-            const discountPercent = inc.esppDiscountPercent / 100;
-            const purchasePrice = basePriceForDiscount * (1 - discountPercent);
-            const discountAmount = basePriceForDiscount - purchasePrice;
-
-            const shares = purchaseContribution / purchasePrice;
-            const fmvOfShares = shares * fmvAtPurchase;
-
-            if (totalESPPFMVThisYear + fmvOfShares > esppLimit) {
-                const remainingFMV = Math.max(0, esppLimit - totalESPPFMVThisYear);
-                if (remainingFMV <= 0) {
-                    logs.push(`[WARN] ESPP: ${inc.name} hit $25k annual limit - purchase skipped`);
-                    continue;
-                }
-                const reducedShares = remainingFMV / fmvAtPurchase;
-                const reducedContribution = reducedShares * purchasePrice;
-                logs.push(`[WARN] ESPP: ${inc.name} purchase reduced to stay within $25k limit`);
-
-                const lot: ESPPLot = {
-                    id: `LOT-${year}-${purchaseNum}-${inc.id}`,
-                    grantDate,
-                    purchaseDate,
-                    fmvAtGrant,
-                    fmvAtPurchase,
-                    purchasePrice,
-                    shares: reducedShares,
-                    totalCost: reducedContribution,
-                    discountAmount
-                };
-
-                // NOTE: do NOT write the purchase FMV into userInflows[esppId].
-                // The ESPP balance is updated via addLot (esppLots) in growAccounts,
-                // not via userInflows. userInflows[esppId] is reserved for the NET
-                // SALE signal that SimulationEngine records as a negative entry — a
-                // positive purchase write here would net against a same-year sale and
-                // mask it (PR #56 #3). Cash deployed into ESPP is tracked separately
-                // via the WorkIncome contribution, not this field.
-                totalESPPFMVThisYear += remainingFMV;
-
-                if (!esppLots[esppAccount.id]) esppLots[esppAccount.id] = [];
-                esppLots[esppAccount.id].push(lot);
-            } else {
-                const lot: ESPPLot = {
-                    id: `LOT-${year}-${purchaseNum}-${inc.id}`,
-                    grantDate,
-                    purchaseDate,
-                    fmvAtGrant,
-                    fmvAtPurchase,
-                    purchasePrice,
-                    shares,
-                    totalCost: purchaseContribution,
-                    discountAmount
-                };
-
-                // See note above: the purchase reaches the balance via addLot, so
-                // we must NOT add it to userInflows (it would mask a same-year sale).
-                totalESPPFMVThisYear += fmvOfShares;
-
-                if (!esppLots[esppAccount.id]) esppLots[esppAccount.id] = [];
-                esppLots[esppAccount.id].push(lot);
-
-                logs.push(`[FLOW] ESPP: ${inc.name} purchased ${shares.toFixed(2)} shares @ $${purchasePrice.toFixed(2)} (${(discountPercent * 100).toFixed(0)}% discount${inc.esppHasLookback ? ' + lookback' : ''})`);
-            }
-        }
-    });
+    const esppLots = planESPPPurchases(incomesWithEarningsTest, accounts, year, logs).lots;
 
     // Note: Deficit debt paydown and priority waterfall are handled by
     // SurplusAllocator.allocateSurplus() in the V2 YearSolver path.
