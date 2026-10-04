@@ -79,6 +79,15 @@ function isHeldMoreThanOneYear(acquired: Date, saleDate: Date): boolean {
   return saleDate >= firstLongTermDay;
 }
 
+// Whole calendar days from `from` to `to` (local dates). Subtracting raw
+// getTime() values is an hour short across a spring-forward DST change, which
+// made a lot reaching its holding period exactly on the sale date ineligible.
+function calendarDaysBetween(from: Date, to: Date): number {
+  const fromUTC = Date.UTC(from.getFullYear(), from.getMonth(), from.getDate());
+  const toUTC = Date.UTC(to.getFullYear(), to.getMonth(), to.getDate());
+  return Math.round((toUTC - fromUTC) / (1000 * 60 * 60 * 24));
+}
+
 // Brokerage Lot interface for tracking individual contributions (simulation-internal, not persisted)
 export interface BrokerageLot {
   purchaseYear: number;    // Year contribution was made
@@ -674,7 +683,7 @@ export class ESPPAccount extends BaseAccount {
 
     return this.lots.filter(lot => {
       const purchaseDate = new Date(lot.purchaseDate);
-      const daysSincePurchase = (asOfDate.getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24);
+      const daysSincePurchase = calendarDaysBetween(purchaseDate, asOfDate);
       return daysSincePurchase >= this.minimumHoldingDays;
     });
   }
@@ -1022,7 +1031,7 @@ export class RSUAccount extends BaseAccount {
 
     return this.lots.filter(lot => {
       const vestDate = new Date(lot.vestDate);
-      const daysSinceVest = (asOfDate.getTime() - vestDate.getTime()) / (1000 * 60 * 60 * 24);
+      const daysSinceVest = calendarDaysBetween(vestDate, asOfDate);
       return daysSinceVest >= this.minimumHoldingDays;
     });
   }
