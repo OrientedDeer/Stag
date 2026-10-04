@@ -1,5 +1,5 @@
 import { type AnyExpense } from "../../Expense/models";
-import { type AnyIncome } from "../../Income/models";
+import { type AnyIncome, WorkIncome } from "../../Income/models";
 import { type TaxState } from "../TaxContext";
 import { type AssumptionsState, getBirthYear } from "../../Assumptions/AssumptionsContext";
 import { getTaxParameters } from "./parameters";
@@ -12,6 +12,22 @@ import { getTaxableSocialSecurityFromBase } from "./socialSecurity";
 import { getItemizedDeductions, getYesDeductions } from "./deductions";
 import { calculateTax } from "./bracketTax";
 import { seniorAdditionalDeduction } from "./seniorDeduction";
+
+// California does not conform to IRC §223: payroll HSA contributions stay in CA
+// wages and no HSA deduction is allowed (FTB Pub 1001; Schedule CA (540) add-back).
+const HSA_NONCONFORMING_STATES = new Set(['California']);
+
+/**
+ * Payroll HSA contributions that the state taxes even though they are excluded
+ * federally — subtract this from the federal pre-tax deduction figure before
+ * computing state tax. 0 for states that follow federal HSA treatment.
+ */
+export function getStateHSAAddBack(stateResidency: string, incomes: AnyIncome[], year: number): number {
+    if (!HSA_NONCONFORMING_STATES.has(stateResidency)) return 0;
+    return incomes
+        .filter((inc) => inc instanceof WorkIncome)
+        .reduce((acc, inc) => acc + inc.getProratedAnnual(inc.hsaContribution, year), 0);
+}
 
 /**
  * Shared core of state-tax computation.
@@ -36,7 +52,8 @@ function computeStateTaxFromGross(
     stateParams: NonNullable<ReturnType<typeof getTaxParameters>>,
     age: number | undefined,
 ): number {
-    const incomePreTaxDeductions = getPreTaxExemptions(incomes, year, age);
+    const incomePreTaxDeductions = getPreTaxExemptions(incomes, year, age)
+        - getStateHSAAddBack(state.stateResidency, incomes, year);
     const expenseAboveLineDeductions = getYesDeductions(expenses, year);
     const totalPreTaxDeductions = incomePreTaxDeductions + expenseAboveLineDeductions;
 
