@@ -7,6 +7,7 @@ import { defaultData } from '../data/defaultData';
 import { TaxContext } from '../components/Objects/Taxes/TaxContext';
 import { AssumptionsContext, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
 import { WorkIncome, type AnyIncome } from '../components/Objects/Income/models';
+import { resolveIncomes } from '../components/Objects/Assumptions/useSimulation';
 import { TAX_DATABASE } from '../data/TaxData';
 import { calculateFederalTaxFromIncomes, calculateFicaTax, calculateStateTax } from '../components/Objects/Taxes/TaxService';
 import { useFileManager } from '../components/Objects/Accounts/useFileManager';
@@ -66,28 +67,10 @@ export default function Dashboard() {
       const startAge = year - getBirthYear(assumptions.milestones);
 
       // Resolve autoMax401k on WorkIncome objects so Sankey shows IRS-limit-capped values
-      const incomes: AnyIncome[] = useMemo(() => rawIncomes.map(inc => {
-          if (inc instanceof WorkIncome && inc.autoMax401k !== 'custom') {
-              const effective = inc.getEffective401k(year, startAge);
-              if (effective.preTax !== inc.preTax401k || effective.roth !== inc.roth401k) {
-                  return new WorkIncome(
-                      inc.id, inc.name, inc.amount, inc.frequency,
-                      inc.earned_income, effective.preTax, inc.insurance,
-                      effective.roth, inc.employerMatch, inc.matchAccountId,
-                      inc.taxType, inc.contributionGrowthStrategy,
-                      inc.startDate, inc.end_date, inc.hsaContribution,
-                      inc.autoMax401k, inc.esppContributionType,
-                      inc.esppContributionAmount, inc.esppDiscountPercent,
-                      inc.esppHasLookback, inc.esppOfferingPeriodMonths,
-                      inc.esppAccountId, inc.esppExpectedStockGrowth,
-                      inc.rsuVestingSchedule, inc.rsuGrantShares, inc.rsuVestFrequency,
-                      inc.rsuExpectedStockGrowth, inc.rsuAccountId, inc.rsuWithholdingRate,
-                      inc.pensionSystem, inc.startMilestoneId, inc.endMilestoneId
-                  );
-              }
-          }
-          return inc;
-      }), [rawIncomes, year, startAge]);
+      const incomes: AnyIncome[] = useMemo(
+          () => resolveIncomes(rawIncomes, year, startAge),
+          [rawIncomes, year, startAge],
+      );
 
       const { annualFedTax, annualStateTax, annualFicaTax } = useMemo(() => {
           const fedParams = TAX_DATABASE.federal[year]?.[taxState.filingStatus];
