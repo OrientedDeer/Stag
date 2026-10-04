@@ -62,7 +62,7 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({ label, value, onCh
 
     return (
         <StyledInput
-            id={id}
+            {...(id !== undefined ? { id } : {})}
             label={displayLabel}
             type="text"
             value={isFocused ? displayValue : `$${formatWholeDollar(value)}`}
@@ -70,8 +70,8 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({ label, value, onCh
             onFocus={handleFocus}
             onBlur={handleBlur}
             onKeyDown={handleEnterKeyBlur}
-            error={displayError}
-            tooltip={tooltip}
+            {...(displayError !== undefined ? { error: displayError } : {})}
+            {...(tooltip !== undefined ? { tooltip } : {})}
             disabled={disabled}
         />
     );
