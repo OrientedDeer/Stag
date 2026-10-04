@@ -342,10 +342,13 @@ export class MortgageExpense extends BaseExpense {
     let balance = this.loan_balance;
     let totalInterestPaid = 0;
 
-    // Simulate 12 monthly payments
+    // In the purchase year only the months from closing are paid — the same range
+    // calculateAnnualAmortization charges as cashflow — so the balance can't drop by
+    // payments that never left the plan.
+    const firstMonth = (year !== undefined && year === purchaseYear) ? this.startDate!.getMonth() : 0;
     const standardPI = this.calculatePrincipalAndInterest();
 
-    for (let i = 0; i < 12; i++) {
+    for (let i = firstMonth; i < 12; i++) {
       if (balance <= 0) break;
 
       const interest = balance * monthlyRate;
@@ -639,9 +642,13 @@ export class LoanExpense extends BaseExpense {
     const loanStartYear = this.startDate ? this.startDate.getFullYear() : undefined;
     const notYetStarted = year !== undefined && loanStartYear !== undefined && year < loanStartYear;
 
-    // 1. Internal Loop: 12 Months (skipped entirely before the loan starts)
+    // In the start year only the months from the start month are paid — the same
+    // range calculateAnnualAmortization charges as cashflow.
+    const firstMonth = (year !== undefined && year === loanStartYear) ? this.startDate!.getMonth() : 0;
+
+    // 1. Internal Loop: the year's months (skipped entirely before the loan starts)
     if (!notYetStarted) {
-      for (let i = 0; i < 12; i++) {
+      for (let i = firstMonth; i < 12; i++) {
         if (balance <= 0) break;
 
         // Accrue interest on the outstanding balance for both Simple and Compounding loans.
