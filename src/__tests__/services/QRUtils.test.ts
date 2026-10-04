@@ -1201,20 +1201,20 @@ describe('qrUtils', () => {
       const result = expandCompactAssumptions(compact);
 
       // Check non-default values are preserved
-      const macro = result.macro as Record<string, unknown>;
-      const investments = result.investments as Record<string, unknown>;
-      const demographics = result.demographics as Record<string, unknown>;
-      const returnRates = investments.returnRates as Record<string, unknown>;
+      const macro = result['macro'] as Record<string, unknown>;
+      const investments = result['investments'] as Record<string, unknown>;
+      const demographics = result['demographics'] as Record<string, unknown>;
+      const returnRates = investments['returnRates'] as Record<string, unknown>;
 
-      expect(macro.inflationRate).toBe(4.0);
-      expect(returnRates.ror).toBe(7.0);
-      expect(demographics.birthYear).toBe(1985);
+      expect(macro['inflationRate']).toBe(4.0);
+      expect(returnRates['ror']).toBe(7.0);
+      expect(demographics['birthYear']).toBe(1985);
 
       // Check defaults are restored
-      expect(macro.healthcareInflation).toBe(3.9);
-      expect(macro.inflationAdjusted).toBe(true);
-      expect(demographics.retirementAge).toBe(65);
-      expect(demographics.lifeExpectancy).toBe(90);
+      expect(macro['healthcareInflation']).toBe(3.9);
+      expect(macro['inflationAdjusted']).toBe(true);
+      expect(demographics['retirementAge']).toBe(65);
+      expect(demographics['lifeExpectancy']).toBe(90);
     });
 
     it('should expand all short keys correctly', () => {
@@ -1246,41 +1246,41 @@ describe('qrUtils', () => {
 
       const result = expandCompactAssumptions(compact);
 
-      const macro = result.macro as Record<string, unknown>;
-      expect(macro.inflationRate).toBe(3.5);
-      expect(macro.healthcareInflation).toBe(4.5);
-      expect(macro.inflationAdjusted).toBe(false);
+      const macro = result['macro'] as Record<string, unknown>;
+      expect(macro['inflationRate']).toBe(3.5);
+      expect(macro['healthcareInflation']).toBe(4.5);
+      expect(macro['inflationAdjusted']).toBe(false);
 
-      const income = result.income as Record<string, unknown>;
-      expect(income.salaryGrowth).toBe(2.0);
-      expect(income.qualifiesForSocialSecurity).toBe(false);
-      expect(income.socialSecurityFundingPercent).toBe(80);
+      const income = result['income'] as Record<string, unknown>;
+      expect(income['salaryGrowth']).toBe(2.0);
+      expect(income['qualifiesForSocialSecurity']).toBe(false);
+      expect(income['socialSecurityFundingPercent']).toBe(80);
 
-      const expenses = result.expenses as Record<string, unknown>;
-      expect(expenses.lifestyleCreep).toBe(50);
-      expect(expenses.housingAppreciation).toBe(2.5);
-      expect(expenses.rentInflation).toBe(1.8);
+      const expenses = result['expenses'] as Record<string, unknown>;
+      expect(expenses['lifestyleCreep']).toBe(50);
+      expect(expenses['housingAppreciation']).toBe(2.5);
+      expect(expenses['rentInflation']).toBe(1.8);
 
-      const investments = result.investments as Record<string, unknown>;
-      const returnRates = investments.returnRates as Record<string, unknown>;
-      expect(returnRates.ror).toBe(6.5);
-      expect(investments.withdrawalStrategy).toBe('VPW');
-      expect(investments.withdrawalRate).toBe(3.5);
-      expect(investments.gkUpperGuardrail).toBe(1.25);
-      expect(investments.gkLowerGuardrail).toBe(0.75);
-      expect(investments.gkAdjustmentPercent).toBe(12);
-      expect(investments.autoRothConversions).toBe(true);
+      const investments = result['investments'] as Record<string, unknown>;
+      const returnRates = investments['returnRates'] as Record<string, unknown>;
+      expect(returnRates['ror']).toBe(6.5);
+      expect(investments['withdrawalStrategy']).toBe('VPW');
+      expect(investments['withdrawalRate']).toBe(3.5);
+      expect(investments['gkUpperGuardrail']).toBe(1.25);
+      expect(investments['gkLowerGuardrail']).toBe(0.75);
+      expect(investments['gkAdjustmentPercent']).toBe(12);
+      expect(investments['autoRothConversions']).toBe(true);
 
-      const demographics = result.demographics as Record<string, unknown>;
-      expect(demographics.birthYear).toBe(1980);
-      expect(demographics.retirementAge).toBe(60);
-      expect(demographics.lifeExpectancy).toBe(95);
-      expect(demographics.priorYearMode).toBe(true);
+      const demographics = result['demographics'] as Record<string, unknown>;
+      expect(demographics['birthYear']).toBe(1980);
+      expect(demographics['retirementAge']).toBe(60);
+      expect(demographics['lifeExpectancy']).toBe(95);
+      expect(demographics['priorYearMode']).toBe(true);
 
-      const display = result.display as Record<string, unknown>;
-      expect(display.useCompactCurrency).toBe(false);
-      expect(display.showExperimentalFeatures).toBe(true);
-      expect(display.hsaEligible).toBe(false);
+      const display = result['display'] as Record<string, unknown>;
+      expect(display['useCompactCurrency']).toBe(false);
+      expect(display['showExperimentalFeatures']).toBe(true);
+      expect(display['hsaEligible']).toBe(false);
     });
   });
 
