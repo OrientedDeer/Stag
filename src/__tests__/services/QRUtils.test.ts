@@ -2795,12 +2795,12 @@ describe('qrUtils', () => {
       const expanded = expandCompactBackup(legacyCompact as Parameters<typeof expandCompactBackup>[0]);
       const income = expanded.incomes[0] as Record<string, unknown>;
 
-      expect(income.projectedPIA).toBe(3100);
+      expect(income['projectedPIA']).toBe(3100);
       expect('purchasePrice' in income).toBe(false);
       // The other SS fields decode as before
-      expect(income.claimingAge).toBe(67);
-      expect(income.calculatedPIA).toBe(2500);
-      expect(income.calculationYear).toBe(2026);
+      expect(income['claimingAge']).toBe(67);
+      expect(income['calculatedPIA']).toBe(2500);
+      expect(income['calculationYear']).toBe(2026);
     });
 
     it('should decode legacy pp on an ESPP lot (no className) to purchasePrice', () => {
@@ -2819,7 +2819,7 @@ describe('qrUtils', () => {
 
       const expanded = expandKeys(legacyLot) as Record<string, unknown>;
 
-      expect(expanded.purchasePrice).toBe(85);
+      expect(expanded['purchasePrice']).toBe(85);
       expect('projectedPIA' in expanded).toBe(false);
     });
 
@@ -2845,9 +2845,9 @@ describe('qrUtils', () => {
       };
 
       const expanded = expandCompactBackup(legacyCompact as Parameters<typeof expandCompactBackup>[0]);
-      const lots = (expanded.accounts[0] as Record<string, unknown>).lots as Array<Record<string, unknown>>;
+      const lots = (expanded.accounts[0] as Record<string, unknown>)['lots'] as Array<Record<string, unknown>>;
 
-      expect(lots[0].purchasePrice).toBe(85);
+      expect(lots[0]['purchasePrice']).toBe(85);
       expect('projectedPIA' in lots[0]).toBe(false);
     });
 
@@ -2860,7 +2860,7 @@ describe('qrUtils', () => {
 
       const expanded = expandKeys(newCompact) as Record<string, unknown>;
 
-      expect(expanded.projectedPIA).toBe(3100);
+      expect(expanded['projectedPIA']).toBe(3100);
       expect('purchasePrice' in expanded).toBe(false);
     });
   });
