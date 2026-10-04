@@ -26,7 +26,7 @@ import {
 import * as TaxService from "../../components/Objects/Taxes/TaxService";
 import { getLTCGRate as getLTCGRateForIncome } from "../../components/Objects/Taxes/taxService/capitalGainsTax";
 import { midYearSaleDate } from "./dates";
-import { type TaxBracket } from "../../data/TaxData";
+import { type TaxBracket, type TaxParameters } from "../../data/TaxData";
 
 // =============================================================================
 // CONSTANTS
@@ -1121,7 +1121,12 @@ export function planWithdrawals(
     },
     /** Income included in currentOrdinaryIncome for federal brackets but exempt from state tax
      *  (e.g., taxable Social Security for DC and most states that exempt SS). */
-    stateExemptIncome: number = 0
+    stateExemptIncome: number = 0,
+    /** The caller's federal parameters with the year's EFFECTIVE deduction (65+ add-ons,
+     *  OBBBA senior bonus, itemizing) folded in. Without it, withdrawals are priced on the
+     *  raw standard deduction, so a retiree funding spending from a Traditional account
+     *  loses the senior deduction space the base income didn't use. */
+    effectiveFedParams?: TaxParameters
 ): WithdrawalPlanResult {
     const withdrawals: PlannedWithdrawal[] = [];
     const decisions: DecisionLogEntry[] = [];
@@ -1167,7 +1172,8 @@ export function planWithdrawals(
     // Get tax parameters. Federal always resolves (state is legitimately
     // undefined for no-income-tax states); a hole here would previously fall
     // back to a hardcoded 22% marginal rate — crash loudly instead.
-    const fedParams = TaxService.getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
+    const fedParams = effectiveFedParams
+        ?? TaxService.getTaxParameters(year, taxState.filingStatus, 'federal', undefined, assumptions);
     if (!fedParams) {
         throw new Error(`No federal tax parameters for year ${year}`);
     }
