@@ -109,7 +109,10 @@ export function getIncomeTimingHint(income: AnyIncome): string | null {
             return `starts ${s.getFullYear()}`;
         }
     }
-    if (income.end_date && hasWindowEnded({ startDate: income.startDate, endDate: income.end_date })) {
+    if (income.end_date && hasWindowEnded({
+        ...(income.startDate !== undefined && { startDate: income.startDate }),
+        endDate: income.end_date,
+    })) {
         return `ended ${income.end_date.getFullYear()}`;
     }
     return null;
@@ -390,7 +393,10 @@ export function getNonVestingRSUReason(
     // structurally so this predicate stays shape-based. Gate it on a real grant
     // first so a non-grant income never short-circuits here.
     if (isActiveRSUGrant(config)
-        && hasWindowEnded({ startDate: config.startDate, endDate: config.end_date })) {
+        && hasWindowEnded({
+            ...(config.startDate !== undefined && { startDate: config.startDate }),
+            ...(config.end_date !== undefined && { endDate: config.end_date }),
+        })) {
         return null;
     }
     return classifyNonVestingRSU(config, rsuAccounts);
