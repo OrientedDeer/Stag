@@ -233,9 +233,13 @@ export const CashflowTab = React.memo(({ simulationData }: { simulationData: Sim
                             extraRightPadding={20}
                             accounts={sankeyYearData.accounts}
                             withdrawals={sankeyYearData.cashflow.withdrawalDetail || EMPTY_RECORD}
-                            rothConversion={sankeyYearData.rothConversion}
+                            {...(sankeyYearData.rothConversion !== undefined
+                                ? { rothConversion: sankeyYearData.rothConversion }
+                                : {})}
                             livingExpenses={sankeyYearData.cashflow.livingExpenses}
-                            cashflowDetail={sankeyYearData.cashflowDetail}
+                            {...(sankeyYearData.cashflowDetail !== undefined
+                                ? { cashflowDetail: sankeyYearData.cashflowDetail }
+                                : {})}
                             simulationData={simulationData}
                             onSelectYear={handleSelectYear}
                             height={400}
