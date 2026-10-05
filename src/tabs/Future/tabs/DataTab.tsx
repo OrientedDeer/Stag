@@ -276,7 +276,7 @@ export const DataTab: React.FC<DataTabProps> = React.memo(({ simulationData, bir
             currentAccounts: accounts,
             currentIncomes: incomes,
             currentExpenses: expenses,
-            monteCarloSummary: monteCarloState.summary || undefined,
+            ...(monteCarloState.summary ? { monteCarloSummary: monteCarloState.summary } : {}),
             monteCarloConfig: monteCarloState.config || undefined,
         };
 
