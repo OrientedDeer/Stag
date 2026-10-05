@@ -1091,7 +1091,9 @@ function SimulationDebugTab() {
                     withdrawalOrdinaryTax: simYear.taxDetails.withdrawalOrdinaryTax || 0,
                     irmaa: simYear.taxDetails.irmaa ?? 0,
                     aca: simYear.taxDetails.aca ?? 0,
-                    earlyWithdrawalPenalty: simYear.taxDetails.earlyWithdrawalPenalty,
+                    ...(simYear.taxDetails.earlyWithdrawalPenalty !== undefined && {
+                        earlyWithdrawalPenalty: simYear.taxDetails.earlyWithdrawalPenalty,
+                    }),
                 },
                 logs: simYear.logs || [],
             });
