@@ -249,11 +249,11 @@ function AccountCard({ account }: { account: AnyAccount }): ReactElement {
                         label="Current Amount"
                         value={account.amount}
                         onChange={(val) => handleFieldUpdate("amount", val)}
-                        tooltip={account instanceof PropertyAccount
-                            ? "Synced with the linked mortgage expense's valuation."
+                        {...(account instanceof PropertyAccount
+                            ? { tooltip: "Synced with the linked mortgage expense's valuation." }
                             : account instanceof DebtAccount
-                                ? "Synced with the linked loan expense's balance."
-                                : undefined}
+                                ? { tooltip: "Synced with the linked loan expense's balance." }
+                                : {})}
                     />
 
                     {account instanceof SavedAccount && (
