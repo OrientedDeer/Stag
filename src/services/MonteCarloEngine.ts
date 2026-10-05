@@ -404,7 +404,10 @@ export async function runMonteCarloSimulation(
     }
 
     // Summarize all scenarios
-    return summarizeScenarios(scenarios, config.seed, { ruler, baselinePaths });
+    return summarizeScenarios(scenarios, config.seed, {
+        ruler,
+        ...(baselinePaths !== undefined ? { baselinePaths } : {}),
+    });
 }
 
 /**
@@ -456,7 +459,10 @@ export function runMonteCarloSimulationSync(
         ));
     }
 
-    return summarizeScenarios(scenarios, config.seed, { ruler, baselinePaths });
+    return summarizeScenarios(scenarios, config.seed, {
+        ruler,
+        ...(baselinePaths !== undefined ? { baselinePaths } : {}),
+    });
 }
 
 /**
