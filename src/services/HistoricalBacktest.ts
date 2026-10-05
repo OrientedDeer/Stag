@@ -191,12 +191,12 @@ export function runSingleBacktest(
         currentPortfolio: balance,
         inflationRate: inflation, // Use actual historical inflation
         yearsInRetirement: i,
-        previousWithdrawal: previousWithdrawalResult,
+        ...(previousWithdrawalResult !== undefined && { previousWithdrawal: previousWithdrawalResult }),
         gkUpperGuardrail,
         gkLowerGuardrail,
         gkAdjustmentPercent,
         yearsRemaining: retirementYears - i, // For GK 15-year rule
-        lastYearReturn: previousNominalReturn, // For GK Withdrawal Rule down-year freeze
+        ...(previousNominalReturn !== undefined && { lastYearReturn: previousNominalReturn }), // For GK Withdrawal Rule down-year freeze
       });
 
       withdrawal = result.amount;
