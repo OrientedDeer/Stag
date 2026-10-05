@@ -98,7 +98,7 @@ export async function buildProjectionAsync(
             eoyContributionAdditions: additions,
             eoyDebtReductions: debtReductions,
             eoyMortgageReductions: mortgageReductions,
-            onProgress,
+            ...(onProgress !== undefined ? { onProgress } : {}),
         });
     } catch (err) {
         if (err instanceof JointSearchSupersededError) throw err;
