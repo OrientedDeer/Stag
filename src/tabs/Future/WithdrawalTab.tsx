@@ -323,6 +323,7 @@ export default function WithdrawalTab() {
 
     const [showHelp, setShowHelp] = useState(false);
     const toggleHelp = useCallback(() => setShowHelp(h => !h), []);
+    const chosenWithdrawalOrder = simulation[0]?.chosenWithdrawalOrder;
 
     return (
         <div className="w-full min-h-full flex bg-surface-base justify-center pt-6 pb-24 text-white">
@@ -374,7 +375,7 @@ export default function WithdrawalTab() {
                     expenses={expenses}
                     assumptions={state}
                     taxState={taxState}
-                    chosenWithdrawalOrder={simulation[0]?.chosenWithdrawalOrder}
+                    {...(chosenWithdrawalOrder !== undefined ? { chosenWithdrawalOrder } : {})}
                     forceExact={forceExact}
                 />
             </div>
