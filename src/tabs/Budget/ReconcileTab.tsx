@@ -39,7 +39,12 @@ export default function ReconcileTab() {
     const [basis, setBasis] = useState<CompareBasis>('charges');
 
     const result = useMemo(
-        () => computeStatementCompare(months, { source, start: startDate, end: endDate }),
+        () =>
+            computeStatementCompare(months, {
+                source,
+                ...(startDate !== undefined && { start: startDate }),
+                ...(endDate !== undefined && { end: endDate }),
+            }),
         [months, source, startDate, endDate],
     );
 
