@@ -203,7 +203,13 @@ export function runJointSearchInWorker(input: JointSearchInput): Promise<Simulat
             worker.onerror = handleError;
         }
         const requestId = nextRequestId++;
-        inFlight = { requestId, resolve, reject, onProgress: input.onProgress };
+        const onProgress = input.onProgress;
+        inFlight = {
+            requestId,
+            resolve,
+            reject,
+            ...(onProgress !== undefined ? { onProgress } : {}),
+        };
         worker.postMessage(toWorkerRequest(input, requestId));
     });
 }
