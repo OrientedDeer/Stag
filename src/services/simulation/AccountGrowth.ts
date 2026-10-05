@@ -369,7 +369,10 @@ export function growAccounts(
             if (finalLoanBalance !== undefined && totalIn > 0) {
                 finalLoanBalance = Math.max(0, finalLoanBalance - totalIn);
             }
-            return acc.increment(assumptions, { newLoanBalance: finalLoanBalance, newValue: linkedState?.value });
+            return acc.increment(assumptions, {
+                ...(finalLoanBalance !== undefined && { newLoanBalance: finalLoanBalance }),
+                ...(linkedState?.value !== undefined && { newValue: linkedState.value }),
+            });
         }
 
         if (acc instanceof DeficitDebtAccount) {
