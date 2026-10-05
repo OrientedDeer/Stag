@@ -976,7 +976,7 @@ const SankeyDetailPanel = ({ content, chartContainerRef, formatValue, onClose, s
                         simulationData={simulationData}
                         target={series}
                         currentYear={currentYear}
-                        onSelectYear={onSelectYear}
+                        {...(onSelectYear !== undefined ? { onSelectYear } : {})}
                         formatValue={formatValue}
                     />
                 </PanelSection>
