@@ -430,8 +430,7 @@ export const MonteCarloTab = React.memo(({ simulationData }: MonteCarloTabProps)
                         <FanChart
                             percentiles={summary.percentiles}
                             deterministicLine={deterministicLine}
-                            bestCase={showOutlierRuns ? summary.bestCase : undefined}
-                            worstCase={showOutlierRuns ? summary.worstCase : undefined}
+                            {...(showOutlierRuns ? { bestCase: summary.bestCase, worstCase: summary.worstCase } : {})}
                             height={400}
                         />
                         {/* Gross terminal percentiles (#162 D2): demoted from the headline —
