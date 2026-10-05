@@ -265,7 +265,7 @@ const TabsContent = () => {
                             isOpen={isModalOpen}
                             onClose={() => setIsModalOpen(false)}
                             defaultFrequency={activeTabDef.defaultFrequency}
-                            goalMode={activeTabDef.goal}
+                            {...(activeTabDef.goal !== undefined ? { goalMode: activeTabDef.goal } : {})}
                         />
                     </div>
                 </div>
