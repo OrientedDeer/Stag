@@ -287,9 +287,9 @@ function ExpenseCard({ expense }: { expense: AnyExpense }): ReactElement {
                         label={expense instanceof RentExpense ? "Rent/Mortgage Payment" : "Amount"}
                         value={expense instanceof RentExpense ? expense.payment : expense.amount}
                         onChange={(val) => handleFieldUpdate(isHousing ? "payment" : "amount", val)}
-                        tooltip={expense instanceof LoanExpense
-                            ? "Synced with the linked debt account's balance."
-                            : undefined}
+                        {...(expense instanceof LoanExpense
+                            ? { tooltip: "Synced with the linked debt account's balance." }
+                            : {})}
                     />
                 )}
 
