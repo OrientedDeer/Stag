@@ -143,7 +143,9 @@ export function buildSummarySheet(data: ExportData): SheetContent {
         const taxBase = year.magi
             ?? (grossIncome + (year.rothConversion?.amount || 0) + year.cashflow.withdrawals);
         const effTaxRate = taxBase > 0 ? (totalTaxes / taxBase) * 100 : 0;
-        const livingExpenses = year.cashflow.totalExpense - totalTaxes;
+        // totalExpense also folds in payroll deductions (401k/HSA/insurance/Roth 401k),
+        // which already appear under Net Savings — use the engine's living figure.
+        const livingExpenses = year.cashflow.livingExpenses;
         const netSavings = year.cashflow.totalInvested;
 
         // Net worth via the canonical math (mortgage principal counts as a liability).
