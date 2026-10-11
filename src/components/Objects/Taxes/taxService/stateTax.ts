@@ -12,6 +12,7 @@ import { getTaxableSocialSecurityFromBase } from "./socialSecurity";
 import { getItemizedDeductions, getYesDeductions } from "./deductions";
 import { calculateTax } from "./bracketTax";
 import { seniorAdditionalDeduction } from "./seniorDeduction";
+import { type FilingStatus, type TaxParameters } from "../../../../data/TaxData";
 
 // California does not conform to IRC §223: payroll HSA contributions stay in CA
 // wages and no HSA deduction is allowed (FTB Pub 1001; Schedule CA (540) add-back).
@@ -126,6 +127,24 @@ function computeStateTaxFromGross(
         ...stateParams,
         standardDeduction: stateAppliedMainDeduction,
     });
+}
+
+/**
+ * State parameters with the state's 65+ add-on (e.g. Virginia's age deduction,
+ * phased out by AFAGI) folded into `standardDeduction`. The simulation engine
+ * taxes state income through calculateTax directly rather than
+ * computeStateTaxFromGross, so without this every projected year dropped the
+ * deduction that the Taxes tab applies to year 0.
+ */
+export function withStateSeniorDeduction(
+    stateParams: TaxParameters,
+    filingStatus: FilingStatus,
+    age: number | undefined,
+    afagi: number,
+): TaxParameters {
+    const senior = seniorAdditionalDeduction(stateParams, filingStatus, age, afagi);
+    if (senior === 0) return stateParams;
+    return { ...stateParams, standardDeduction: (stateParams.standardDeduction || 0) + senior };
 }
 
 export function calculateStateTax(
