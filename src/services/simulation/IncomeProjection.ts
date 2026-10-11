@@ -22,6 +22,12 @@ interface IncomeProjectionResult {
     logs: string[];
 }
 
+// High-3 averages annual RATES of basic pay (5 U.S.C. §8331(4)), so a partial
+// hire or separation year counts at its full rate, not the prorated dollars paid.
+function annualPayRate(income: WorkIncome, year: number): number {
+    return income.getAnnualAmount(year) > 0 ? income.getAnnualAmount() : 0;
+}
+
 /**
  * Project incomes for the next year: grow work income, calculate pensions,
  * determine Social Security benefits, apply earnings test, and compute interest income.
@@ -103,7 +109,7 @@ export function projectIncomes(
                     .map(simYear => {
                         const prevLinked = simYear.incomes.find(i => i.id === inc.linkedIncomeId);
                         if (prevLinked instanceof WorkIncome) {
-                            return prevLinked.getAnnualAmount(simYear.year);
+                            return annualPayRate(prevLinked, simYear.year);
                         }
                         return 0;
                     })
@@ -112,7 +118,7 @@ export function projectIncomes(
                 // If the linked income is still active this year, include its salary too.
                 const linkedIncome = incomes.find(i => i.id === inc.linkedIncomeId);
                 if (linkedIncome instanceof WorkIncome) {
-                    const currentSalary = linkedIncome.getAnnualAmount(year);
+                    const currentSalary = annualPayRate(linkedIncome, year);
                     if (currentSalary > 0) salaryHistory.push(currentSalary);
                 }
 
@@ -183,7 +189,7 @@ export function projectIncomes(
                     .map(simYear => {
                         const prevLinked = simYear.incomes.find(i => i.id === inc.linkedIncomeId);
                         if (prevLinked instanceof WorkIncome) {
-                            return prevLinked.getAnnualAmount(simYear.year);
+                            return annualPayRate(prevLinked, simYear.year);
                         }
                         return 0;
                     })
@@ -192,7 +198,7 @@ export function projectIncomes(
                 // If the linked income is still active this year, include its salary too.
                 const linkedIncome = incomes.find(i => i.id === inc.linkedIncomeId);
                 if (linkedIncome instanceof WorkIncome) {
-                    const currentSalary = linkedIncome.getAnnualAmount(year);
+                    const currentSalary = annualPayRate(linkedIncome, year);
                     if (currentSalary > 0) salaryHistory.push(currentSalary);
                 }
 
