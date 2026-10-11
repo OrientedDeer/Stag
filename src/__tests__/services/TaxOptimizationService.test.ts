@@ -361,6 +361,18 @@ describe('analyzeTaxSituation', () => {
             expect(result.preTaxContributions.currentHSA).toBe(2000);
             expect(result.preTaxContributions.limitHSA).toBeGreaterThan(0);
         });
+
+        // Same MFJ ⇒ family-coverage convention as PriorityTab / SpendingTab /
+        // eoyContributionProjection (Rev. Proc. 2024-25: 2025 self-only $4,300, family $8,550).
+        it('uses the family HSA limit for Married Filing Jointly, self-only otherwise', () => {
+            const simYear = createMockSimulationYear({ year: 2025 });
+
+            const mfj = analyzeTaxSituation(simYear, assumptions, createTestTaxState({ filingStatus: 'Married Filing Jointly' }));
+            expect(mfj.preTaxContributions.limitHSA).toBe(8550);
+
+            const single = analyzeTaxSituation(simYear, assumptions, taxState);
+            expect(single.preTaxContributions.limitHSA).toBe(4300);
+        });
     });
 });
 

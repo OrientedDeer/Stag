@@ -272,7 +272,7 @@ export function analyzeTaxSituation(
             current401k,
             limit401k: get401kLimit(year, age),
             currentHSA,
-            limitHSA: getHSALimit(year, age, 'individual') // Default to individual
+            limitHSA: getHSALimit(year, age, taxState.filingStatus === 'Married Filing Jointly' ? 'family' : 'individual')
         }
     };
 }
