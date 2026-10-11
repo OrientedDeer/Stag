@@ -104,7 +104,9 @@ export function processInflows(
             // plus this income's new contributions, so multiple incomes feeding one
             // account share a single limit — and so a same-year drain (negative
             // userInflows) can't mask additions and let the trim under-fire.
-            const limit415c = get415cLimit(year, currentAge, assumptions.macro.inflationAdjusted);
+            const limit415c = get415cLimit(
+                year, currentAge, assumptions.macro.inflationAdjusted, currentSelf + selfContribution,
+            );
             let trimmedSelf = selfContribution;
             const totalAdditions = currentSelf + currentMatch + selfContribution + employerMatch;
             if (totalAdditions > limit415c) {
