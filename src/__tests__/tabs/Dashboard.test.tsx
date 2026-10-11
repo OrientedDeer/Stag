@@ -6,6 +6,7 @@ import { IncomeContext } from '../../components/Objects/Income/IncomeContext';
 import { ExpenseContext } from '../../components/Objects/Expense/ExpenseContext';
 import { AccountContext } from '../../components/Objects/Accounts/AccountContext';
 import { PassiveIncome, WorkIncome } from '../../components/Objects/Income/models';
+import { max_year } from '../../data/TaxData';
 import { OtherExpense } from '../../components/Objects/Expense/models';
 import { SavedAccount } from '../../components/Objects/Accounts/models';
 
@@ -82,5 +83,36 @@ describe('Dashboard auto-max 401k resolution', () => {
 
         const grossLabel = screen.getByText('Gross Income');
         expect(grossLabel.nextElementSibling?.textContent).toBe('$105.0K');
+    });
+});
+
+describe('Dashboard taxes after the last tax-table year', () => {
+    it('still computes taxes when the current year is past TaxData max_year', () => {
+        // Dashboard used to gate on TAX_DATABASE.federal[currentYear], so from
+        // January of the first year past the table every tax showed $0.
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date(max_year + 1, 2, 1));
+        try {
+            const incomes = [new WorkIncome('w1', 'Salary', 100000, 'Annually', 'Yes', 0, 0, 0, 0, '')];
+            const expenses = [new OtherExpense('e1', 'Rent', 1000, 'Monthly', new Date(2024, 0, 1))];
+            const accounts = [new SavedAccount('a1', 'Savings', 5000, 0)];
+
+            render(
+                <MemoryRouter>
+                    <IncomeContext.Provider value={{ incomes }}>
+                        <ExpenseContext.Provider value={{ expenses }}>
+                            <AccountContext.Provider value={{ accounts, amountHistory: {} }}>
+                                <Dashboard />
+                            </AccountContext.Provider>
+                        </ExpenseContext.Provider>
+                    </IncomeContext.Provider>
+                </MemoryRouter>
+            );
+
+            const taxesValue = screen.getByText('Total Taxes').nextElementSibling?.textContent ?? '';
+            expect(Number(taxesValue.replace(/[^0-9.]/g, ''))).toBeGreaterThan(0);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });
