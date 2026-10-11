@@ -2030,9 +2030,16 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
     // it is always 0 here (no withdrawals planned yet), and every loop exit that has
     // planned withdrawals goes through the in-loop recompute or converged with
     // ltcgDelta < $1, so this baseline can never be left stale with material LTCG.
-    let finalStateTax = stateParams
-        ? TaxService.calculateTax(allOrdinaryIncome - currentSSTaxable + estimatedLTCG, statePreTaxDeductions, stateParams)
+    // `otherAfagiIncome` is income outside the state base (Traditional withdrawals,
+    // ESPP ordinary, STCG — taxed by the planner) that still counts toward the AFAGI
+    // that phases out the state senior deduction (Virginia's age deduction).
+    const authoritativeStateTax = (stateBase: number, otherAfagiIncome: number): number => stateParams
+        ? TaxService.calculateTax(stateBase, statePreTaxDeductions, TaxService.withStateSeniorDeduction(
+            stateParams, input.taxState.filingStatus, input.currentAge,
+            Math.max(0, stateBase + otherAfagiIncome - statePreTaxDeductions),
+        ))
         : 0;
+    let finalStateTax = authoritativeStateTax(allOrdinaryIncome - currentSSTaxable + estimatedLTCG, 0);
 
     const MAX_ITERATIONS = 10;
     for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
@@ -2070,9 +2077,10 @@ export function solveRetirementYear(input: YearSolverInput): YearPlan {
             // bracket position; the planner's withdrawalOrdinaryTax carries the
             // STCG state tax. To avoid double-counting we leave STCG out of the
             // state base (the planner already positioned it via runningOrdinaryIncome).
-            finalStateTax = stateParams
-                ? TaxService.calculateTax(allOrdinaryIncome - currentSSTaxable + estimatedLTCG, statePreTaxDeductions, stateParams)
-                : 0;
+            finalStateTax = authoritativeStateTax(
+                allOrdinaryIncome - currentSSTaxable + estimatedLTCG,
+                estimatedTradWithdrawal + estimatedESPPOrdinaryIncome + stcgForFederal(estimatedSTCG),
+            );
         }
 
         // Authoritative federal tax EXCLUDING the STCG ordinary tax (the planner
@@ -2638,7 +2646,13 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
         input.assumptions
     );
 
-    const stateTax = stateParams
+    const workingStateParams = stateParams
+        ? TaxService.withStateSeniorDeduction(
+            stateParams, input.taxState.filingStatus, input.currentAge,
+            Math.max(0, taxableOrdinaryBase - socialSecurityBenefits + conversionAmount - preTaxDeductionsForTax),
+        )
+        : stateParams;
+    const stateTax = workingStateParams
         ? TaxService.calculateTax(
             // Exclude Social Security (DC and all modeled states exempt it),
             // mirroring the retirement path. Reinvested income is already folded
@@ -2646,7 +2660,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
             // working-year conversion is state-taxable ordinary income too.
             taxableOrdinaryBase - socialSecurityBenefits + conversionAmount,
             statePreTaxDeductionsForTax,
-            stateParams
+            workingStateParams
         )
         : 0;
 
@@ -2670,8 +2684,8 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
                 socialSecurityBenefits,
                 0, 0, preTaxDeductionsForTax, input.taxState.filingStatus, fedParams,
             ).totalTax;
-            const stateNoConv = stateParams
-                ? TaxService.calculateTax(taxableOrdinaryBase - socialSecurityBenefits, statePreTaxDeductionsForTax, stateParams)
+            const stateNoConv = workingStateParams
+                ? TaxService.calculateTax(taxableOrdinaryBase - socialSecurityBenefits, statePreTaxDeductionsForTax, workingStateParams)
                 : 0;
             conversionFedTax = Math.max(0, taxResult.totalTax - fedNoConv);
             conversionStateTax = Math.max(0, stateTax - stateNoConv);
@@ -2801,7 +2815,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
                 Math.max(0, ordinary), 0, 0, 0, preTaxDeductionsForTax, input.taxState.filingStatus, fedParams,
             ).ordinaryTax;
         const stateTaxAt = (base: number): number =>
-            stateParams ? TaxService.calculateTax(Math.max(0, base), statePreTaxDeductionsForTax, stateParams) : 0;
+            workingStateParams ? TaxService.calculateTax(Math.max(0, base), statePreTaxDeductionsForTax, workingStateParams) : 0;
 
         // Iterate: the deficit and the taxes it triggers (NIIT, state LTCG, SS torpedo)
         // are mutually dependent, exactly as in the retirement path — sizing the
