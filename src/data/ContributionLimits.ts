@@ -130,11 +130,23 @@ export function get401kLimit(year: number, age: number, inflationAdjusted: boole
  * a single defined-contribution (401k) plan. Per IRS rules, age 50+ catch-up
  * contributions are allowed ON TOP of the §415(c) limit, so we add the same
  * catch-up amount used by get401kLimit (including the 60-63 super catch-up).
+ *
+ * When `employeeDeferrals` is given, only the part of it above the §402(g) base
+ * counts as catch-up: §414(v)(3)(A) excludes catch-up contributions actually
+ * made from §415(c), so unused catch-up room can't be filled by employer money.
  */
-export function get415cLimit(year: number, age: number, inflationAdjusted: boolean = true): number {
+export function get415cLimit(
+  year: number,
+  age: number,
+  inflationAdjusted: boolean = true,
+  employeeDeferrals?: number,
+): number {
   const limits = getContributionLimits(year, inflationAdjusted);
   const base = limits.section415c;
-  const catchUp = age >= 50 ? (age >= 60 && age <= 63 ? limits.superCatchUp401k : limits.catchUp401k) : 0;
+  const maxCatchUp = age >= 50 ? (age >= 60 && age <= 63 ? limits.superCatchUp401k : limits.catchUp401k) : 0;
+  const catchUp = employeeDeferrals === undefined
+    ? maxCatchUp
+    : Math.min(maxCatchUp, Math.max(0, employeeDeferrals - limits.traditional401k));
   return base + catchUp;
 }
 

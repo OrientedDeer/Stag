@@ -511,3 +511,33 @@ describe('Sankey employee-deferral §415(c) trim (Issue 2)', () => {
         expect(detail.userRoth401k).toBeCloseTo(0, 2);
     });
 });
+
+describe('§415(c) catch-up allowance only covers deferrals actually made above §402(g)', () => {
+    const YEAR = 2026;
+    const AGE = 55; // catch-up eligible ($8,000 for 2026)
+
+    it('does not let a large employer contribution use catch-up room the employee never deferred', () => {
+        const account = new InvestedAccount('trad', 'Traditional 401k', 500000, 0, 0, 0, 'Traditional 401k');
+        // 10k employee deferral (well under the $24,500 §402(g) base) + 70k employer
+        // contribution = 80k. With no catch-up deferrals the cap is the bare $72,000.
+        const income = work401k('j1', 300000, 10000, 0, 70000, 'trad');
+        const ws = createWithdrawalState();
+
+        processInflows([income], [account], assumptions, YEAR, ws, 0, undefined, 0, AGE, []);
+
+        expect(ws.userInflows['trad']).toBeCloseTo(10000, 2);
+        expect(ws.employerInflows['trad']).toBeCloseTo(62000, 2);
+    });
+
+    it('excludes catch-up deferrals above §402(g) from the §415(c) cap', () => {
+        const account = new InvestedAccount('trad', 'Traditional 401k', 500000, 0, 0, 0, 'Traditional 401k');
+        // 24.5k base + 8k catch-up deferred; 8k is excluded, so 72k − 24.5k = 47.5k employer room.
+        const income = work401k('j1', 300000, 32500, 0, 70000, 'trad');
+        const ws = createWithdrawalState();
+
+        processInflows([income], [account], assumptions, YEAR, ws, 0, undefined, 0, AGE, []);
+
+        expect(ws.userInflows['trad']).toBeCloseTo(32500, 2);
+        expect(ws.employerInflows['trad']).toBeCloseTo(47500, 2);
+    });
+});
