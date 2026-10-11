@@ -335,6 +335,36 @@ describe('Income Models', () => {
       expect(result.roth).toBe(0);
     });
 
+    it('caps the auto-max deferral at the job\'s compensation (§415(c)(1)(B))', () => {
+      // A $15k/yr part-time job can't defer the full $23,500 limit — the elective
+      // deferral can't exceed the pay it is withheld from.
+      const trad = new WorkIncome(
+        'w1', 'Part-time', 1250, 'Monthly', 'Yes',
+        0, 0, 0, 0, 'a1', 'Traditional 401k', 'FIXED', undefined, undefined, 0,
+        'traditional'
+      );
+      const tradResult = trad.getEffective401k(2025, 45);
+      expect(trad.getProratedAnnual(tradResult.preTax)).toBeCloseTo(15000, 6);
+
+      const roth = new WorkIncome(
+        'w1', 'Part-time', 15000, 'Annually', 'Yes',
+        0, 0, 0, 0, 'a1', 'Roth 401k', 'FIXED', undefined, undefined, 0,
+        'roth'
+      );
+      expect(roth.getEffective401k(2025, 55).roth).toBe(15000);
+    });
+
+    it('increment() caps the auto-max deferral at the grown compensation', () => {
+      const income = new WorkIncome(
+        'w1', 'Part-time', 15000, 'Annually', 'Yes',
+        0, 0, 0, 0, 'a1', 'Traditional 401k', 'FIXED', undefined, undefined, 0,
+        'traditional'
+      );
+      const next = income.increment(mockAssumptions, 2025, 45);
+      expect(next.preTax401k).toBeCloseTo(next.amount, 6);
+      expect(next.preTax401k).toBeLessThan(23500);
+    });
+
     it('should use 2025 limits with catch-up at age 50+', () => {
       const income = new WorkIncome(
         'w1', 'Job', 100000, 'Annually', 'Yes',

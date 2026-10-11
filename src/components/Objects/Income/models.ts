@@ -235,7 +235,11 @@ export class WorkIncome extends BaseIncome {
       newRoth = 0;
     } else if ((this.autoMax401k === 'traditional' || this.autoMax401k === 'roth') && year !== undefined && age !== undefined) {
       // The IRS limit is annual; store it per pay period to match the field's unit.
-      const perPeriodLimit = this.annualToPerPeriod(get401kLimit(year, age, assumptions.macro.inflationAdjusted));
+      // A deferral can't exceed the pay it comes out of (§415(c)(1)(B)).
+      const perPeriodLimit = Math.min(
+        this.annualToPerPeriod(get401kLimit(year, age, assumptions.macro.inflationAdjusted)),
+        Math.max(0, newAmount),
+      );
       if (this.autoMax401k === 'traditional') {
         newPreTax = perPeriodLimit;
         newRoth = 0;
@@ -310,7 +314,12 @@ export class WorkIncome extends BaseIncome {
     }
     // The IRS limit is annual; preTax401k/roth401k are stored per pay period, so spread
     // the limit across the income's pay periods. Consumers re-annualize via getProratedAnnual.
-    const perPeriodLimit = this.annualToPerPeriod(get401kLimit(year, age, inflationAdjusted));
+    // A deferral can't exceed the pay it comes out of (§415(c)(1)(B)), so a
+    // part-time job can't shelter more than it earns.
+    const perPeriodLimit = Math.min(
+      this.annualToPerPeriod(get401kLimit(year, age, inflationAdjusted)),
+      Math.max(0, this.amount),
+    );
     if (this.autoMax401k === 'traditional') {
       return { preTax: perPeriodLimit, roth: 0 };
     } else {
