@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { projectIncomes } from '../../../services/simulation/IncomeProjection';
-import { extractEarningsFromSimulation } from '../../../services/SocialSecurityCalculator';
+import { extractEarningsFromSimulation, calculateAIME } from '../../../services/SocialSecurityCalculator';
 import {
     WorkIncome,
     PassiveIncome,
@@ -756,6 +756,56 @@ describe('IncomeProjection', () => {
                 // Should have calculated a benefit
                 expect(updatedSS.calculatedPIA).toBeGreaterThan(0);
                 expect(logs.some(l => l.includes('Social Security PIA calculated'))).toBe(true);
+            });
+
+            it('applies COLAs from the age-62 eligibility year to a delayed claim (SSA: COLAs start with the year of eligibility)', () => {
+                const birthYear = 1965;
+                const claimingAge = 70;
+                const claimYear = birthYear + claimingAge;
+                const previousSimulation: SimulationYear[] = [];
+                for (let year = 2000; year < claimYear; year++) {
+                    const salary = year < birthYear + 67 ? 60000 : 0;
+                    previousSimulation.push(createSimulationYear(year, [
+                        createWorkIncome('work1', 'Job', salary)
+                    ]));
+                }
+                const assumptions = createTestAssumptions({
+                    birthYear, retirementAge: 67, inflationAdjusted: true, inflationRate: 2.5,
+                });
+                const earnings = extractEarningsFromSimulation(previousSimulation, undefined, true, undefined, 0.025);
+                const base = calculateAIME(earnings, claimYear, claimingAge, birthYear, 0.025, true).adjustedBenefit;
+                // COLAs effective Dec of 2027..2034 (ages 62-69) → 8 increases by Jan 2035.
+                const expected = base * Math.pow(1.025, claimYear - (birthYear + 62));
+
+                const ss = new FutureSocialSecurityIncome('ss1', 'Social Security', claimingAge, 0, 0);
+                const activated = projectIncomes(
+                    claimYear, [ss], [], assumptions, previousSimulation, claimingAge, true, []
+                ).nextIncomes.find(inc => inc.id === 'ss1') as FutureSocialSecurityIncome;
+                expect(activated.calculatedPIA).toBeCloseTo(expected, 2);
+
+                // The pre-claim planning value is the same claim-year benefit.
+                const preClaim = projectIncomes(
+                    claimYear - 2, [ss], [], assumptions, previousSimulation.filter(s => s.year < claimYear - 2),
+                    claimingAge - 2, true, []
+                ).nextIncomes.find(inc => inc.id === 'ss1') as FutureSocialSecurityIncome;
+                expect(preClaim.calculatedPIA).toBe(0);
+                expect(preClaim.projectedPIA).toBeCloseTo(expected, 2);
+            });
+
+            it('applies no pre-claim COLA in real-dollar (inflationAdjusted=false) mode', () => {
+                const birthYear = 1965;
+                const previousSimulation: SimulationYear[] = [];
+                for (let year = 2000; year < 2035; year++) {
+                    previousSimulation.push(createSimulationYear(year, [createWorkIncome('work1', 'Job', 60000)]));
+                }
+                const assumptions = createTestAssumptions({ birthYear, retirementAge: 67, inflationAdjusted: false });
+                const earnings = extractEarningsFromSimulation(previousSimulation, undefined, false, undefined, 0.026);
+                const base = calculateAIME(earnings, 2035, 70, birthYear, 0.026, false).adjustedBenefit;
+                const ss = new FutureSocialSecurityIncome('ss1', 'Social Security', 70, 0, 0);
+                const activated = projectIncomes(
+                    2035, [ss], [], assumptions, previousSimulation, 70, true, []
+                ).nextIncomes.find(inc => inc.id === 'ss1') as FutureSocialSecurityIncome;
+                expect(activated.calculatedPIA).toBeCloseTo(base, 2);
             });
 
             it('should pass the indexing wage-growth rate into the SS wage-base cap projection', () => {
