@@ -150,6 +150,28 @@ export function get415cLimit(
   return base + catchUp;
 }
 
+// §401(a)(17) annual compensation limit (IRS Notices 2023-75, 2024-80, 2025-67).
+const COMPENSATION_LIMITS: Record<number, number> = {
+  2024: 345000,
+  2025: 350000,
+  2026: 360000,
+};
+
+/**
+ * Get the §401(a)(17) limit on compensation a plan may take into account
+ * (e.g. when computing a percent-of-salary employer contribution).
+ * Projected years round down to a $5,000 multiple per §401(a)(17)(B).
+ */
+export function getCompensationLimit(year: number, inflationAdjusted: boolean = true): number {
+  if (COMPENSATION_LIMITS[year]) return COMPENSATION_LIMITS[year];
+  const years = Object.keys(COMPENSATION_LIMITS).map(Number).sort((a, b) => a - b);
+  if (year < years[0]) return COMPENSATION_LIMITS[years[0]];
+  const latestYear = years[years.length - 1];
+  const latest = COMPENSATION_LIMITS[latestYear];
+  if (!inflationAdjusted) return latest;
+  return Math.floor(latest * Math.pow(1.025, year - latestYear) / 5000) * 5000;
+}
+
 /**
  * Get the IRA contribution limit for a specific year and age.
  */
