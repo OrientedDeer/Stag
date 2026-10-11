@@ -243,3 +243,28 @@ describe('ExcelExportService retirement taxes + mortgage net worth (#195)', () =
     });
 });
 
+
+describe('ExcelExportService Summary Living Expenses excludes payroll deductions', () => {
+    it('reports cashflow.livingExpenses, not totalExpense minus taxes', () => {
+        // A working year: $50k living expenses, $30k taxes, and $32,800 of payroll
+        // deductions (pre-tax 401k + HSA $27,800, insurance $5k) plus a $3k Roth 401k.
+        // The engine's totalExpense = living + tax + preTax(incl. insurance) + postTax.
+        const data = makeRetireeExportData();
+        const year = data.simulation[0];
+        year.cashflow = {
+            ...year.cashflow,
+            totalIncome: 150_000,
+            livingExpenses: 50_000,
+            totalExpense: 50_000 + 30_000 + 32_800 + 3_000,
+            withdrawals: 0,
+        };
+        year.taxDetails = {
+            fed: 20_000, state: 0, fica: 10_000,
+            preTax: 27_800, insurance: 5_000, postTax: 3_000,
+            capitalGains: 0, withdrawalOrdinaryTax: 0, niit: 0,
+        };
+        const { rows } = buildSummarySheet(data);
+        expect(rows[2][3]).toBe(30_000); // Total Taxes
+        expect(rows[2][5]).toBe(50_000); // Living Expenses (old code: 85,800)
+    });
+});
