@@ -2,7 +2,7 @@ import { type AnyExpense, MortgageExpense, LoanExpense, isLongTermGoal } from ".
 import { type AnyIncome, WorkIncome } from "../../components/Objects/Income/models";
 import { type AnyAccount } from "../../components/Objects/Accounts/models";
 import { sumInvestedAssets } from "../../components/Objects/Accounts/accountUtils";
-import { type AssumptionsState, getRetirementAge, getLifeExpectancy, getBirthYear } from "../../components/Objects/Assumptions/AssumptionsContext";
+import { type AssumptionsState, getLifeExpectancy } from "../../components/Objects/Assumptions/AssumptionsContext";
 import { calculateStrategyWithdrawal, type WithdrawalResult } from "../WithdrawalStrategies";
 import { type SimulationYear } from "./types";
 
@@ -108,8 +108,17 @@ export function calculateStrategyTarget(
         ? previousSimulation[previousSimulation.length - 1].strategyWithdrawal
         : undefined;
 
-    const retirementStartYear = getBirthYear(assumptions.milestones) + getRetirementAge(assumptions.milestones);
-    const yearsInRetirement = year - retirementStartYear;
+    // Count from the first year this strategy actually ran (whose portfolio is the
+    // Fixed Real anchor), not the configured retirement age: a plan that starts past
+    // that age, or a RETIRE milestone that fires late, would otherwise inflate the
+    // year-1 budget by (1+i)^(years already retired).
+    let firstStrategyIndex = previousSimulation.length;
+    while (firstStrategyIndex > 0 && previousSimulation[firstStrategyIndex - 1].strategyWithdrawal) {
+        firstStrategyIndex--;
+    }
+    const yearsInRetirement = firstStrategyIndex < previousSimulation.length
+        ? year - previousSimulation[firstStrategyIndex].year
+        : 0;
 
     // yearsRemaining only needed for GK 15-year rule
     const yearsRemaining = strategy === 'Guyton Klinger'

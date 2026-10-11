@@ -752,6 +752,33 @@ describe('SpendingStrategy', () => {
                 const tenthYearResult = calculateStrategyTarget(accounts, assumptions, previousSim, 2035, 75, []);
                 expect(tenthYearResult!.amount).toBeCloseTo(40000, 0);
             });
+
+            it('anchors year 1 at the first strategy year when the plan starts after the retirement age', () => {
+                const accounts: AnyAccount[] = [
+                    new InvestedAccount('inv1', 'Brokerage', 1000000, 0, 0, 0.1, 'Brokerage'),
+                ];
+                // Already retired: configured retirement age 65 (2025), but the first
+                // simulated retired year is 2031 (age 71).
+                const assumptions = createTestAssumptions({
+                    withdrawalStrategy: 'Fixed Real',
+                    withdrawalRate: 4,
+                    inflationRate: 3,
+                    birthYear: 1960,
+                    retirementAge: 65,
+                });
+                const year0 = [{ year: 2030 }] as unknown as SimulationYear[];
+
+                const firstYear = calculateStrategyTarget(accounts, assumptions, year0, 2031, 71, []);
+                // 4% of today's portfolio, not $40k × 1.03^6 ≈ $47.8k.
+                expect(firstYear!.amount).toBeCloseTo(40000, 0);
+
+                const secondYear = calculateStrategyTarget(
+                    accounts, assumptions,
+                    [...year0, { year: 2031, strategyWithdrawal: firstYear }] as unknown as SimulationYear[],
+                    2032, 72, [],
+                );
+                expect(secondYear!.amount).toBeCloseTo(41200, 0);
+            });
         });
 
         describe('Percentage strategy', () => {
