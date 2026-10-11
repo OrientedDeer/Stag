@@ -8,7 +8,6 @@ import { TaxContext } from '../components/Objects/Taxes/TaxContext';
 import { AssumptionsContext, getBirthYear } from '../components/Objects/Assumptions/AssumptionsContext';
 import { WorkIncome, type AnyIncome } from '../components/Objects/Income/models';
 import { resolveIncomes } from '../components/Objects/Assumptions/useSimulation';
-import { TAX_DATABASE } from '../data/TaxData';
 import { calculateFederalTaxFromIncomes, calculateFicaTax, calculateStateTax } from '../components/Objects/Taxes/TaxService';
 import { useFileManager } from '../components/Objects/Accounts/useFileManager';
 import { formatCompactCurrency } from './Future/tabs/FutureUtils';
@@ -73,12 +72,9 @@ export default function Dashboard() {
       );
 
       const { annualFedTax, annualStateTax, annualFicaTax } = useMemo(() => {
-          const fedParams = TAX_DATABASE.federal[year]?.[taxState.filingStatus];
-          const stateParams = TAX_DATABASE.states[taxState.stateResidency]?.[year]?.[taxState.filingStatus];
-
-          let fed = fedParams ? calculateFederalTaxFromIncomes(taxState, incomes, expenses, 0, year, assumptions) : 0;
-          let state = stateParams ? calculateStateTax(taxState, incomes, expenses, year, assumptions) : 0;
-          let fica = fedParams ? calculateFicaTax(taxState, incomes, year, assumptions) : 0;
+          let fed = calculateFederalTaxFromIncomes(taxState, incomes, expenses, 0, year, assumptions);
+          let state = calculateStateTax(taxState, incomes, expenses, year, assumptions);
+          let fica = calculateFicaTax(taxState, incomes, year, assumptions);
 
           if (taxState.fedOverride !== null) fed = taxState.fedOverride;
           if (taxState.ficaOverride !== null) fica = taxState.ficaOverride;
