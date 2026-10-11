@@ -150,6 +150,9 @@ export function runSingleBacktest(
   // Prior year's portfolio total return (%), for the Guyton-Klinger Withdrawal Rule
   // down-year inflation freeze. undefined in year 1 (no prior year yet).
   let previousNominalReturn: number | undefined;
+  // Prior year's CPI: GK's start-of-year raise can only reflect inflation already
+  // realized, the same lag Fixed Real gets from `cumulativeInflation`.
+  let previousInflation = 0;
   const useStrategy = withdrawalStrategy && withdrawalStrategy !== 'None' && withdrawalStrategy !== 'Needs Based' && withdrawalRate !== undefined;
 
   for (let i = 0; i < retirementYears; i++) {
@@ -182,14 +185,14 @@ export function runSingleBacktest(
     } else if (useStrategy) {
       // Percentage and Guyton-Klinger already accumulate actual year-by-year inflation
       // correctly: Percentage ignores inflation entirely (it withdraws a % of the live
-      // portfolio), and GK carries its baseAmount forward and applies THIS year's actual
-      // CPI as a single-year step, so the per-year `inflation` passed here compounds
-      // honestly across the window. Only Fixed Real (above) needed the running product.
+      // portfolio), and GK carries its baseAmount forward and applies the PRIOR year's
+      // actual CPI as a single-year step, so it compounds honestly across the window.
+      // Only Fixed Real (above) needed the running product.
       const result = calculateStrategyWithdrawal({
         strategy: withdrawalStrategy as 'Percentage' | 'Guyton Klinger',
         withdrawalRate: withdrawalRate!,
         currentPortfolio: balance,
-        inflationRate: inflation, // Use actual historical inflation
+        inflationRate: previousInflation,
         yearsInRetirement: i,
         ...(previousWithdrawalResult !== undefined && { previousWithdrawal: previousWithdrawalResult }),
         gkUpperGuardrail,
@@ -231,6 +234,7 @@ export function runSingleBacktest(
     // Remember this year's return so next year's GK Withdrawal Rule can see
     // whether the prior year was a down year (negative total return).
     previousNominalReturn = nominalReturn;
+    previousInflation = inflation;
 
     // Track lowest balance
     if (balance < lowestBalance) {

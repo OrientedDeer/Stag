@@ -137,6 +137,35 @@ describe('HistoricalBacktest', () => {
     });
   });
 
+  describe('Guyton-Klinger strategy — inflation timing', () => {
+    // Guardrails so wide they never fire, isolating the annual inflation raise.
+    // 1979 and 1980 both had positive 60/40 returns, so the down-year freeze
+    // can't fire either.
+    const gkConfig: BacktestConfig = {
+      retirementYears: 3,
+      startingBalance: 1_000_000,
+      annualWithdrawal: 40000,
+      stockAllocation: 0.6,
+      inflationAdjustedWithdrawals: true,
+      withdrawalStrategy: 'Guyton Klinger',
+      withdrawalRate: 4,
+      gkUpperGuardrail: 1000,
+      gkLowerGuardrail: 0,
+    };
+
+    it('raises each year by the CPI of the years already elapsed, matching Fixed Real', () => {
+      const gk = runSingleBacktest(1979, gkConfig)!;
+      const fixedReal = runSingleBacktest(1979, { ...gkConfig, withdrawalStrategy: 'Fixed Real' })!;
+      const initialWithdrawal = 40_000;
+
+      gk.yearlySnapshots.forEach((snap, i) => {
+        expect(snap.guardrailTriggered).toBe('none');
+        expect(snap.withdrawal).toBeCloseTo(initialWithdrawal * cumulativeInflationFactor(1979, i), 2);
+        expect(snap.withdrawal).toBeCloseTo(fixedReal.yearlySnapshots[i].withdrawal, 2);
+      });
+    });
+  });
+
   describe('runHistoricalBacktest', () => {
     it('should run backtest across all valid years', () => {
       const config: BacktestConfig = {
