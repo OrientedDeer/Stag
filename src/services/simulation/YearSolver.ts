@@ -291,6 +291,18 @@ export function getTotalTraditionalBalance(accounts: AnyAccount[]): number {
         .reduce((sum, a) => sum + (a as InvestedAccount).vestedAmount, 0);
 }
 
+/**
+ * Traditional balance a Roth conversion can actually draw this year. RMDService
+ * queues the year's RMD as a pending userInflow, so `vestedAmount` is still the
+ * undrained balance; an RMD is not an eligible rollover distribution
+ * (IRC §402(c)(4)(B), §408(d)(3)(E)) and can't be converted. Clamping a plan to
+ * the undrained balance lets it exceed what executeYearPlan can move, while the
+ * year's tax is still charged on the full planned amount — taxing the RMD twice.
+ */
+function getConvertibleTraditionalBalance(input: YearSolverInput): number {
+    return Math.max(0, getTotalTraditionalBalance(input.accounts) - input.rmdAmount);
+}
+
 export function getTotalBrokerageBalance(accounts: AnyAccount[]): number {
     return accounts
         .filter(a => a instanceof InvestedAccount && a.taxType === 'Brokerage')
@@ -716,7 +728,7 @@ function planConversion(
     const decisions: DecisionLogEntry[] = [];
     let bracketSpaceForSpending = 0;
 
-    const traditionalBalance = getTotalTraditionalBalance(input.accounts);
+    const traditionalBalance = getConvertibleTraditionalBalance(input);
 
     // Skip conversion if not enabled or not retired
     if (!input.taxOptimizationEnabled || !input.isRetired) {
@@ -1422,7 +1434,7 @@ function planConversionDP(
 
     // Look up the precomputed conversion amount. Clamp to (traditional - reserved
     // for spending) so the conversion doesn't compete with the spending withdrawal.
-    const availableTradForConversion = Math.max(0, traditionalBalance - bracketSpaceForSpending);
+    const availableTradForConversion = Math.max(0, getConvertibleTraditionalBalance(input) - bracketSpaceForSpending);
     const plannedConversion = input.dpConversionPlan?.get(input.year) ?? 0;
 
     let targetConversion = plannedConversion;
@@ -2578,7 +2590,7 @@ export function solveWorkingYear(input: YearSolverInput): YearPlan {
     let conversionSourceAccount: InvestedAccount | null = null;
     let conversionTargetAccount: InvestedAccount | null = null;
     if (targetConversion > 0) {
-        const traditionalBalance = getTotalTraditionalBalance(input.accounts);
+        const traditionalBalance = getConvertibleTraditionalBalance(input);
         conversionSourceAccount = getFirstTraditionalAccount(input.accounts);
         conversionTargetAccount = getFirstRothAccount(input.accounts);
         if (!input.taxOptimizationEnabled) {
