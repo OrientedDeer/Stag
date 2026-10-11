@@ -91,7 +91,7 @@ export function processInflows(
             const annualPreTax = inc.getProratedAnnual(inc.preTax401k, year);
             const annualRoth = inc.getProratedAnnual(inc.roth401k, year);
             const selfContribution = annualPreTax + annualRoth;
-            let employerMatch = inc.getEffectiveAnnualEmployerMatch() * activeMultiplier;
+            let employerMatch = inc.getEffectiveAnnualEmployerMatch(year, assumptions.macro.inflationAdjusted);
 
             // Bug #11: enforce the §415(c) combined annual-additions limit
             // (employee pre-tax + Roth + employer) for this 401k account. The

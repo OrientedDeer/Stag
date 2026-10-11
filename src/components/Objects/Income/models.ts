@@ -1,6 +1,6 @@
 import { type TaxType } from "../../Objects/Accounts/models";
 import { type AssumptionsState } from '../Assumptions/AssumptionsContext';
-import { get401kLimit, getHSALimit } from '../../../data/ContributionLimits';
+import { get401kLimit, getHSALimit, getCompensationLimit } from '../../../data/ContributionLimits';
 import {
   getFERSCOLA,
   getCSRSCOLA,
@@ -153,10 +153,11 @@ export class WorkIncome extends BaseIncome {
     this.className = 'WorkIncome';
   }
 
-  getEffectiveAnnualEmployerMatch(year?: number): number {
+  getEffectiveAnnualEmployerMatch(year?: number, inflationAdjusted: boolean = true): number {
     if (this.employerMatchType === 'percent') {
       const annualSalary = this.getProratedAnnual(this.amount, year);
-      const matchAmount = annualSalary * (this.employerMatchPercent / 100);
+      const compLimit = getCompensationLimit(year ?? new Date().getFullYear(), inflationAdjusted);
+      const matchAmount = Math.min(annualSalary, compLimit) * (this.employerMatchPercent / 100);
       if (this.employerMatchMax > 0) {
         const activeMult = year !== undefined ? getIncomeActiveMultiplier(this as unknown as AnyIncome, year) : 1;
         return Math.min(matchAmount, this.employerMatchMax * activeMult);
