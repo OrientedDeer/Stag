@@ -272,8 +272,16 @@ export function projectIncomes(
                     const birthYear = getBirthYear(assumptions.milestones);
                     const aimeCalc = calculateAIME(earningsHistory, year, inc.claimingAge, birthYear, wageGrowthRate, inflationAdjusted);
 
+                    // calculateAIME's PIA is in eligibility-year (age 62) dollars. SSA applies
+                    // every COLA from the year of eligibility on, claimed or not (42 USC 415(i)),
+                    // so a benefit first paid in benefitYear carries (benefitYear - year62) COLAs.
+                    const cola = inflationAdjusted ? assumptions.macro.inflationRate / 100 : 0;
+                    const benefitYear = currentAge >= inc.claimingAge ? year : birthYear + inc.claimingAge;
+                    const colaYears = Math.max(0, benefitYear - (birthYear + 62));
+                    const colaFactor = Math.pow(1 + cola, colaYears);
+
                     const fundingPercent = (assumptions.income?.socialSecurityFundingPercent ?? 100) / 100;
-                    const adjustedMonthlyBenefit = aimeCalc.adjustedBenefit * fundingPercent;
+                    const adjustedMonthlyBenefit = aimeCalc.adjustedBenefit * colaFactor * fundingPercent;
 
                     logs.push(`Social Security PIA calculated: $${adjustedMonthlyBenefit.toFixed(2)}/month (claiming at age ${inc.claimingAge})`);
                     logs.push(`  AIME: $${aimeCalc.aime.toFixed(2)}, PIA: $${aimeCalc.pia.toFixed(2)}${fundingPercent < 1 ? `, Funding: ${fundingPercent * 100}%` : ''}`);
